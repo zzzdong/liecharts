@@ -1,0 +1,98 @@
+use liecharts::{
+    AxisType, DataPoint, LieChart, LieChartOption, SeriesOption,
+};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let mut chart = LieChart::new(800, 600);
+
+    let option = LieChartOption {
+        title: Some(liecharts::TitleOption {
+            text: Some("堆叠面积图".to_string()),
+            subtext: Some("Stacked Area Chart".to_string()),
+            ..Default::default()
+        }),
+        legend: Some(liecharts::LegendOption {
+            show: Some(true),
+            data: Some(vec![
+                "产品A".to_string(),
+                "产品B".to_string(),
+                "产品C".to_string(),
+            ]),
+            ..Default::default()
+        }),
+        x_axis: vec![liecharts::AxisOption {
+            axis_type: Some(AxisType::Category),
+            data: Some(vec![
+                "周一".to_string(),
+                "周二".to_string(),
+                "周三".to_string(),
+                "周四".to_string(),
+                "周五".to_string(),
+            ]),
+            ..Default::default()
+        }],
+        y_axis: vec![liecharts::AxisOption {
+            axis_type: Some(AxisType::Value),
+            name: Some("访问量".to_string()),
+            ..Default::default()
+        }],
+        series: vec![
+            SeriesOption::Line(liecharts::LineSeriesOption {
+                name: Some("产品A".to_string()),
+                stack: Some("总量".to_string()),
+                data: vec![
+                    DataPoint::Number(120.0),
+                    DataPoint::Number(200.0),
+                    DataPoint::Number(150.0),
+                    DataPoint::Number(80.0),
+                    DataPoint::Number(70.0),
+                ],
+                area_style: Some(liecharts::AreaStyleOption {
+                    color: None,
+                    opacity: None,
+                }),
+                ..Default::default()
+            }),
+            SeriesOption::Line(liecharts::LineSeriesOption {
+                name: Some("产品B".to_string()),
+                stack: Some("总量".to_string()),
+                data: vec![
+                    DataPoint::Number(100.0),
+                    DataPoint::Number(80.0),
+                    DataPoint::Number(120.0),
+                    DataPoint::Number(200.0),
+                    DataPoint::Number(150.0),
+                ],
+                area_style: Some(liecharts::AreaStyleOption {
+                    color: None,
+                    opacity: None,
+                }),
+                ..Default::default()
+            }),
+            SeriesOption::Line(liecharts::LineSeriesOption {
+                name: Some("产品C".to_string()),
+                stack: Some("总量".to_string()),
+                data: vec![
+                    DataPoint::Number(80.0),
+                    DataPoint::Number(120.0),
+                    DataPoint::Number(180.0),
+                    DataPoint::Number(60.0),
+                    DataPoint::Number(100.0),
+                ],
+                area_style: Some(liecharts::AreaStyleOption {
+                    color: None,
+                    opacity: None,
+                }),
+                ..Default::default()
+            }),
+        ],
+        ..Default::default()
+    };
+
+    chart.set_option(option, None)?;
+    chart.render_to_image("stacked_area.png")?;
+    chart.render_to_svg("stacked_area.svg")?;
+    println!("堆叠面积图已保存到 stacked_area.png 和 stacked_area.svg");
+
+    Ok(())
+}
