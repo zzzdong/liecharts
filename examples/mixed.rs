@@ -1,23 +1,22 @@
 use liecharts::{
-    AxisOption, AxisPosition, AxisType, DataPoint, LieChart, LieChartOption,
-    SeriesOption, BarSeriesOption, LineSeriesOption,
-    LegendOption, TitleOption,
+    AxisType, AxisPosition, DataPoint, LieChart, LieChartOption,
+    SeriesOption,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let option = LieChartOption {
-        title: Some(TitleOption {
+        title: Some(liecharts::TitleOption {
             text: Some("混合图表示例".to_string()),
             subtext: Some("柱状图和折线图组合".to_string()),
             ..Default::default()
         }),
-        legend: Some(LegendOption {
+        legend: Some(liecharts::LegendOption {
             show: Some(true),
             data: Some(vec!["销量".to_string(), "增长率".to_string()]),
             ..Default::default()
         }),
         x_axis: vec![
-            AxisOption {
+            liecharts::AxisOption {
                 axis_type: Some(AxisType::Category),
                 data: Some(vec![
                     "周一".to_string(),
@@ -30,13 +29,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         ],
         y_axis: vec![
-            AxisOption {
+            liecharts::AxisOption {
                 axis_type: Some(AxisType::Value),
                 name: Some("销量".to_string()),
                 position: Some(AxisPosition::Left),
                 ..Default::default()
             },
-            AxisOption {
+            liecharts::AxisOption {
                 axis_type: Some(AxisType::Value),
                 name: Some("增长率(%)".to_string()),
                 position: Some(AxisPosition::Right),
@@ -44,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         ],
         series: vec![
-            SeriesOption::Bar(BarSeriesOption {
+            SeriesOption::Bar(liecharts::BarSeriesOption {
                 name: Some("销量".to_string()),
                 data: vec![
                     DataPoint::Number(120.0),
@@ -56,7 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 y_axis_index: Some(0),
                 ..Default::default()
             }),
-            SeriesOption::Line(LineSeriesOption {
+            SeriesOption::Line(liecharts::LineSeriesOption {
                 name: Some("增长率".to_string()),
                 data: vec![
                     DataPoint::Number(10.0),
@@ -72,11 +71,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    let mut chart = LieChart::new(800, 600);
-
-    chart.set_option(option, None)?;
-    chart.render_to_image("mixed_chart.png")?;
-    chart.render_to_svg("mixed_chart.svg")?;
-    println!("混合图表已保存到 mixed_chart.png 和 mixed_chart.svg");
+    let chart = LieChart::new(800, 600);
+    chart.render_to_image(option, "mixed.png")?;
+    println!("混合图表已保存到 mixed.png");
     Ok(())
 }

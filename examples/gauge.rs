@@ -4,7 +4,8 @@ use liecharts::option::GaugeDataPoint;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let option = LieChartOption {
         title: Some(liecharts::TitleOption {
-            text: Some("仪表盘示例".to_string()),
+            text: Some("任务完成率".to_string()),
+            subtext: Some("Gauge Chart".to_string()),
             ..Default::default()
         }),
         series: vec![
@@ -23,12 +24,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    let mut chart = LieChart::new(800, 600);
-    chart.set_option(option, None)?;
-
-    chart.render_to_image("gauge_chart.png")?;
-    chart.render_to_svg("gauge_chart.svg")?;
-    println!("仪表盘已保存到 gauge_chart.png 和 gauge_chart.svg");
+    let chart = LieChart::new(800, 600);
+    chart.render_to_image(option, "gauge.png")?;
+    println!("仪表盘已保存到 gauge.png");
 
     Ok(())
 }

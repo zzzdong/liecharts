@@ -3,12 +3,12 @@ use liecharts::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut chart = LieChart::new(800, 600);
+    let chart = LieChart::new(800, 600);
 
     let option = LieChartOption {
         title: Some(liecharts::TitleOption {
-            text: Some("基础面积图".to_string()),
-            subtext: Some("Basic Area Chart".to_string()),
+            text: Some("访问量趋势面积图".to_string()),
+            subtext: Some("Area Chart".to_string()),
             ..Default::default()
         }),
         legend: Some(liecharts::LegendOption {
@@ -52,10 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    chart.set_option(option, None)?;
-    chart.render_to_image("basic_area.png")?;
-    chart.render_to_svg("basic_area.svg")?;
-    println!("基础面积图已保存到 basic_area.png 和 basic_area.svg");
+    chart.render_to_image(option, "area.png")?;
+    println!("面积图已保存到 area.png");
 
     Ok(())
 }

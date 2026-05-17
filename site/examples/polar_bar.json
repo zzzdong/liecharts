@@ -1,0 +1,18 @@
+{
+    "title": {
+        "text": "极坐标柱状图",
+        "subtext": "风向频率分布"
+    },
+    "series": [{
+        "type": "polarBar",
+        "name": "风向频率",
+        "data": [12, 8, 15, 20, 18, 25, 30, 22, 16, 10, 14, 18],
+        "padAngle": 3,
+        "startAngle": 0,
+        "color": [
+            "#ff6b6b", "#ffa07a", "#ffd93d", "#6bcb77",
+            "#4d96ff", "#9b59b6", "#ff6b6b", "#ffa07a",
+            "#ffd93d", "#6bcb77", "#4d96ff", "#9b59b6"
+        ]
+    }]
+}

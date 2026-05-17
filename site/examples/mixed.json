@@ -1,0 +1,40 @@
+{
+    "title": {
+        "text": "混合图表示例",
+        "subtext": "柱状图和折线图组合"
+    },
+    "legend": {
+        "show": false,
+        "data": ["销量", "增长率"]
+    },
+    "xAxis": [{
+        "type": "category",
+        "data": ["周一", "周二", "周三", "周四", "周五"]
+    }],
+    "yAxis": [
+        {
+            "type": "value",
+            "name": "销量",
+            "position": "left"
+        },
+        {
+            "type": "value",
+            "name": "增长率(%)",
+            "position": "right"
+        }
+    ],
+    "series": [
+        {
+            "type": "bar",
+            "name": "销量",
+            "data": [120, 200, 150, 80, 70],
+            "yAxisIndex": 0
+        },
+        {
+            "type": "line",
+            "name": "增长率",
+            "data": [10, 20, 15, 8, 7],
+            "yAxisIndex": 1
+        }
+    ]
+}

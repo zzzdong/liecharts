@@ -71,6 +71,14 @@ impl DataCoordinateSystem {
                 * self.plot_bounds.width()
     }
 
+    /// 将数值型 X 值映射到像素坐标（用于散点图等数值 X 轴图表）
+    pub fn x_value_to_pixel(&self, value: f64) -> f64 {
+        // 直接使用数值范围映射，不考虑类目索引
+        self.plot_bounds.x0
+            + (value - self.x_range.0) / (self.x_range.1 - self.x_range.0)
+                * self.plot_bounds.width()
+    }
+
     pub fn y_to_pixel(&self, data_y: f64, y_axis_index: usize) -> f64 {
         let y_range = self.get_y_range(y_axis_index);
         self.plot_bounds.y1

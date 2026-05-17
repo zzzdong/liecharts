@@ -3,7 +3,7 @@ use liecharts::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut chart = LieChart::new(800, 600);
+    let chart = LieChart::new(800, 600);
 
     let option = LieChartOption {
         title: Some(liecharts::TitleOption {
@@ -62,10 +62,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    chart.set_option(option, None)?;
-    chart.render_to_image("line_chart.png")?;
-    chart.render_to_svg("line_chart.svg")?;
-    println!("折线图已保存到 line_chart.png 和 line_chart.svg");
+    chart.render_to_image(option, "line.png")?;
+    println!("折线图已保存到 line.png");
 
     Ok(())
 }

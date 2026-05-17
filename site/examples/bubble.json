@@ -1,0 +1,30 @@
+{
+    "title": {
+        "text": "编程语言数据分析",
+        "subtext": "气泡大小表示就业岗位数量（相对值）"
+    },
+    "xAxis": [{
+        "type": "value",
+        "name": "诞生年份"
+    }],
+    "yAxis": [{
+        "type": "value",
+        "name": "TIOBE 流行度指数"
+    }],
+    "series": [{
+        "type": "bubble",
+        "name": "编程语言",
+        "data": [
+            { "x": 1991, "y": 14, "size": 400, "name": "Python" },
+            { "x": 1995, "y": 12, "size": 320, "name": "Java" },
+            { "x": 1972, "y": 11, "size": 80, "name": "C" },
+            { "x": 1985, "y": 10, "size": 60, "name": "C++" },
+            { "x": 1995, "y": 3, "size": 250, "name": "JavaScript" },
+            { "x": 2009, "y": 2, "size": 35, "name": "Go" },
+            { "x": 2010, "y": 1, "size": 10, "name": "Rust" },
+            { "x": 2014, "y": 1, "size": 20, "name": "Swift" },
+            { "x": 2011, "y": 1, "size": 15, "name": "Kotlin" },
+            { "x": 2012, "y": 2, "size": 100, "name": "TypeScript" }
+        ]
+    }]
+}

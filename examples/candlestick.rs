@@ -1,7 +1,7 @@
 use liecharts::{AxisType, LieChart, LieChartOption, SeriesOption, CandlestickDataPoint};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut chart = LieChart::new(800, 600);
+    let chart = LieChart::new(800, 600);
 
     let option = LieChartOption {
         title: Some(liecharts::TitleOption {
@@ -51,10 +51,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    chart.set_option(option, None)?;
-    chart.render_to_image("candlestick_chart.png")?;
-    chart.render_to_svg("candlestick_chart.svg")?;
-    println!("K线图已保存到 candlestick_chart.png 和 candlestick_chart.svg");
+    chart.render_to_image(option, "candlestick.png")?;
+    println!("K线图已保存到 candlestick.png");
 
     Ok(())
 }

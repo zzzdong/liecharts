@@ -25,6 +25,12 @@ pub enum ChartError {
 
     #[error("布局错误: {0}")]
     LayoutError(String),
+
+    #[error("字体加载错误: {0}")]
+    FontLoadError(String),
+
+    #[error("主题加载错误: {0}")]
+    InvalidTheme(String),
 }
 
 pub type Result<T> = std::result::Result<T, ChartError>;

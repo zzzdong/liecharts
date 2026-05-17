@@ -193,7 +193,7 @@ fn extract_data(series: &ResolvedSeries) -> &[DataItem] {
     match series {
         ResolvedSeries::Bar(s) => &s.data,
         ResolvedSeries::Line(s) => &s.data,
-        ResolvedSeries::Scatter(s) => &s.data,
+        ResolvedSeries::Scatter(_) => &[], // 散点图使用特殊处理，不通过此函数
         ResolvedSeries::Pie(s) => &s.data,
         ResolvedSeries::Radar(_) => &[],
         ResolvedSeries::PolarBar(s) => &s.data,

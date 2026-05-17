@@ -1,0 +1,40 @@
+{
+    "title": {
+        "text": "产品能力雷达图",
+        "subtext": "多维度对比分析"
+    },
+    "legend": {
+        "show": false,
+        "data": ["产品A", "产品B"]
+    },
+    "radar": {
+        "indicator": [
+            { "name": "销量", "max": 100 },
+            { "name": "品牌", "max": 100 },
+            { "name": "增长", "max": 100 },
+            { "name": "满意度", "max": 100 },
+            { "name": "市占", "max": 100 }
+        ],
+        "center": ["50%", "55%"],
+        "radius": ["0%", "65%"],
+        "splitNumber": 5
+    },
+    "series": [
+        {
+            "type": "radar",
+            "name": "产品A",
+            "data": [{
+                "value": [95, 80, 75, 90, 85],
+                "name": "产品A"
+            }]
+        },
+        {
+            "type": "radar",
+            "name": "产品B",
+            "data": [{
+                "value": [70, 95, 90, 75, 60],
+                "name": "产品B"
+            }]
+        }
+    ]
+}

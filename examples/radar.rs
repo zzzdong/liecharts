@@ -4,7 +4,7 @@ use liecharts::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut chart = LieChart::new(800, 600);
+    let chart = LieChart::new(800, 600);
 
     let option = LieChartOption {
         title: Some(liecharts::TitleOption {
@@ -19,26 +19,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }),
         radar: Some(RadarOption {
             indicator: Some(vec![
-                RadarIndicatorOption {
-                    name: Some("销量".to_string()),
-                    max: Some(100.0),
-                },
-                RadarIndicatorOption {
-                    name: Some("品牌".to_string()),
-                    max: Some(100.0),
-                },
-                RadarIndicatorOption {
-                    name: Some("增长".to_string()),
-                    max: Some(100.0),
-                },
-                RadarIndicatorOption {
-                    name: Some("满意度".to_string()),
-                    max: Some(100.0),
-                },
-                RadarIndicatorOption {
-                    name: Some("市占".to_string()),
-                    max: Some(100.0),
-                },
+                RadarIndicatorOption { name: Some("销量".to_string()), max: Some(100.0) },
+                RadarIndicatorOption { name: Some("品牌".to_string()), max: Some(100.0) },
+                RadarIndicatorOption { name: Some("增长".to_string()), max: Some(100.0) },
+                RadarIndicatorOption { name: Some("满意度".to_string()), max: Some(100.0) },
+                RadarIndicatorOption { name: Some("市占".to_string()), max: Some(100.0) },
             ]),
             center: Some(vec!["50%".to_string(), "55%".to_string()]),
             radius: Some(vec!["0%".to_string(), "65%".to_string()]),
@@ -70,10 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    chart.set_option(option, None)?;
-    chart.render_to_image("radar_chart.png")?;
-    chart.render_to_svg("radar_chart.svg")?;
-    println!("雷达图已保存到 radar_chart.png 和 radar_chart.svg");
+    chart.render_to_image(option, "radar.png")?;
+    println!("雷达图已保存到 radar.png");
 
     Ok(())
 }

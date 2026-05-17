@@ -14,10 +14,11 @@ use crate::visual::{FillStrokeStyle, VisualElement};
 use vello_cpu::kurbo::Rect;
 pub use vello_cpu::Pixmap;
 
+
+
 pub struct LieChart {
     width: u32,
     height: u32,
-    resolved: Option<ResolvedOption>,
     theme_registry: ThemeRegistry,
 }
 
@@ -26,33 +27,27 @@ impl LieChart {
         Self {
             width,
             height,
-            resolved: None,
             theme_registry: ThemeRegistry::new(),
         }
     }
 
-    pub fn set_option(&mut self, option: LieChartOption, theme: Option<&Theme>) -> Result<()> {
-        let theme = theme.or_else(|| {
-            option
-                .theme
-                .as_ref()
-                .and_then(|name| self.theme_registry.get(name))
-        });
-
-        self.resolved = Some(ResolvedOption::merge(option, theme)?);
-        Ok(())
+    pub fn with_theme(mut self, theme: Theme) -> Self {
+        self.theme_registry.register(theme);
+        self
     }
 
-    pub fn set_option_json(&mut self, json: &str, theme: Option<&Theme>) -> Result<()> {
-        let option: LieChartOption = serde_json::from_str(json)?;
-        self.set_option(option, theme)
+    fn resolve_option(&self, option: LieChartOption) -> Result<ResolvedOption> {
+        let theme = option
+            .theme
+            .as_ref()
+            .and_then(|name| self.theme_registry.get(name))
+            .cloned();
+        ResolvedOption::merge(option, theme)
     }
 
-    /// 构建图表的所有视觉元素
     fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
-        // 背景
         elements.push(VisualElement::Rect {
             rect: Rect::new(0.0, 0.0, self.width as f64, self.height as f64),
             style: FillStrokeStyle {
@@ -61,19 +56,16 @@ impl LieChart {
             },
         });
 
-        // 标题
         if let Some(title) = &resolved.title {
             let comp = TitleComponent::new(title);
             elements.extend(comp.build_visual_elements(resolved, layout));
         }
 
-        // 图例
         if let Some(legend) = &resolved.legend {
             let comp = LegendComponent::new(legend);
             elements.extend(comp.build_visual_elements(resolved, layout));
         }
 
-        // 构建子图上下文并渲染每个子图
         let subplots = build_subplot_contexts(resolved, layout);
         for subplot in &subplots {
             elements.extend(subplot.build_visual_elements(resolved, layout));
@@ -111,11 +103,9 @@ impl LieChart {
             }
         });
 
-        // 为每个 grid 创建子图布局
         let mut subplots: Vec<SubplotLayout> = Vec::new();
-        
+
         for (grid_index, grid) in resolved.grids.iter().enumerate() {
-            // 收集属于当前 grid 的坐标轴
             let x_axes: Vec<Box<dyn Layoutable>> = resolved.x_axes.iter()
                 .filter(|axis| axis.grid_index == grid_index)
                 .map(|axis| {
@@ -147,34 +137,29 @@ impl LieChart {
         };
 
         let mut output = engine.layout(&mut chart_layout);
-        
-        // 为每个 grid 计算数据坐标系
+
         for grid_info in &mut output.grids {
             let grid_index = grid_info.grid_index;
             grid_info.data_coord = compute_data_coord_for_grid(resolved, grid_info, grid_index);
         }
-        
+
         output
     }
 
-    /// 构建并返回图表的所有视觉元素及尺寸
-    ///
-    /// 这是渲染管线的核心方法，将配置和布局转化为视觉元素列表，
-    /// 开发者可以获取元素后自行传入任意 Renderer 实例进行渲染。
-    pub fn collect_visual_elements(&self) -> Result<(Vec<VisualElement>, u32, u32)> {
-        let resolved = self.resolved.as_ref().ok_or(ChartError::NoOption)?;
-        let layout = self.compute_layout(resolved);
-        let elements = self.build_visual_elements(resolved, &layout);
+    pub fn collect_visual_elements(&self, option: LieChartOption)
+        -> Result<(Vec<VisualElement>, u32, u32)>
+    {
+        let resolved = self.resolve_option(option)?;
+        let layout = self.compute_layout(&resolved);
+        let elements = self.build_visual_elements(&resolved, &layout);
         Ok((elements, self.width, self.height))
     }
 
-    /// 渲染图表到图片文件
-    pub fn render_to_image(&self, path: &str) -> Result<()> {
-        let (elements, width, height) = self.collect_visual_elements()?;
+    pub fn render_to_image(&self, option: LieChartOption, path: &str) -> Result<()> {
+        let (elements, width, height) = self.collect_visual_elements(option)?;
         let renderer = PixmapRenderer::new(width, height);
         let pixmap = renderer.render(&elements)?;
 
-        // 将 pixmap 数据转换为 image 格式并保存
         let width = pixmap.width() as u32;
         let height = pixmap.height() as u32;
         let data: Vec<u8> = pixmap.data()
@@ -187,17 +172,36 @@ impl LieChart {
         Ok(())
     }
 
-    /// 渲染图表到 SVG 文件
-    pub fn render_to_svg(&self, path: &str) -> Result<()> {
-        let (elements, width, height) = self.collect_visual_elements()?;
+    pub fn render_to_svg(&self, option: LieChartOption, path: &str) -> Result<()> {
+        let (elements, width, height) = self.collect_visual_elements(option)?;
         let renderer = SvgRenderer::new();
         let svg = renderer.render(&elements, width, height)?;
         std::fs::write(path, svg)?;
         Ok(())
     }
 
-    pub fn register_theme(&mut self, theme: Theme) {
-        self.theme_registry.register(theme);
+    pub fn render_png(&self, option: LieChartOption) -> Result<Vec<u8>> {
+        let (elements, width, height) = self.collect_visual_elements(option)?;
+        let renderer = PixmapRenderer::new(width, height);
+        let pixmap = renderer.render(&elements)?;
+
+        let data: Vec<u8> = pixmap.data()
+            .iter()
+            .flat_map(|p| vec![p.r, p.g, p.b, p.a])
+            .collect();
+        let image = image::RgbaImage::from_raw(pixmap.width() as u32, pixmap.height() as u32, data)
+            .ok_or_else(|| ChartError::RenderError("Failed to create PNG image".to_string()))?;
+
+        let mut buf = Vec::new();
+        image.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
+        Ok(buf)
+    }
+
+    pub fn render_svg(&self, option: LieChartOption) -> Result<String> {
+        let (elements, width, height) = self.collect_visual_elements(option)?;
+        let renderer = SvgRenderer::new();
+        let svg = renderer.render(&elements, width, height)?;
+        Ok(svg)
     }
 
     pub fn width(&self) -> u32 {
@@ -214,8 +218,6 @@ impl LieChart {
     }
 }
 
-/// 子图上下文 - 在布局阶段将 axes 和 series 按 grid_index 分配到各子图，
-/// 消除后续渲染阶段重复的 grid_index 过滤逻辑。
 struct SubplotContext {
     grid_index: usize,
     #[allow(dead_code)]
@@ -287,7 +289,7 @@ impl SubplotContext {
                 }
             }
         }
-        
+
         elements
     }
 }
@@ -309,7 +311,6 @@ fn series_grid_index(series: &ResolvedSeries) -> usize {
     }
 }
 
-/// 构建子图上下文列表 - 将 axes 和 series 按 grid_index 分配到各子图
 fn build_subplot_contexts(resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<SubplotContext> {
     layout.grids.iter().map(|grid_info| {
         let grid_index = grid_info.grid_index;
@@ -340,15 +341,13 @@ fn build_subplot_contexts(resolved: &ResolvedOption, layout: &LayoutOutput) -> V
     }).collect()
 }
 
-/// 为指定 grid 计算数据坐标系
 fn compute_data_coord_for_grid(
     resolved: &ResolvedOption,
     grid_info: &GridLayoutInfo,
     grid_index: usize,
 ) -> DataCoordinateSystem {
-    let plot_bounds = grid_info.grid_inner_bbox;
+    let _plot_bounds = grid_info.grid_inner_bbox;
 
-    // 获取属于当前 grid 的坐标轴
     let x_axes: Vec<_> = resolved.x_axes.iter()
         .filter(|axis| axis.grid_index == grid_index)
         .collect();
@@ -356,8 +355,6 @@ fn compute_data_coord_for_grid(
         .filter(|axis| axis.grid_index == grid_index)
         .collect();
 
-    // 构建全局Y轴索引到局部Y轴索引的映射
-    // 系列中的 y_axis_index 是全局索引，需要转换为当前 grid 内的局部索引
     let global_to_local_y: std::collections::HashMap<usize, usize> = resolved.y_axes.iter()
         .enumerate()
         .filter(|(_, axis)| axis.grid_index == grid_index)
@@ -365,25 +362,19 @@ fn compute_data_coord_for_grid(
         .map(|(local, (global, _))| (global, local))
         .collect();
 
-    // 为每个Y轴计算数据范围
     let mut y_axis_values: Vec<Vec<f64>> = vec![Vec::new(); y_axes.len().max(1)];
-    let mut y_axis_stack_groups: Vec<std::collections::HashMap<Option<String>, Vec<Vec<f64>>>> = 
+    let mut y_axis_stack_groups: Vec<std::collections::HashMap<Option<String>, Vec<Vec<f64>>>> =
         vec![std::collections::HashMap::new(); y_axes.len().max(1)];
-    // 标记每个Y轴是否包含需要从0开始的系列（柱状图、面积图）
     let mut y_axis_needs_zero_base: Vec<bool> = vec![false; y_axes.len().max(1)];
-    
-    // 收集X轴数据范围（用于数值型X轴）
+
     let mut x_axis_values: Vec<f64> = Vec::new();
-    
-    // 收集属于当前 grid 的系列数据到对应的Y轴
+
     for series in &resolved.series {
-        // 只处理属于当前 grid 的系列
         let series_grid_index = series_grid_index(series);
         if series_grid_index != grid_index {
             continue;
         }
-        
-        // 提取数据信息，并判断是否需要从0开始
+
         let (values, stack, y_axis_index, x_values, needs_zero_base) = match series {
             ResolvedSeries::Bar(s) => {
                 let vals: Vec<f64> = s.data.iter().map(|item| item.value).collect();
@@ -391,13 +382,13 @@ fn compute_data_coord_for_grid(
             }
             ResolvedSeries::Line(s) => {
                 let vals: Vec<f64> = s.data.iter().map(|item| item.value).collect();
-                // 有面积样式的折线图需要从0开始
                 let has_area = s.area_style.is_some();
                 (vals, s.stack.clone(), s.y_axis_index, None, has_area)
             }
             ResolvedSeries::Scatter(s) => {
-                let vals: Vec<f64> = s.data.iter().map(|item| item.value).collect();
-                (vals, None, s.y_axis_index, None, false)
+                let y_vals: Vec<f64> = s.data.iter().map(|item| item.y).collect();
+                let x_vals: Vec<f64> = s.data.iter().map(|item| item.x).collect();
+                (y_vals, None, s.y_axis_index, Some(x_vals), false)
             }
             ResolvedSeries::Bubble(s) => {
                 let y_vals: Vec<f64> = s.data.iter().map(|b| b.y).collect();
@@ -410,38 +401,34 @@ fn compute_data_coord_for_grid(
             }
             _ => continue,
         };
-        
-        // 收集X轴数值
+
         if let Some(x_vals) = x_values {
             x_axis_values.extend(x_vals);
         }
-        
-        // 将全局Y轴索引转换为当前 grid 内的局部索引
+
         let local_y_axis_index = global_to_local_y.get(&y_axis_index)
             .copied()
             .unwrap_or(0)
             .min(y_axis_values.len() - 1);
-        
-        // 标记是否需要从0开始
+
         if needs_zero_base {
             y_axis_needs_zero_base[local_y_axis_index] = true;
         }
-        
+
         if let Some(ref stack_name) = stack {
             y_axis_stack_groups[local_y_axis_index]
                 .entry(Some(stack_name.clone()))
                 .or_default()
                 .push(values.clone());
         }
-        
+
         y_axis_values[local_y_axis_index].extend(values);
     }
-    
-    // 计算每个Y轴的数据范围
+
     let y_ranges: Vec<(f64, f64)> = y_axes.iter().enumerate().map(|(i, axis)| {
         let values = &y_axis_values[i];
         let needs_zero_base = y_axis_needs_zero_base[i];
-        
+
         let mut max_stacked_value = 0.0f64;
         for group_values in y_axis_stack_groups[i].values() {
             let data_len = group_values.first().map(|v| v.len()).unwrap_or(0);
@@ -450,7 +437,7 @@ fn compute_data_coord_for_grid(
                 max_stacked_value = max_stacked_value.max(sum);
             }
         }
-        
+
         let (data_min, data_max) = if values.is_empty() {
             (0.0, 100.0)
         } else {
@@ -463,7 +450,7 @@ fn compute_data_coord_for_grid(
                 (min, max)
             }
         };
-        
+
         match axis.axis_type {
             AxisType::Category => {
                 let count = axis.data.as_ref().map(|d| d.len()).unwrap_or(0);
@@ -474,23 +461,15 @@ fn compute_data_coord_for_grid(
                 }
             }
             _ => {
-                // 对于柱状图和面积图，如果没有指定min，默认从0开始
                 let min = axis.min.unwrap_or_else(|| {
                     if needs_zero_base && data_min >= 0.0 {
                         0.0
                     } else {
-                        // 给 Y 轴添加 5% 的边距，防止数据点紧贴轴线
                         let range = data_max - data_min;
-                        let margin_min = if range > 0.0 {
+                        if range > 0.0 {
                             data_min - range * 0.05
                         } else {
                             data_min - 1.0
-                        };
-                        // 全正数据不穿入负半轴
-                        if data_min > 0.0 && margin_min < 0.0 {
-                            0.0
-                        } else {
-                            margin_min
                         }
                     }
                 });
@@ -507,49 +486,48 @@ fn compute_data_coord_for_grid(
         }
     }).collect();
 
-    let (is_category_x, category_count, x_range) = x_axes.first()
-        .map(|axis| {
-            match axis.axis_type {
-                AxisType::Category => {
-                    let count = axis.data.as_ref().map(|d| d.len()).unwrap_or(0);
-                    let range = if axis.boundary_gap {
-                        (0.0, count as f64)
-                    } else {
-                        (0.0, (count - 1) as f64)
-                    };
-                    (true, count, range)
-                }
-                _ => {
-                    // 使用收集到的X轴数据计算范围
-                    let (data_min, data_max) = if x_axis_values.is_empty() {
-                        // 如果没有X轴数据，使用Y轴数据作为回退（保持向后兼容）
-                        let all_values: Vec<f64> = y_axis_values.iter().flatten().copied().collect();
-                        let data_min = all_values.iter().cloned().fold(f64::INFINITY, f64::min);
-                        let data_max = all_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                        (data_min, data_max)
-                    } else {
-                        let data_min = x_axis_values.iter().cloned().fold(f64::INFINITY, f64::min);
-                        let data_max = x_axis_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                        (data_min, data_max)
-                    };
-                    let min = axis.min.unwrap_or(data_min);
-                    let max = axis.max.unwrap_or(data_max);
-                    (false, 0, (min, max))
+    let x_range = if x_axes.is_empty() {
+        (0.0, 1.0)
+    } else {
+        let axis = x_axes[0];
+        match axis.axis_type {
+            AxisType::Category => {
+                let count = axis.data.as_ref().map(|d| d.len()).unwrap_or(0);
+                if axis.boundary_gap {
+                    (0.0, count as f64)
+                } else {
+                    (0.0, (count - 1) as f64)
                 }
             }
-        })
-        .unwrap_or((false, 0, (0.0, 100.0)));
+            AxisType::Value => {
+                if x_axis_values.is_empty() {
+                    (0.0, 100.0)
+                } else {
+                    let min = axis.min.unwrap_or_else(|| {
+                        let m = x_axis_values.iter().cloned().fold(f64::INFINITY, f64::min);
+                        let range = x_axis_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+                            - m;
+                        if range > 0.0 { m - range * 0.05 } else { m - 1.0 }
+                    });
+                    let max = axis.max.unwrap_or_else(|| {
+                        let m = x_axis_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                        let range = m - x_axis_values.iter().cloned().fold(f64::INFINITY, f64::min);
+                        if range > 0.0 { m + range * 0.05 } else { m + 1.0 }
+                    });
+                    (min, max)
+                }
+            }
+            _ => (0.0, 1.0),
+        }
+    };
 
-    let is_category_y = y_axes.first()
-        .map(|axis| matches!(axis.axis_type, AxisType::Category))
-        .unwrap_or(false);
-
-    DataCoordinateSystem::new(
-        plot_bounds,
+    DataCoordinateSystem {
         x_range,
         y_ranges,
-        is_category_x,
-        is_category_y,
-        category_count,
-    )
+        plot_bounds: grid_info.grid_inner_bbox,
+        is_category_x: x_axes.first().map(|a| matches!(a.axis_type, AxisType::Category)).unwrap_or(false),
+        category_count: x_axes.first()
+            .and_then(|a| a.data.as_ref().map(|d| d.len()))
+            .unwrap_or(0),
+    }
 }

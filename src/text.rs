@@ -1,8 +1,9 @@
 use std::cell::RefCell;
+use std::sync::Arc;
 use parley::style::{FontFamily, StyleProperty};
 use parley::{FontContext, LayoutContext, Alignment, AlignmentOptions};
 use vello_cpu::color::{AlphaColor, Srgb};
-use crate::model;
+use crate::{ChartError, model};
 use crate::visual::{TextAlign, TextBaseline, Color};
 
 /// 文本布局包装类型
@@ -64,6 +65,52 @@ impl Default for TextColor {
 fn color_to_text_color(color: &Color) -> TextColor {
     TextColor::from_rgba8(color.r, color.g, color.b, color.a)
 }
+
+/// 字体来源
+#[derive(Debug, Clone)]
+pub enum FontSource {
+    /// 从文件路径加载
+    Path(std::path::PathBuf),
+    /// 从内存数据加载
+    Memory(Vec<u8>),
+}
+
+/// 注册自定义字体到全局字体上下文。
+///
+/// 适用于不需要创建 `LieChart` 实例即可加载字体的场景。
+/// 加载后的字体可以通过 `font_family` 名称在图表的文本样式中使用。
+///
+/// # 示例
+///
+/// ```ignore
+/// // 从内存加载（例如从 CDN 下载的字节）
+/// liecharts::register_font(liecharts::FontSource::Memory(font_bytes), Some("MyFont")).unwrap();
+/// ```
+pub fn register_font(source: FontSource, family_name_override: Option<&str>) -> crate::error::Result<()> {
+    use parley::fontique::Blob;
+
+    let data = match source {
+        FontSource::Path(path) => {
+            let bytes = std::fs::read(&path).map_err(|e| {
+                ChartError::FontLoadError(format!("读取字体文件失败: {e}"))
+            })?;
+            Blob::new(Arc::new(bytes))
+        }
+        FontSource::Memory(bytes) => Blob::new(Arc::new(bytes)),
+    };
+
+    let override_info = family_name_override.map(|name| parley::fontique::FontInfoOverride {
+        family_name: Some(name),
+        ..Default::default()
+    });
+
+    crate::text::with_font_context(|font_cx| {
+        font_cx.collection.register_fonts(data, override_info);
+    });
+
+    Ok(())
+}
+
 
 /// 创建文本布局
 /// 

@@ -1,0 +1,28 @@
+{
+    "title": {
+        "text": "K线图示例",
+        "subtext": "股票价格走势"
+    },
+    "xAxis": [{
+        "type": "category",
+        "data": ["2024-01-02", "2024-01-03", "2024-01-04", "2024-01-05", "2024-01-08", "2024-01-09", "2024-01-10", "2024-01-11", "2024-01-12"]
+    }],
+    "yAxis": [{
+        "type": "value"
+    }],
+    "series": [{
+        "type": "candlestick",
+        "name": "日K",
+        "data": [
+            { "open": 100, "close": 105, "low": 98, "high": 108 },
+            { "open": 105, "close": 102, "low": 100, "high": 110 },
+            { "open": 102, "close": 108, "low": 101, "high": 112 },
+            { "open": 108, "close": 115, "low": 106, "high": 118 },
+            { "open": 115, "close": 112, "low": 110, "high": 120 },
+            { "open": 112, "close": 118, "low": 111, "high": 125 },
+            { "open": 118, "close": 125, "low": 116, "high": 128 },
+            { "open": 125, "close": 120, "low": 118, "high": 130 },
+            { "open": 120, "close": 122, "low": 115, "high": 125 }
+        ]
+    }]
+}

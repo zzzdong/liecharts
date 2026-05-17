@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LieCharts - 在线图表编辑器</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/editor/editor.main.css">
+</head>
+<body>
+    <div class="header">
+        <h1>LieCharts <span class="subtitle">在线图表编辑器</span></h1>
+        <div class="header-links">
+            <a href="https://github.com/zzzdong/liecharts" target="_blank">GitHub</a>
+        </div>
+    </div>
+    <div class="container">
+        <div class="panel panel-left">
+            <div class="panel-header">
+                <h2>配置</h2>
+                <div class="toolbar">
+                    <select id="chartType">
+                        <option value="line">折线图</option>
+                        <option value="bar">柱状图</option>
+                        <option value="pie">饼图</option>
+                        <option value="area">面积图</option>
+                        <option value="scatter">散点图</option>
+                        <option value="bubble">气泡图</option>
+                        <option value="radar">雷达图</option>
+                        <option value="gauge">仪表盘</option>
+                        <option value="candlestick">K线图</option>
+                        <option value="polarBar">极坐标柱状图</option>
+                        <option value="polarScatter">极坐标散点图</option>
+                        <option value="table">表格</option>
+                        <option value="mixed">混合图</option>
+                        <option value="stacked_area">堆叠面积图</option>
+                        <option value="dual_y_axis">双Y轴图</option>
+                    </select>
+                    <select id="themeSelect">
+                        <option value="">默认主题</option>
+                    </select>
+                    <button id="loadExample">加载示例</button>
+                    <button id="generateBtn" class="btn-primary" disabled>加载中...</button>
+                </div>
+            </div>
+            <div class="editor-wrapper">
+                <div id="monacoEditor"></div>
+            </div>
+            <div id="errorPanel" class="error-panel hidden"></div>
+        </div>
+        <div class="panel panel-right">
+            <div class="panel-header">
+                <h2>图表预览</h2>
+                <div class="toolbar">
+                    <select id="renderMode">
+                        <option value="svg">SVG</option>
+                        <option value="png">PNG</option>
+                    </select>
+                    <button id="downloadBtn">下载</button>
+                </div>
+            </div>
+            <div class="chart-wrapper">
+                <div id="chartContainer" class="chart-container">
+                    <div class="placeholder">选择图表类型并点击"生成"</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs/loader.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>

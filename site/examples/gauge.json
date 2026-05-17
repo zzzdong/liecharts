@@ -1,0 +1,14 @@
+{
+    "title": {
+        "text": "仪表盘示例"
+    },
+    "series": [{
+        "type": "gauge",
+        "name": "完成率",
+        "data": [{ "value": 75.5, "name": "完成率" }],
+        "min": 0,
+        "max": 100,
+        "radius": "75%",
+        "center": ["50%", "55%"]
+    }]
+}

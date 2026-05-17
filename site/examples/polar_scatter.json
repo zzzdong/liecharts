@@ -1,0 +1,26 @@
+{
+    "title": {
+        "text": "极坐标散点图",
+        "subtext": "角度与半径分布"
+    },
+    "series": [{
+        "type": "polarScatter",
+        "name": "数据点",
+        "symbol": "circle",
+        "symbolSize": 8,
+        "data": [
+            { "angle": 0, "radius": 30 },
+            { "angle": 30, "radius": 50 },
+            { "angle": 60, "radius": 75 },
+            { "angle": 90, "radius": 90 },
+            { "angle": 120, "radius": 65 },
+            { "angle": 150, "radius": 45 },
+            { "angle": 180, "radius": 80 },
+            { "angle": 210, "radius": 55 },
+            { "angle": 240, "radius": 70 },
+            { "angle": 270, "radius": 85 },
+            { "angle": 300, "radius": 40 },
+            { "angle": 330, "radius": 60 }
+        ]
+    }]
+}

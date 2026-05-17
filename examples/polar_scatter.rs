@@ -1,10 +1,10 @@
 use liecharts::{
-    LegendOption, LieChart, LieChartOption, PolarScatterDataPoint, PolarScatterSeriesOption,
-    SeriesOption,
+    LieChart, LieChartOption, SeriesOption,
+    PolarScatterDataPoint, PolarScatterSeriesOption,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut chart = LieChart::new(800, 600);
+    let chart = LieChart::new(800, 600);
 
     let wind_data: Vec<PolarScatterDataPoint> = vec![
         PolarScatterDataPoint { angle: 0.0, radius: 5.0, symbol_size: Some(8.0), name: None },
@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             subtext: Some("风向风速分布".to_string()),
             ..Default::default()
         }),
-        legend: Some(LegendOption {
+        legend: Some(liecharts::LegendOption {
             show: Some(true),
             data: Some(vec!["风速".to_string()]),
             ..Default::default()
@@ -52,10 +52,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    chart.set_option(option, None)?;
-    chart.render_to_image("polar_scatter_chart.png")?;
-    chart.render_to_svg("polar_scatter_chart.svg")?;
-    println!("极坐标散点图已保存到 polar_scatter_chart.png 和 polar_scatter_chart.svg");
+    chart.render_to_image(option, "polar_scatter.png")?;
+    println!("极坐标散点图已保存到 polar_scatter.png");
 
     Ok(())
 }

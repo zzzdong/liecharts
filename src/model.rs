@@ -274,9 +274,16 @@ pub struct PieSeries {
 }
 
 #[derive(Debug, Clone)]
+pub struct ScatterDataItem {
+    pub x: f64,
+    pub y: f64,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ScatterSeries {
     pub name: String,
-    pub data: Vec<DataItem>,
+    pub data: Vec<ScatterDataItem>,
     pub y_axis_index: usize,
     pub grid_index: usize,
     pub symbol_size: f64,
@@ -554,9 +561,9 @@ pub struct TableBodyConfig {
 }
 
 impl ResolvedOption {
-    pub fn merge(option: LieChartOption, theme: Option<&Theme>) -> crate::error::Result<Self> {
-        let default_theme = Theme::light();
-        let theme = theme.unwrap_or(&default_theme);
+    pub fn merge(option: LieChartOption, theme: Option<Theme>) -> crate::error::Result<Self> {
+        let default_theme = Theme::echarts();
+        let theme = &theme.unwrap_or(default_theme);
 
         let colors: Vec<Color> = option
             .color
@@ -1092,7 +1099,7 @@ impl ResolvedOption {
                 }))
             }
             SeriesOption::Scatter(opt) => {
-                let data = Self::resolve_data(&opt.data)?;
+                let data = Self::resolve_scatter_data(&opt.data)?;
                 let series_color = opt.item_style.as_ref().and_then(|s| s.color.map(Color::from)).unwrap_or(color);
                 Ok(ResolvedSeries::Scatter(ScatterSeries {
                     name: opt.name.unwrap_or_default(),
@@ -1431,6 +1438,45 @@ impl ResolvedOption {
                         .and_then(|v| v.as_f64())
                         .ok_or_else(|| ChartError::InvalidColor("Invalid data value".to_string()))?;
                     Ok(DataItem { name, value })
+                }
+            })
+            .collect()
+    }
+
+    /// 解析散点图数据，支持 [x, y] 或 {x, y, name?} 格式
+    fn resolve_scatter_data(data: &[DataPoint]) -> crate::error::Result<Vec<ScatterDataItem>> {
+        data.iter()
+            .map(|dp| match dp {
+                DataPoint::Number(_) => Err(ChartError::InvalidColor(
+                    "Scatter chart data must be [x, y] arrays or {x, y} objects".to_string(),
+                )),
+                DataPoint::Array(arr) => {
+                    if arr.len() >= 2 {
+                        let x = arr
+                            .get(0)
+                            .and_then(|v| v.as_f64())
+                            .ok_or_else(|| ChartError::InvalidColor("Invalid x value".to_string()))?;
+                        let y = arr
+                            .get(1)
+                            .and_then(|v| v.as_f64())
+                            .ok_or_else(|| ChartError::InvalidColor("Invalid y value".to_string()))?;
+                        let name = arr.get(2).and_then(|v| v.as_str()).map(|s| s.to_string());
+                        Ok(ScatterDataItem { x, y, name })
+                    } else {
+                        Err(ChartError::InvalidColor("Scatter data array must have at least 2 elements [x, y]".to_string()))
+                    }
+                }
+                DataPoint::Object(obj) => {
+                    let x = obj
+                        .get("x")
+                        .and_then(|v| v.as_f64())
+                        .ok_or_else(|| ChartError::InvalidColor("Missing or invalid x value".to_string()))?;
+                    let y = obj
+                        .get("y")
+                        .and_then(|v| v.as_f64())
+                        .ok_or_else(|| ChartError::InvalidColor("Missing or invalid y value".to_string()))?;
+                    let name = obj.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    Ok(ScatterDataItem { x, y, name })
                 }
             })
             .collect()

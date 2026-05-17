@@ -1,7 +1,6 @@
 //! SVG 渲染器 - 将 VisualElement 渲染为 SVG 字符串
 
 use crate::error::Result;
-use crate::LieChart;
 use crate::visual::{Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement};
 use crate::render::Renderer;
 use crate::text::TextLayout;
@@ -108,12 +107,6 @@ impl SvgRenderer {
         svg.push_str("</svg>\n");
 
         Ok(svg)
-    }
-
-    /// 渲染图表并输出 SVG 字符串（便捷方法）
-    pub fn render_chart(self, chart: &LieChart) -> Result<String> {
-        let (elements, width, height) = chart.collect_visual_elements()?;
-        self.render(&elements, width, height)
     }
 
     fn color_to_css(color: &Color) -> String {

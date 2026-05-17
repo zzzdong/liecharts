@@ -1,8 +1,7 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
 use crate::model::{ResolvedOption, ScatterSeries};
-use crate::pipeline::mapper::{CartesianScatterMapper, CoordinateMapper};
-use crate::pipeline::transform::{DataTransformer, IdentityTransformer};
+use crate::pipeline::mapper::MappedGeometry;
 use crate::pipeline::builder::VisualBuilder;
 use crate::visual::{Stroke, VisualElement};
 
@@ -24,17 +23,20 @@ impl ScatterSeriesComponent {
     fn build_with_context(&self, ctx: &SeriesContext) -> Vec<VisualElement> {
         let coord = ctx.coord;
 
-        // 1. Transform
-        let resolved_series = crate::model::ResolvedSeries::Scatter(self.series.clone());
-        let transformer = IdentityTransformer;
-        let transformed_list = transformer.transform(&[resolved_series]);
-        let transformed = &transformed_list[0];
+        // 散点图直接使用 X-Y 坐标，不需要复杂的变换流程
+        // 直接将数据点映射到像素坐标
+        let mapped: Vec<MappedGeometry> = self
+            .series
+            .data
+            .iter()
+            .map(|item| {
+                let x = coord.x_value_to_pixel(item.x);
+                let y = coord.y_to_pixel(item.y, self.series.y_axis_index);
+                MappedGeometry::CartesianPoint { x, y }
+            })
+            .collect();
 
-        // 2. Map
-        let mapper = CartesianScatterMapper::new();
-        let mapped = mapper.map(transformed, coord, self.series.y_axis_index);
-
-        // 3. Build
+        // 构建视觉元素
         let color = ctx.get_series_color(self.series.item_style.color);
 
         let border_stroke = self.series.item_style.border_color.map(|c| Stroke {
@@ -48,11 +50,31 @@ impl ScatterSeriesComponent {
             fill: Some(color),
         };
 
+        // 创建模拟的 TransformedSeries 供 builder 使用
+        let transformed = crate::pipeline::transform::TransformedSeries {
+            series_index: self.series_index,
+            items: self
+                .series
+                .data
+                .iter()
+                .enumerate()
+                .map(|(i, item)| crate::pipeline::transform::TransformedItem {
+                    original: crate::model::DataItem {
+                        name: item.name.clone(),
+                        value: item.y,
+                    },
+                    display_value: item.y,
+                    baseline: 0.0,
+                    data_index: i,
+                })
+                .collect(),
+        };
+
         let builder = crate::pipeline::builder::ScatterVisualBuilder::new()
             .with_symbol_size(self.series.symbol_size)
             .with_series_style(series_style);
 
-        builder.build(transformed, &mapped, coord)
+        builder.build(&transformed, &mapped, coord)
     }
 }
 

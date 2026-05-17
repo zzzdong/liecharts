@@ -3,7 +3,7 @@ use liecharts::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut chart = LieChart::new(800, 600);
+    let chart = LieChart::new(800, 600);
 
     let option = LieChartOption {
         title: Some(liecharts::TitleOption {
@@ -89,10 +89,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    chart.set_option(option, None)?;
-    chart.render_to_image("stacked_area.png")?;
-    chart.render_to_svg("stacked_area.svg")?;
-    println!("堆叠面积图已保存到 stacked_area.png 和 stacked_area.svg");
+    chart.render_to_image(option, "stacked_area.png")?;
+    println!("堆叠面积图已保存到 stacked_area.png");
 
     Ok(())
 }

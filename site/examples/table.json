@@ -1,0 +1,33 @@
+{
+    "title": {
+        "text": "数据表格",
+        "subtext": "产品销售明细表"
+    },
+    "series": [{
+        "type": "table",
+        "name": "销售数据",
+        "columns": ["产品", "销量", "单价", "总金额"],
+        "data": [
+            ["A款手机", "1,200", "¥3,999", "¥4,798,800"],
+            ["B款耳机", "3,500", "¥699", "¥2,446,500"],
+            ["C款手表", "800", "¥2,499", "¥1,999,200"],
+            ["D款平板", "450", "¥4,299", "¥1,934,550"],
+            ["E款音箱", "2,100", "¥899", "¥1,887,900"]
+        ],
+        "header": {
+            "show": true,
+            "height": 40,
+            "backgroundColor": "#5070dd"
+        },
+        "body": {
+            "show": true,
+            "rowHeight": 36,
+            "evenRowBackgroundColor": "#f8f9ff",
+            "oddRowBackgroundColor": "#ffffff"
+        },
+        "width": 600,
+        "height": 280,
+        "left": 100,
+        "top": 80
+    }]
+}

@@ -43,11 +43,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     "#;
 
-    let mut chart = LieChart::new(800, 600);
-    chart.set_option_json(json_config, None)?;
-    chart.render_to_image("json_config.png")?;
-    chart.render_to_svg("json_config.svg")?;
-    println!("JSON配置图表已保存到 json_config.png 和 json_config.svg");
+    let option: liecharts::LieChartOption = serde_json::from_str(json_config)?;
+    let chart = LieChart::new(800, 600);
+
+    chart.render_to_image(option, "json_config.png")?;
+    println!("JSON配置图表已保存到 json_config.png");
 
     Ok(())
 }

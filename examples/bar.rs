@@ -1,7 +1,7 @@
 use liecharts::{AxisType, DataPoint, LieChart, LieChartOption, SeriesOption};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut chart = LieChart::new(800, 600);
+    let chart = LieChart::new(800, 600);
 
     let option = LieChartOption {
         title: Some(liecharts::TitleOption {
@@ -46,10 +46,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    chart.set_option(option, None)?;
-    chart.render_to_image("basic_bar.png")?;
-    chart.render_to_svg("basic_bar.svg")?;
-    println!("柱状图已保存到 basic_bar.png 和 basic_bar.svg");
+    chart.render_to_image(option, "bar.png")?;
+    println!("柱状图已保存到 bar.png");
 
     Ok(())
 }

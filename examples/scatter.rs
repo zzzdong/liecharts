@@ -4,8 +4,8 @@ use liecharts::option::BubbleDataPoint;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let option = LieChartOption {
         title: Some(liecharts::TitleOption {
-            text: Some("编程语言数据分析".to_string()),
-            subtext: Some("气泡大小表示就业岗位数量（相对值）".to_string()),
+            text: Some("编程语言生态分析".to_string()),
+            subtext: Some("气泡大小 = 气泡大小表示就业岗位相对数量".to_string()),
             ..Default::default()
         }),
         x_axis: vec![liecharts::AxisOption {
@@ -39,11 +39,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    let mut chart = LieChart::new(800, 600);
-    chart.set_option(option, None)?;
-    chart.render_to_image("bubble_chart.png")?;
-    chart.render_to_svg("bubble_chart.svg")?;
-    println!("气泡图已保存到 bubble_chart.png 和 bubble_chart.svg");
+    let chart = LieChart::new(800, 600);
+    chart.render_to_image(option, "scatter.png")?;
+    println!("散点图已保存到 scatter.png");
 
     Ok(())
 }

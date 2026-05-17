@@ -28,7 +28,7 @@ pub struct ColorTokens {
     pub primary: Vec<String>,
     /// 主题色板（9色）- ECharts 6 新配色
     pub theme: Vec<String>,
-    
+
     // === 中性色阶 (neutral00 - neutral99) ===
     /// 纯白
     pub neutral00: String,
@@ -72,7 +72,7 @@ pub struct ColorTokens {
     pub neutral95: String,
     /// 纯黑
     pub neutral99: String,
-    
+
     // === 强调色阶 (accent05 - accent95) ===
     /// 极浅强调色
     pub accent05: String,
@@ -112,7 +112,7 @@ pub struct ColorTokens {
     pub accent90: String,
     /// 几乎黑强调色
     pub accent95: String,
-    
+
     // === 语义化颜色 ===
     /// 透明
     pub transparent: String,
@@ -132,7 +132,7 @@ pub struct ColorTokens {
     pub disabled: String,
     /// 高亮色
     pub highlight: String,
-    
+
     // === 边框颜色 ===
     /// 边框色
     pub border: String,
@@ -140,7 +140,7 @@ pub struct ColorTokens {
     pub border_tint: String,
     /// 边框深色
     pub border_shade: String,
-    
+
     // === 背景颜色 ===
     /// 背景色
     pub background: String,
@@ -150,13 +150,13 @@ pub struct ColorTokens {
     pub background_transparent: String,
     /// 背景深色
     pub background_shade: String,
-    
+
     // === 阴影颜色 ===
     /// 阴影色
     pub shadow: String,
     /// 阴影浅色
     pub shadow_tint: String,
-    
+
     // === 轴线颜色 ===
     /// 轴线色
     pub axis_line: String,
@@ -174,7 +174,7 @@ pub struct ColorTokens {
     pub axis_split_line: String,
     /// 小分割线色
     pub axis_minor_split_line: String,
-    
+
     // === 状态颜色 ===
     /// 强调色（向后兼容，使用 theme[0]）
     pub accent: String,
@@ -256,24 +256,24 @@ impl DesignTokens {
     pub fn echarts_v6() -> Self {
         // ECharts 6 主题色板
         let theme_colors = vec![
-            "#5070dd".to_string(),  // 主蓝色
-            "#b6d634".to_string(),  // 青柠绿
-            "#505372".to_string(),  // 深灰蓝
-            "#ff994d".to_string(),  // 橙色
-            "#0ca8df".to_string(),  // 天蓝
-            "#ffd10a".to_string(),  // 黄色
-            "#fb628b".to_string(),  // 粉红
-            "#785db0".to_string(),  // 紫色
-            "#3fbe95".to_string(),  // 青绿
+            "#5070dd".to_string(), // 主蓝色
+            "#b6d634".to_string(), // 青柠绿
+            "#505372".to_string(), // 深灰蓝
+            "#ff994d".to_string(), // 橙色
+            "#0ca8df".to_string(), // 天蓝
+            "#ffd10a".to_string(), // 黄色
+            "#fb628b".to_string(), // 粉红
+            "#785db0".to_string(), // 紫色
+            "#3fbe95".to_string(), // 青绿
         ];
-        
+
         Self {
             color: ColorTokens {
                 // 向后兼容：primary 使用 theme 色板
                 primary: theme_colors.clone(),
                 // 主题色板（9色）- ECharts 6 新配色
                 theme: theme_colors.clone(),
-                
+
                 // 中性色阶 (neutral00 - neutral99)
                 neutral00: "#ffffff".to_string(),
                 neutral05: "#f4f7fd".to_string(),
@@ -296,7 +296,7 @@ impl DesignTokens {
                 neutral90: "#232328".to_string(),
                 neutral95: "#17171b".to_string(),
                 neutral99: "#000000".to_string(),
-                
+
                 // 强调色阶 (accent05 - accent95) - 基于主题蓝色
                 accent05: "#eff1f9".to_string(),
                 accent10: "#e0e4f2".to_string(),
@@ -317,49 +317,49 @@ impl DesignTokens {
                 accent85: "#252b43".to_string(),
                 accent90: "#1b2032".to_string(),
                 accent95: "#121521".to_string(),
-                
+
                 // 语义化颜色 - 向后兼容
                 transparent: "rgba(0,0,0,0)".to_string(),
-                text_primary: "#3c3c41".to_string(),      // neutral80
-                text_secondary: "#54555a".to_string(),    // neutral70
-                text_tertiary: "#6d6e73".to_string(),     // neutral60
+                text_primary: "#3c3c41".to_string(), // neutral80
+                text_secondary: "#54555a".to_string(), // neutral70
+                text_tertiary: "#6d6e73".to_string(), // neutral60
                 // 新的语义化字段
-                secondary: "#54555a".to_string(),    // neutral70
-                tertiary: "#6d6e73".to_string(),     // neutral60
-                quaternary: "#86878c".to_string(),   // neutral50
-                disabled: "#cfd2d7".to_string(),     // neutral20
+                secondary: "#54555a".to_string(),  // neutral70
+                tertiary: "#6d6e73".to_string(),   // neutral60
+                quaternary: "#86878c".to_string(), // neutral50
+                disabled: "#cfd2d7".to_string(),   // neutral20
                 highlight: "rgba(255,231,130,0.8)".to_string(),
-                
+
                 // 边框颜色
                 border: "#b7b9be".to_string(),       // neutral30
                 border_tint: "#cfd2d7".to_string(),  // neutral20
                 border_shade: "#aaacb2".to_string(), // neutral35
-                
+
                 // 背景颜色
-                background: "#f4f7fd".to_string(),   // neutral05
+                background: "#f4f7fd".to_string(), // neutral05
                 background_tint: "rgba(234,237,245,0.5)".to_string(),
                 background_transparent: "rgba(255,255,255,0)".to_string(),
                 background_shade: "#e8ebf0".to_string(), // neutral10
-                
+
                 // 阴影颜色
                 shadow: "rgba(0,0,0,0.2)".to_string(),
                 shadow_tint: "rgba(129,130,136,0.2)".to_string(),
-                
+
                 // 轴线颜色 - 向后兼容
-                axis_line: "#54555a".to_string(),    // neutral70
-                axis_line_tint: "#9ea0a5".to_string(), // neutral40
-                axis_tick: "#54555a".to_string(),    // neutral70
+                axis_line: "#54555a".to_string(),       // neutral70
+                axis_line_tint: "#9ea0a5".to_string(),  // neutral40
+                axis_tick: "#54555a".to_string(),       // neutral70
                 axis_tick_minor: "#6d6e73".to_string(), // neutral60
-                axis_label: "#54555a".to_string(),   // neutral70
-                split_line: "#dbdee4".to_string(),   // neutral15 (向后兼容)
+                axis_label: "#54555a".to_string(),      // neutral70
+                split_line: "#dbdee4".to_string(),      // neutral15 (向后兼容)
                 axis_split_line: "#dbdee4".to_string(), // neutral15
                 axis_minor_split_line: "#f4f7fd".to_string(), // neutral05
-                
+
                 // 状态颜色 - 向后兼容
-                accent: "#5070dd".to_string(),       // theme[0]
-                success: "#b6d634".to_string(),      // 主题色2
-                warning: "#ffd10a".to_string(),      // 主题色6
-                error: "#fb628b".to_string(),        // 主题色7
+                accent: "#5070dd".to_string(),  // theme[0]
+                success: "#b6d634".to_string(), // 主题色2
+                warning: "#ffd10a".to_string(), // 主题色6
+                error: "#fb628b".to_string(),   // 主题色7
             },
             text: TextTokens {
                 title_size: 18.0,
@@ -658,7 +658,7 @@ impl Theme {
         );
 
         let subtitle_size = tokens.text.subtitle_size;
-        
+
         Self {
             name: name.to_string(),
             tokens: Some(tokens),
@@ -752,18 +752,22 @@ impl Theme {
     }
 
     pub fn get_color(&self, index: usize) -> Result<Color> {
-        let color_str = self
-            .color
-            .get(index % self.color.len())
-            .ok_or_else(|| crate::error::ChartError::InvalidColor("No color available".to_string()))?;
-        Color::from_hex(color_str)
-            .ok_or_else(|| crate::error::ChartError::InvalidColor(format!("Invalid color: {}", color_str)))
+        let color_str = self.color.get(index % self.color.len()).ok_or_else(|| {
+            crate::error::ChartError::InvalidColor("No color available".to_string())
+        })?;
+        Color::from_hex(color_str).ok_or_else(|| {
+            crate::error::ChartError::InvalidColor(format!("Invalid color: {}", color_str))
+        })
     }
 
     /// 从 tokens 获取调色板颜色
     pub fn get_theme_color(&self, index: usize) -> Color {
         let tokens = self.tokens();
-        let color_str = tokens.color.theme.get(index % tokens.color.theme.len()).unwrap_or(&tokens.color.primary[0]);
+        let color_str = tokens
+            .color
+            .theme
+            .get(index % tokens.color.theme.len())
+            .unwrap_or(&tokens.color.primary[0]);
         Color::from_hex(color_str).unwrap_or(Color::new(80, 112, 221))
     }
 
@@ -878,7 +882,8 @@ impl ThemeRegistry {
 
     /// 获取默认主题（ECharts 6 主题）
     pub fn default_theme(&self) -> &Theme {
-        self.themes.get("echarts")
+        self.themes
+            .get("echarts")
             .or_else(|| self.themes.get("light"))
             .expect("Default theme should exist")
     }
@@ -901,4 +906,12 @@ impl Default for ThemeRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub fn load_theme(name: &str) -> Result<Theme> {
+    let theme_registry = ThemeRegistry::new();
+    theme_registry
+        .get(name)
+        .ok_or_else(|| crate::error::ChartError::InvalidTheme(format!("Theme not found: {}", name)))
+        .map(|t| t.clone())
 }

@@ -4,7 +4,9 @@ use liecharts::{
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut chart = LieChart::new(800, 600);
+    let dark_theme = Theme::dark();
+
+    let chart = LieChart::new(800, 600).with_theme(dark_theme);
 
     let option = LieChartOption {
         title: Some(liecharts::TitleOption {
@@ -68,14 +70,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ..Default::default()
             }),
         ],
+        theme: Some("dark".to_string()),
         ..Default::default()
     };
 
-    let dark_theme = Theme::dark();
-    chart.set_option(option, Some(&dark_theme))?;
-    chart.render_to_image("dark_theme.png")?;
-    chart.render_to_svg("dark_theme.svg")?;
-    println!("深色主题图表已保存到 dark_theme.png 和 dark_theme.svg");
+    chart.render_to_image(option, "dark_theme.png")?;
+    println!("深色主题图表已保存到 dark_theme.png");
 
     Ok(())
 }
