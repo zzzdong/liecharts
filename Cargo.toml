@@ -1,19 +1,29 @@
 [package]
 name = "liecharts"
-version = "0.1.0"
+version = "0.1.0-beta"
+authors = ["zzzdong <zzzdong@example.com>"]
 edition = "2024"
 
+description = "A Rust charting library with PNG and SVG rendering support"
+documentation = "https://docs.rs/liecharts"
+readme = "README.md"
+homepage = "https://github.com/zzzdong/liecharts"
+repository = "https://github.com/zzzdong/liecharts"
+license = "Apache-2.0"
+keywords = ["chart", "plot", "visualization", "svg", "png"]
+categories = ["graphics", "visualization", "wasm"]
+exclude = ["site/", "examples/", "*.png", "*.svg"]
+
 [dependencies]
-vello_cpu = "0.0.7"
+vello_cpu = "0.0.8"
 parley = "0.9.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 thiserror = "2.0"
 
 [dev-dependencies]
 anyhow = "1.0"
-
 
 [workspace]
 members = ["site"]

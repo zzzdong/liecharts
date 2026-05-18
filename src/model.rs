@@ -164,8 +164,8 @@ pub struct TextStyle {
     pub font_family: String,
     pub font_weight: FontWeight,
     pub font_style: FontStyle,
-    pub align: Option<TextAlign>,
-    pub vertical_align: Option<TextBaseline>,
+    pub align: TextAlign,
+    pub vertical_align: TextBaseline,
 }
 
 impl Default for TextStyle {
@@ -176,8 +176,8 @@ impl Default for TextStyle {
             font_family: "sans-serif".to_string(),
             font_weight: FontWeight::Named(FontWeightNamed::Normal),
             font_style: FontStyle::Normal,
-            align: None,
-            vertical_align: None,
+            align: TextAlign::Left,
+            vertical_align: TextBaseline::Top,
         }
     }
 }
@@ -1155,9 +1155,9 @@ impl ResolvedOption {
             }
             SeriesOption::PolarBar(opt) => {
                 let data = Self::resolve_data(&opt.data)?;
-                let colors = opt.color.map(|c| {
+                let bar_colors = opt.color.map(|c| {
                     c.iter().map(|c| Color::from(*c)).collect()
-                }).unwrap_or_else(|| vec![color]);
+                }).unwrap_or_else(|| colors.to_vec());
                 Ok(ResolvedSeries::PolarBar(PolarBarSeries {
                     name: opt.name.unwrap_or_default(),
                     data,
@@ -1168,7 +1168,7 @@ impl ResolvedOption {
                             border_width: 0.0,
                             opacity: 1.0,
                         }),
-                    colors,
+                    colors: bar_colors,
                     pad_angle: opt.pad_angle.unwrap_or(2.0).to_radians(),
                     start_angle: opt.start_angle.unwrap_or(0.0).to_radians() - std::f64::consts::PI / 2.0,
                 }))
@@ -1452,8 +1452,7 @@ impl ResolvedOption {
                 )),
                 DataPoint::Array(arr) => {
                     if arr.len() >= 2 {
-                        let x = arr
-                            .get(0)
+                        let x = arr.first()
                             .and_then(|v| v.as_f64())
                             .ok_or_else(|| ChartError::InvalidColor("Invalid x value".to_string()))?;
                         let y = arr
@@ -1502,12 +1501,12 @@ impl ResolvedOption {
                 TextAlignOption::Left => TextAlign::Left,
                 TextAlignOption::Center => TextAlign::Center,
                 TextAlignOption::Right => TextAlign::Right,
-            }),
+            }).unwrap_or(TextAlign::Left),
             vertical_align: option.vertical_align.map(|v| match v {
                 LabelVerticalAlign::Top => TextBaseline::Top,
                 LabelVerticalAlign::Middle => TextBaseline::Middle,
                 LabelVerticalAlign::Bottom => TextBaseline::Bottom,
-            }),
+            }).unwrap_or(TextBaseline::Top),
         }
     }
 

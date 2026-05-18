@@ -66,14 +66,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         y_axis: vec![
             liecharts::AxisOption {
                 grid_index: Some(0),
+                axis_type: Some(AxisType::Value),
                 ..Default::default()
             },
             liecharts::AxisOption {
                 grid_index: Some(1),
+                axis_type: Some(AxisType::Value),
                 ..Default::default()
             },
             liecharts::AxisOption {
                 grid_index: Some(2),
+                axis_type: Some(AxisType::Value),
                 ..Default::default()
             },
         ],
@@ -121,8 +124,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    chart.render_to_image(option, "multi_grid.png")?;
-    println!("多子图已保存到 multi_grid.png");
+    chart.render_to_image(option.clone(), "multi_grid.png")?;
+    chart.render_to_svg(option, "multi_grid.svg")?;
+    println!("多子图已保存到 multi_grid.svg");
 
     Ok(())
 }

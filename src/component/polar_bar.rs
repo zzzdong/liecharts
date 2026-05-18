@@ -3,7 +3,7 @@ use crate::layout::LayoutOutput;
 use crate::model::{PolarBarSeries, ResolvedOption};
 use crate::visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement};
 use crate::text::create_text_layout;
-use vello_cpu::kurbo::{BezPath, Point};
+use vello_cpu::kurbo::{Arc, BezPath, PathSeg, Point, Shape, Vec2};
 use std::f64::consts::PI;
 
 pub struct PolarBarSeriesComponent {
@@ -73,13 +73,15 @@ impl PolarBarSeriesComponent {
             elements.push(VisualElement::TextRun {
                 text: label_text,
                 position: Point::new(label_pos.x + 3.0, label_pos.y - th / 2.0),
-                font_size: label_font.font_size,
-                font_family: label_font.font_family,
-                color: label_font.color,
-                font_weight: label_font.font_weight,
-                font_style: label_font.font_style,
-                align: TextAlign::Left,
-                baseline: TextBaseline::Top,
+                style: crate::model::TextStyle {
+                    color: label_font.color,
+                    font_size: label_font.font_size,
+                    font_family: label_font.font_family,
+                    font_weight: label_font.font_weight,
+                    font_style: label_font.font_style,
+                    align: TextAlign::Left,
+                    vertical_align: TextBaseline::Top,
+                },
                 rotation: 0.0,
                 max_width: None,
                 layout: Some(layout_obj),
@@ -155,11 +157,23 @@ impl PolarBarSeriesComponent {
             );
             path.line_to(outer_start);
 
-            let outer_end = Point::new(
-                center.x + angle_end.cos() * outer_r,
-                center.y + angle_end.sin() * outer_r,
-            );
-            path.line_to(outer_end);
+            let sweep_angle = angle_end - angle_start;
+            if sweep_angle.abs() > 1e-12 {
+                let arc = Arc::new(
+                    center,
+                    Vec2::new(outer_r, outer_r),
+                    angle_start,
+                    sweep_angle,
+                    0.0,
+                );
+                arc.to_path(0.5).segments().for_each(|seg| {
+                    match seg {
+                        PathSeg::Line(line) => path.line_to(line.p1),
+                        PathSeg::Quad(quad) => path.quad_to(quad.p1, quad.p2),
+                        PathSeg::Cubic(cubic) => path.curve_to(cubic.p1, cubic.p2, cubic.p3),
+                    }
+                });
+            }
 
             path.line_to(center);
             path.close_path();

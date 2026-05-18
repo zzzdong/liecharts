@@ -94,14 +94,12 @@ pub trait Renderer {
             VisualElement::TextRun {
                 text,
                 position,
-                color,
-                font_size,
-                font_family,
+                style,
                 rotation,
                 layout,
                 ..
             } => {
-                self.draw_text(text, *position, *color, *font_size, font_family, *rotation, layout.as_ref());
+                self.draw_text(text, *position, style.color, style.font_size, &style.font_family, *rotation, layout.as_ref());
             }
             VisualElement::Group {
                 children,

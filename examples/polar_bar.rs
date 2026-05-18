@@ -36,8 +36,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ..Default::default()
     };
 
-    chart.render_to_image(option, "polar_bar.png")?;
+    chart.render_to_image(option.clone(), "polar_bar.png")?;
     println!("极坐标柱状图已保存到 polar_bar.png");
+    chart.render_to_svg(option, "polar_bar.svg")?;
+    println!("极坐标柱状图已保存到 polar_bar.svg");
 
     Ok(())
 }

@@ -27,12 +27,10 @@ impl ChartComponent for LegendComponent {
             let item_height = self.legend.item_height;
             let symbol_size = self.legend.symbol_size;
             let font_config = &self.legend.text_style;
-            let font_size = font_config.font_size;
-            let font_family = &font_config.font_family;
 
             let item_widths: Vec<f64> = self.legend.data.iter()
                 .map(|name| {
-                    let text_w = crate::layout::measure_text(name, font_size, font_family).width;
+                    let text_w = crate::layout::measure_text_size(name, font_config).width;
                     symbol_size + 5.0 + text_w + 10.0
                 })
                 .collect();
@@ -72,13 +70,15 @@ impl ChartComponent for LegendComponent {
                         elements.push(VisualElement::TextRun {
                             text: name.clone(),
                             position: Point::new(x + symbol_size + 5.0, center_y + y_offset),
-                            font_size: font_config.font_size,
-                            font_family: font_config.font_family.clone(),
-                            color: font_config.color,
-                            font_weight: font_config.font_weight,
-                            font_style: font_config.font_style,
-                            align: TextAlign::Left,
-                            baseline: TextBaseline::Top,
+                            style: crate::model::TextStyle {
+                                color: font_config.color,
+                                font_size: font_config.font_size,
+                                font_family: font_config.font_family.clone(),
+                                font_weight: font_config.font_weight,
+                                font_style: font_config.font_style,
+                                align: TextAlign::Left,
+                                vertical_align: TextBaseline::Top,
+                            },
                             rotation: 0.0,
                             max_width: None,
                             layout: Some(layout_obj),
@@ -113,13 +113,15 @@ impl ChartComponent for LegendComponent {
                         elements.push(VisualElement::TextRun {
                             text: name.clone(),
                             position: Point::new(x + symbol_size + 5.0, center_y + y_offset),
-                            font_size: font_config.font_size,
-                            font_family: font_config.font_family.clone(),
-                            color: font_config.color,
-                            font_weight: font_config.font_weight,
-                            font_style: font_config.font_style,
-                            align: TextAlign::Left,
-                            baseline: TextBaseline::Top,
+                            style: crate::model::TextStyle {
+                                color: font_config.color,
+                                font_size: font_config.font_size,
+                                font_family: font_config.font_family.clone(),
+                                font_weight: font_config.font_weight,
+                                font_style: font_config.font_style,
+                                align: TextAlign::Left,
+                                vertical_align: TextBaseline::Top,
+                            },
                             rotation: 0.0,
                             max_width: None,
                             layout: Some(layout_obj),

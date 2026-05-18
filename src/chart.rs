@@ -451,38 +451,46 @@ fn compute_data_coord_for_grid(
             }
         };
 
+        let compute_value_range = |data_min: f64, data_max: f64, needs_zero_base: bool| {
+            let min = axis.min.unwrap_or_else(|| {
+                if needs_zero_base && data_min >= 0.0 {
+                    0.0
+                } else {
+                    let range = data_max - data_min;
+                    if range > 0.0 {
+                        data_min - range * 0.05
+                    } else {
+                        data_min - 1.0
+                    }
+                }
+            });
+            let max = axis.max.unwrap_or_else(|| {
+                let range = data_max - data_min;
+                if range > 0.0 {
+                    data_max + range * 0.05
+                } else {
+                    data_max + 1.0
+                }
+            });
+            (min, max)
+        };
+
         match axis.axis_type {
             AxisType::Category => {
                 let count = axis.data.as_ref().map(|d| d.len()).unwrap_or(0);
-                if axis.boundary_gap {
-                    (0.0, count as f64)
+                if count > 0 {
+                    if axis.boundary_gap {
+                        (0.0, count as f64)
+                    } else {
+                        (0.0, (count - 1) as f64)
+                    }
                 } else {
-                    (0.0, (count - 1) as f64)
+                    // Category axis without data (e.g., y-axis defaulting to Category type):
+                    // fall back to value-based range from series data
+                    compute_value_range(data_min, data_max, needs_zero_base)
                 }
             }
-            _ => {
-                let min = axis.min.unwrap_or_else(|| {
-                    if needs_zero_base && data_min >= 0.0 {
-                        0.0
-                    } else {
-                        let range = data_max - data_min;
-                        if range > 0.0 {
-                            data_min - range * 0.05
-                        } else {
-                            data_min - 1.0
-                        }
-                    }
-                });
-                let max = axis.max.unwrap_or_else(|| {
-                    let range = data_max - data_min;
-                    if range > 0.0 {
-                        data_max + range * 0.05
-                    } else {
-                        data_max + 1.0
-                    }
-                });
-                (min, max)
-            }
+            _ => compute_value_range(data_min, data_max, needs_zero_base),
         }
     }).collect();
 

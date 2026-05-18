@@ -44,6 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     DataPoint::Number(70.0),
                     DataPoint::Number(110.0),
                 ],
+                smooth: Some(true),
                 ..Default::default()
             }),
             SeriesOption::Line(liecharts::LineSeriesOption {

@@ -343,21 +343,4 @@ impl LayoutEngine {
             data_coord: DataCoordinateSystem::default(),
         }
     }
-
-    /// 兼容旧 API 的 arrange 方法
-    #[deprecated(note = "使用 arrange_with_grids 替代")]
-    fn arrange(&mut self, chart_layout: &mut ChartLayout, chart_bounds: Rect) -> LayoutOutput {
-        // 创建默认的 grid rects（兼容旧行为）
-        let grid_rects: Vec<GridRect> = chart_layout
-            .subplots
-            .iter()
-            .map(|subplot| GridRect {
-                index: subplot.grid_index,
-                bounds: chart_bounds,
-                inner_bounds: chart_bounds,
-            })
-            .collect();
-
-        self.arrange_with_grids(chart_layout, chart_bounds, &grid_rects)
-    }
 }

@@ -4,7 +4,7 @@ use crate::error::Result;
 use crate::visual::{Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement};
 use crate::render::Renderer;
 use crate::text::TextLayout;
-use vello_cpu::Pixmap;
+use vello_cpu::{Pixmap, Resources};
 use vello_cpu::RenderContext;
 use vello_cpu::kurbo::Shape as KurboShape;
 use vello_cpu::kurbo::{BezPath, Circle, Point, Rect, Stroke as KurboStroke};
@@ -15,6 +15,7 @@ use vello_cpu::peniko::color::AlphaColor;
 /// 实现 Renderer trait，将 VisualElement 渲染为位图
 pub struct PixmapRenderer {
     ctx: RenderContext,
+    resources: Resources,
     width: u32,
     height: u32,
 }
@@ -23,6 +24,7 @@ impl PixmapRenderer {
     pub fn new(width: u32, height: u32) -> Self {
         Self {
             ctx: RenderContext::new(width as u16, height as u16),
+            resources: Resources::new(),
             width,
             height,
         }
@@ -33,7 +35,7 @@ impl PixmapRenderer {
         self.render_elements(elements);
 
         let mut pixmap = Pixmap::new(self.width as u16, self.height as u16);
-        self.ctx.render_to_pixmap(&mut pixmap);
+        self.ctx.render_to_pixmap(&mut self.resources, &mut pixmap);
 
         Ok(pixmap)
     }
@@ -206,7 +208,7 @@ impl Renderer for PixmapRenderer {
                         self.ctx.set_paint(brush.0);
 
                         // 使用 vello_cpu 渲染 glyph run
-                        self.ctx.glyph_run(font_data)
+                        self.ctx.glyph_run(&mut self.resources, font_data)
                             .font_size(run_font_size)
                             .glyph_transform(transform)
                             .fill_glyphs(glyphs.into_iter());

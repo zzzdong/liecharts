@@ -245,19 +245,6 @@ pub fn resolve_position(
     }
 }
 
-/// 测量文本尺寸
-///
-/// 使用 parley 进行精确排版测量，返回文本块的实际像素尺寸。
-pub fn measure_text(text: &str, font_size: f64, font_family: &str) -> Size {
-    let style = model::TextStyle {
-        font_size,
-        font_family: font_family.to_string(),
-        ..Default::default()
-    };
-    let layout = create_text_layout(text, &style, None);
-    Size::new(layout.width() as f64, layout.height() as f64)
-}
-
 /// 使用 TextStyle 测量文本尺寸
 pub fn measure_text_size(text: &str, style: &model::TextStyle) -> Size {
     let layout = create_text_layout(text, style, None);

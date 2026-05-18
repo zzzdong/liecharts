@@ -336,13 +336,15 @@ impl ChartComponent for AxisComponent {
                 elements.push(VisualElement::TextRun {
                     text: label.clone(),
                     position: Point::new(pos_x, pos_y),
-                    font_size: self.axis.axis_label.font_size,
-                    font_family: self.axis.axis_label.font_family.clone(),
-                    color: self.axis.axis_label.color,
-                    font_weight: self.axis.axis_label.font_weight,
-                    font_style: crate::model::FontStyle::Normal,
-                    align: final_align,
-                    baseline: final_baseline,
+                    style: crate::model::TextStyle {
+                        color: self.axis.axis_label.color,
+                        font_size: self.axis.axis_label.font_size,
+                        font_family: self.axis.axis_label.font_family.clone(),
+                        font_weight: self.axis.axis_label.font_weight,
+                        font_style: crate::model::FontStyle::Normal,
+                        align: final_align,
+                        vertical_align: final_baseline,
+                    },
                     rotation: final_rotation,
                     max_width: None,
                     layout: Some(layout_obj),
@@ -443,8 +445,8 @@ impl ChartComponent for AxisComponent {
             };
 
             // 使用 name_text_style 中的 align/vertical_align 覆盖位置默认值
-            let final_align = name_font.align.unwrap_or(align);
-            let final_baseline = name_font.vertical_align.unwrap_or(baseline);
+            let final_align = if align != TextAlign::Left { align } else { name_font.align };
+            let final_baseline = if baseline != TextBaseline::Top { baseline } else { name_font.vertical_align };
 
             // 将锚点转换为文本块左上角（SVG 渲染器要求）
             let (x_off, y_off) = compute_text_offset(&name_layout, final_align, final_baseline);
@@ -453,13 +455,15 @@ impl ChartComponent for AxisComponent {
             elements.push(VisualElement::TextRun {
                 text: name.clone(),
                 position: top_left,
-                font_size: name_font.font_size,
-                font_family: name_font.font_family.clone(),
-                color: name_font.color,
-                font_weight: name_font.font_weight,
-                font_style: name_font.font_style,
-                align: TextAlign::Left,
-                baseline: TextBaseline::Top,
+                style: crate::model::TextStyle {
+                    color: name_font.color,
+                    font_size: name_font.font_size,
+                    font_family: name_font.font_family.clone(),
+                    font_weight: name_font.font_weight,
+                    font_style: name_font.font_style,
+                    align: TextAlign::Left,
+                    vertical_align: TextBaseline::Top,
+                },
                 rotation,
                 max_width: None,
                 layout: Some(name_layout),

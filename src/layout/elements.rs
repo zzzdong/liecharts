@@ -3,7 +3,8 @@
 use super::{LayoutResult, Layoutable, SizeConstraint, measure_text_size, resolve_position};
 use crate::model::{Axis, TextStyle};
 use crate::option::AxisPosition;
-use crate::text::create_two_line_layout;
+use crate::text::layout_text;
+use crate::visual::TextAlign;
 use vello_cpu::kurbo::{Rect, Size};
 
 /// 标题布局元素
@@ -38,14 +39,20 @@ impl TitleLayout {
     }
 
     fn calculate_desired_size(&self) -> Size {
-        let layout = create_two_line_layout(
-            &self.text,
-            self.text_style.font_size,
-            &self.text_style.font_family,
-            self.subtext.as_deref(),
-            self.subtext_style.as_ref().map(|s| s.font_size).unwrap_or(12.0),
-            self.subtext_style.as_ref().map(|s| s.font_family.as_str()),
-        );
+        let layout = if let Some(ref subtext) = self.subtext {
+            let sub_style = self.subtext_style.clone().unwrap_or_else(|| TextStyle {
+                font_size: 12.0,
+                ..Default::default()
+            });
+            let main_with_newline = format!("{}\n", self.text);
+            layout_text(
+                &[(&main_with_newline, &self.text_style), (subtext, &sub_style)],
+                None,
+                TextAlign::Center,
+            )
+        } else {
+            layout_text(&[(&self.text, &self.text_style)], None, TextAlign::Center)
+        };
         Size::new(layout.width() as f64, layout.height() as f64)
     }
 }

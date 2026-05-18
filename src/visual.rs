@@ -46,13 +46,7 @@ pub enum VisualElement {
     TextRun {
         text: String,
         position: Point,  // 锚点位置（配合 align/baseline 确定文本块左上角）
-        font_size: f64,
-        font_family: String,
-        color: Color,
-        font_weight: crate::option::FontWeight,
-        font_style: crate::model::FontStyle,
-        align: TextAlign,
-        baseline: TextBaseline,
+        style: crate::model::TextStyle,  // 字体样式（包含 color, font_size, font_family, font_weight, font_style, align, vertical_align）
         rotation: f64,  // 弧度
         max_width: Option<f64>,
         layout: Option<TextLayout>,  // 预排版结果
@@ -95,16 +89,10 @@ impl Clone for VisualElement {
                 gradient: gradient.clone(),
                 stroke: stroke.clone(),
             },
-            VisualElement::TextRun { text, position, font_size, font_family, color, font_weight, font_style, align, baseline, rotation, max_width, layout } => VisualElement::TextRun {
+            VisualElement::TextRun { text, position, style, rotation, max_width, layout } => VisualElement::TextRun {
                 text: text.clone(),
                 position: *position,
-                font_size: *font_size,
-                font_family: font_family.clone(),
-                color: *color,
-                font_weight: *font_weight,
-                font_style: *font_style,
-                align: *align,
-                baseline: *baseline,
+                style: style.clone(),
                 rotation: *rotation,
                 max_width: *max_width,
                 layout: layout.clone(),
@@ -153,17 +141,11 @@ impl std::fmt::Debug for VisualElement {
                 .field("gradient", gradient)
                 .field("stroke", stroke)
                 .finish(),
-            VisualElement::TextRun { text, position, font_size, font_family, color, font_weight, font_style, align, baseline, rotation, max_width, layout } => f
+            VisualElement::TextRun { text, position, style, rotation, max_width, layout } => f
                 .debug_struct("TextRun")
                 .field("text", text)
                 .field("position", position)
-                .field("font_size", font_size)
-                .field("font_family", font_family)
-                .field("color", color)
-                .field("font_weight", font_weight)
-                .field("font_style", font_style)
-                .field("align", align)
-                .field("baseline", baseline)
+                .field("style", style)
                 .field("rotation", rotation)
                 .field("max_width", max_width)
                 .field("layout", &layout.as_ref().map(|_| "<TextLayout>"))
