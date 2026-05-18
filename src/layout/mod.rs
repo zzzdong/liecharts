@@ -10,17 +10,19 @@ use crate::model;
 use crate::text::create_text_layout;
 use vello_cpu::kurbo::{Point, Rect, Size};
 
-pub mod engine;
 pub mod elements;
+pub mod engine;
 pub mod grid_manager;
 pub mod table_layout;
 
 // 重新导出常用类型
-pub use engine::{ChartLayout, LayoutEngine, LayoutOutput, AxisArea, GridLayoutInfo, SubplotLayout};
-pub use elements::{TitleLayout, LegendLayout, AxisLayout, GridLayout};
-pub use grid_manager::{GridManager, GridDefinition, GridRect};
-pub use table_layout::{TableLayout, TableLayoutElement, ColumnConfig};
 pub use crate::option::AxisPosition;
+pub use elements::{AxisLayout, GridLayout, LegendLayout, TitleLayout};
+pub use engine::{
+    AxisArea, ChartLayout, GridLayoutInfo, LayoutEngine, LayoutOutput, SubplotLayout,
+};
+pub use grid_manager::{GridDefinition, GridManager, GridRect};
+pub use table_layout::{ColumnConfig, TableLayout, TableLayoutElement};
 
 /// 数据坐标系 - 统一数据值与像素坐标的映射
 /// 确保坐标轴刻度和数据系列使用相同的坐标系
@@ -28,7 +30,7 @@ pub use crate::option::AxisPosition;
 #[derive(Debug, Clone)]
 pub struct DataCoordinateSystem {
     pub x_range: (f64, f64),
-    pub y_ranges: Vec<(f64, f64)>,  // 支持多Y轴
+    pub y_ranges: Vec<(f64, f64)>, // 支持多Y轴
     pub plot_bounds: Rect,
     pub is_category_x: bool,
     pub category_count: usize,
@@ -54,7 +56,9 @@ impl DataCoordinateSystem {
 
     /// 获取指定Y轴的范围，如果不存在则返回默认范围
     pub fn get_y_range(&self, y_axis_index: usize) -> (f64, f64) {
-        self.y_ranges.get(y_axis_index).copied()
+        self.y_ranges
+            .get(y_axis_index)
+            .copied()
             .or_else(|| self.y_ranges.first().copied())
             .unwrap_or((0.0, 100.0))
     }
@@ -82,8 +86,7 @@ impl DataCoordinateSystem {
     pub fn y_to_pixel(&self, data_y: f64, y_axis_index: usize) -> f64 {
         let y_range = self.get_y_range(y_axis_index);
         self.plot_bounds.y1
-            - (data_y - y_range.0) / (y_range.1 - y_range.0)
-                * self.plot_bounds.height()
+            - (data_y - y_range.0) / (y_range.1 - y_range.0) * self.plot_bounds.height()
     }
 
     /// 兼容旧代码，默认使用第一个Y轴

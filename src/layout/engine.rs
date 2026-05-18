@@ -5,7 +5,10 @@
 //! 2. 支持表格内容的最小尺寸约束
 //! 3. 改进坐标轴与 grid 的空间分配
 
-use super::{DataCoordinateSystem, LayoutContext, Layoutable, SizeConstraint, GridManager, GridDefinition, GridRect};
+use super::{
+    DataCoordinateSystem, GridDefinition, GridManager, GridRect, LayoutContext, Layoutable,
+    SizeConstraint,
+};
 use crate::option::AxisPosition;
 use vello_cpu::kurbo::Rect;
 
@@ -67,7 +70,10 @@ pub struct LayoutEngine {
 impl LayoutEngine {
     pub fn new(context: LayoutContext) -> Self {
         let grid_manager = GridManager::new(context.clone());
-        Self { context, grid_manager }
+        Self {
+            context,
+            grid_manager,
+        }
     }
 
     /// 执行完整布局流程，返回 LayoutOutput
@@ -106,7 +112,9 @@ impl LayoutEngine {
             })
             .collect();
 
-        let grid_rects = self.grid_manager.compute_layout(&grid_definitions, chart_bounds);
+        let grid_rects = self
+            .grid_manager
+            .compute_layout(&grid_definitions, chart_bounds);
 
         // Arrange 阶段
         self.arrange_with_grids(chart_layout, chart_bounds, &grid_rects)
@@ -165,37 +173,39 @@ impl LayoutEngine {
         // 1. 排列标题
         let mut has_title = false;
         if let Some(ref mut title) = chart_layout.title
-            && let Some(result) = title.layout_result() {
-                let title_height = result.desired_size.height;
-                let title_bounds = Rect::new(
-                    chart_bounds.x0 + self.context.padding,
-                    current_y,
-                    chart_bounds.x1 - self.context.padding,
-                    current_y + title_height,
-                );
-                title.arrange(title_bounds);
-                current_y += title_height;
-                has_title = true;
-            }
+            && let Some(result) = title.layout_result()
+        {
+            let title_height = result.desired_size.height;
+            let title_bounds = Rect::new(
+                chart_bounds.x0 + self.context.padding,
+                current_y,
+                chart_bounds.x1 - self.context.padding,
+                current_y + title_height,
+            );
+            title.arrange(title_bounds);
+            current_y += title_height;
+            has_title = true;
+        }
 
         // 2. 排列图例
         let mut has_legend = false;
         if let Some(ref mut legend) = chart_layout.legend
-            && let Some(result) = legend.layout_result() {
-                let height = result.desired_size.height;
-                if has_title {
-                    current_y += self.context.spacing;
-                }
-                let legend_bounds = Rect::new(
-                    chart_bounds.x0 + self.context.padding,
-                    current_y,
-                    chart_bounds.x1 - self.context.padding,
-                    current_y + height,
-                );
-                legend.arrange(legend_bounds);
-                current_y += height;
-                has_legend = true;
+            && let Some(result) = legend.layout_result()
+        {
+            let height = result.desired_size.height;
+            if has_title {
+                current_y += self.context.spacing;
             }
+            let legend_bounds = Rect::new(
+                chart_bounds.x0 + self.context.padding,
+                current_y,
+                chart_bounds.x1 - self.context.padding,
+                current_y + height,
+            );
+            legend.arrange(legend_bounds);
+            current_y += height;
+            has_legend = true;
+        }
 
         // 计算主绘图区域起始位置
         if has_title || has_legend {
@@ -211,9 +221,13 @@ impl LayoutEngine {
         }
 
         LayoutOutput {
-            title_bbox: chart_layout.title.as_ref()
+            title_bbox: chart_layout
+                .title
+                .as_ref()
                 .and_then(|t| t.layout_result().map(|r| r.bounds)),
-            legend_bbox: chart_layout.legend.as_ref()
+            legend_bbox: chart_layout
+                .legend
+                .as_ref()
                 .and_then(|l| l.layout_result().map(|r| r.bounds)),
             grids,
         }

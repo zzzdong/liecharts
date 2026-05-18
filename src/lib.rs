@@ -1,3 +1,4 @@
+pub mod builder;
 pub mod chart;
 pub mod component;
 pub mod error;
@@ -10,9 +11,10 @@ pub mod text;
 pub mod theme;
 pub mod visual;
 
+pub use builder::ChartBuilder;
 pub use chart::LieChart;
 pub use error::ChartError;
-pub use model::ResolvedOption;
+pub use model::ChartModel;
 pub use option::{
     AreaStyleOption, AxisOption, AxisPosition, AxisType, BarSeriesOption, BubbleDataPoint,
     BubbleSeriesOption, CandlestickDataPoint, CandlestickItemStyleOption, CandlestickSeriesOption,
@@ -21,11 +23,11 @@ pub use option::{
     GaugeSplitLineOption, GaugeTitleOption, GridOption, ItemStyleOption, LabelAlign, LabelOption,
     LabelPosition, LabelVerticalAlign, LegendOption, LieChartOption, LineSeriesOption,
     LineStyleOption, LineType, NameLocation, Orient, PieSeriesOption, PolarBarSeriesOption,
-    PolarScatterDataPoint, PolarScatterSeriesOption, Position, PositionPreset, RadarDataOption,
-    RadarIndicatorOption, RadarNameOption, RadarOption, RadarSeriesOption, ScatterSeriesOption,
-    SeriesOption, SplitLineOption, SymbolType, TableBodyOption, TableCellStyleOption,
-    TableHeaderOption, TableRowStyleOption, TableSeriesOption, TextAlignOption, TextStyleOption,
-    TitleOption,
+    PolarScatterDataPoint, PolarScatterSeriesOption, PositionOption, PositionPreset,
+    RadarDataOption, RadarIndicatorOption, RadarNameOption, RadarOption, RadarSeriesOption,
+    ScatterSeriesOption, SeriesOption, SplitLineOption, SymbolType, TableBodyOption,
+    TableCellStyleOption, TableHeaderOption, TableRowStyleOption, TableSeriesOption,
+    TextAlignOption, TextStyleOption, TitleOption,
 };
 pub use render::{PixmapRenderer, Renderer, SvgRenderer};
 pub use text::{FontSource, register_font};

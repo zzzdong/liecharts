@@ -1,8 +1,8 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{ResolvedOption, ScatterSeries};
-use crate::pipeline::mapper::MappedGeometry;
+use crate::model::{ChartModel, ScatterSeries};
 use crate::pipeline::builder::VisualBuilder;
+use crate::pipeline::mapper::MappedGeometry;
 use crate::visual::{Stroke, VisualElement};
 
 pub struct ScatterSeriesComponent {
@@ -93,7 +93,11 @@ impl SeriesComponent for ScatterSeriesComponent {
 }
 
 impl ChartComponent for ScatterSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

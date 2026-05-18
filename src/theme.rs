@@ -859,6 +859,7 @@ impl Theme {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ThemeRegistry {
     themes: HashMap<String, Theme>,
 }
@@ -912,5 +913,6 @@ pub fn load_theme(name: &str) -> Result<Theme> {
     let theme_registry = ThemeRegistry::new();
     theme_registry
         .get(name)
-        .ok_or_else(|| crate::error::ChartError::InvalidTheme(format!("Theme not found: {}", name))).cloned()
+        .ok_or_else(|| crate::error::ChartError::InvalidTheme(format!("Theme not found: {}", name)))
+        .cloned()
 }

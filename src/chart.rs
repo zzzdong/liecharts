@@ -1,51 +1,35 @@
 use crate::component::{
-    AxisComponent, BarSeriesComponent, BubbleSeriesComponent, CandlestickSeriesComponent, ChartComponent, GaugeSeriesComponent, LegendComponent, LineSeriesComponent, PieSeriesComponent, PolarBarSeriesComponent, PolarScatterSeriesComponent, RadarSeriesComponent, ScatterSeriesComponent, TableSeriesComponent, TitleComponent,
+    AxisComponent, BarSeriesComponent, BubbleSeriesComponent, CandlestickSeriesComponent,
+    ChartComponent, GaugeSeriesComponent, LegendComponent, LineSeriesComponent, PieSeriesComponent,
+    PolarBarSeriesComponent, PolarScatterSeriesComponent, RadarSeriesComponent,
+    ScatterSeriesComponent, TableSeriesComponent, TitleComponent,
 };
 use crate::error::{ChartError, Result};
 use crate::layout::{
     AxisLayout, ChartLayout, DataCoordinateSystem, GridLayout, GridLayoutInfo, LayoutContext,
     LayoutEngine, LayoutOutput, Layoutable, LegendLayout, SubplotLayout, TitleLayout,
 };
-use crate::model::{Axis, AxisType, ResolvedOption, ResolvedSeries};
-use crate::option::LieChartOption;
+use crate::model::{Axis, AxisType, ChartModel, ResolvedSeries};
 use crate::render::{PixmapRenderer, SvgRenderer};
-use crate::theme::{Theme, ThemeRegistry};
 use crate::visual::{FillStrokeStyle, VisualElement};
-use vello_cpu::kurbo::Rect;
 pub use vello_cpu::Pixmap;
-
-
+use vello_cpu::kurbo::Rect;
 
 pub struct LieChart {
     width: u32,
     height: u32,
-    theme_registry: ThemeRegistry,
 }
 
 impl LieChart {
     pub fn new(width: u32, height: u32) -> Self {
-        Self {
-            width,
-            height,
-            theme_registry: ThemeRegistry::new(),
-        }
+        Self { width, height }
     }
 
-    pub fn with_theme(mut self, theme: Theme) -> Self {
-        self.theme_registry.register(theme);
-        self
-    }
-
-    fn resolve_option(&self, option: LieChartOption) -> Result<ResolvedOption> {
-        let theme = option
-            .theme
-            .as_ref()
-            .and_then(|name| self.theme_registry.get(name))
-            .cloned();
-        ResolvedOption::merge(option, theme)
-    }
-
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
         elements.push(VisualElement::Rect {
@@ -74,7 +58,7 @@ impl LieChart {
         elements
     }
 
-    fn compute_layout(&self, resolved: &ResolvedOption) -> LayoutOutput {
+    fn compute_layout(&self, resolved: &ChartModel) -> LayoutOutput {
         let context = LayoutContext::new(self.width as f64, self.height as f64);
         let mut engine = LayoutEngine::new(context);
 
@@ -97,6 +81,8 @@ impl LieChart {
                     l.left.clone(),
                     l.top.clone(),
                     l.text_style.clone(),
+                    l.symbol_size,
+                    l.item_height,
                 )) as Box<dyn Layoutable>)
             } else {
                 None
@@ -106,17 +92,19 @@ impl LieChart {
         let mut subplots: Vec<SubplotLayout> = Vec::new();
 
         for (grid_index, grid) in resolved.grids.iter().enumerate() {
-            let x_axes: Vec<Box<dyn Layoutable>> = resolved.x_axes.iter()
+            let x_axes: Vec<Box<dyn Layoutable>> = resolved
+                .x_axes
+                .iter()
                 .filter(|axis| axis.grid_index == grid_index)
-                .map(|axis| {
-                    Box::new(AxisLayout::new(axis.clone())) as Box<dyn Layoutable>
-                }).collect();
+                .map(|axis| Box::new(AxisLayout::new(axis.clone())) as Box<dyn Layoutable>)
+                .collect();
 
-            let y_axes: Vec<Box<dyn Layoutable>> = resolved.y_axes.iter()
+            let y_axes: Vec<Box<dyn Layoutable>> = resolved
+                .y_axes
+                .iter()
                 .filter(|axis| axis.grid_index == grid_index)
-                .map(|axis| {
-                    Box::new(AxisLayout::new(axis.clone())) as Box<dyn Layoutable>
-                }).collect();
+                .map(|axis| Box::new(AxisLayout::new(axis.clone())) as Box<dyn Layoutable>)
+                .collect();
 
             subplots.push(SubplotLayout {
                 grid_index,
@@ -146,62 +134,77 @@ impl LieChart {
         output
     }
 
-    pub fn collect_visual_elements(&self, option: LieChartOption)
-        -> Result<(Vec<VisualElement>, u32, u32)>
-    {
-        let resolved = self.resolve_option(option)?;
-        let layout = self.compute_layout(&resolved);
-        let elements = self.build_visual_elements(&resolved, &layout);
+    pub fn collect_visual_elements(
+        &self,
+        model: &ChartModel,
+    ) -> Result<(Vec<VisualElement>, u32, u32)> {
+        let layout = self.compute_layout(model);
+        let elements = self.build_visual_elements(model, &layout);
         Ok((elements, self.width, self.height))
     }
 
-    pub fn render_to_image(&self, option: LieChartOption, path: &str) -> Result<()> {
-        let (elements, width, height) = self.collect_visual_elements(option)?;
-        let renderer = PixmapRenderer::new(width, height);
-        let pixmap = renderer.render(&elements)?;
+    pub fn render_to_image(&self, model: &ChartModel, path: &str) -> Result<()> {
+        let (elements, width, height) = self.collect_visual_elements(model)?;
+        self.write_pixmap(&elements, width, height, path)
+    }
 
-        let width = pixmap.width() as u32;
-        let height = pixmap.height() as u32;
-        let data: Vec<u8> = pixmap.data()
+    fn write_pixmap(
+        &self,
+        elements: &[VisualElement],
+        width: u32,
+        height: u32,
+        path: &str,
+    ) -> Result<()> {
+        let renderer = PixmapRenderer::new(width, height);
+        let pixmap = renderer.render(elements)?;
+        let pw = pixmap.width() as u32;
+        let ph = pixmap.height() as u32;
+        let data: Vec<u8> = pixmap
+            .data()
             .iter()
             .flat_map(|p| vec![p.r, p.g, p.b, p.a])
             .collect();
-        let image = image::RgbaImage::from_raw(width, height, data)
+        let image = image::RgbaImage::from_raw(pw, ph, data)
             .ok_or_else(|| ChartError::RenderError("Failed to create image".to_string()))?;
         image.save(path)?;
         Ok(())
     }
 
-    pub fn render_to_svg(&self, option: LieChartOption, path: &str) -> Result<()> {
-        let (elements, width, height) = self.collect_visual_elements(option)?;
-        let renderer = SvgRenderer::new();
-        let svg = renderer.render(&elements, width, height)?;
+    pub fn render_to_svg(&self, model: &ChartModel, path: &str) -> Result<()> {
+        let (elements, width, height) = self.collect_visual_elements(model)?;
+        let svg = self.svg_string(&elements, width, height);
         std::fs::write(path, svg)?;
         Ok(())
     }
 
-    pub fn render_png(&self, option: LieChartOption) -> Result<Vec<u8>> {
-        let (elements, width, height) = self.collect_visual_elements(option)?;
-        let renderer = PixmapRenderer::new(width, height);
-        let pixmap = renderer.render(&elements)?;
+    fn svg_string(&self, elements: &[VisualElement], width: u32, height: u32) -> String {
+        let renderer = SvgRenderer::new();
+        renderer.render(elements, width, height).unwrap_or_default()
+    }
 
-        let data: Vec<u8> = pixmap.data()
+    pub fn render_svg(&self, model: &ChartModel) -> Result<String> {
+        let (elements, width, height) = self.collect_visual_elements(model)?;
+        Ok(self.svg_string(&elements, width, height))
+    }
+
+    fn png_bytes(&self, elements: &[VisualElement], width: u32, height: u32) -> Result<Vec<u8>> {
+        let renderer = PixmapRenderer::new(width, height);
+        let pixmap = renderer.render(elements)?;
+        let data: Vec<u8> = pixmap
+            .data()
             .iter()
             .flat_map(|p| vec![p.r, p.g, p.b, p.a])
             .collect();
         let image = image::RgbaImage::from_raw(pixmap.width() as u32, pixmap.height() as u32, data)
             .ok_or_else(|| ChartError::RenderError("Failed to create PNG image".to_string()))?;
-
         let mut buf = Vec::new();
         image.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
         Ok(buf)
     }
 
-    pub fn render_svg(&self, option: LieChartOption) -> Result<String> {
-        let (elements, width, height) = self.collect_visual_elements(option)?;
-        let renderer = SvgRenderer::new();
-        let svg = renderer.render(&elements, width, height)?;
-        Ok(svg)
+    pub fn render_png(&self, model: &ChartModel) -> Result<Vec<u8>> {
+        let (elements, width, height) = self.collect_visual_elements(model)?;
+        self.png_bytes(&elements, width, height)
     }
 
     pub fn width(&self) -> u32 {
@@ -228,7 +231,11 @@ struct SubplotContext {
 }
 
 impl SubplotContext {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
         for (local_idx, axis) in self.x_axes.iter().enumerate() {
@@ -294,7 +301,6 @@ impl SubplotContext {
     }
 }
 
-
 fn series_grid_index(series: &ResolvedSeries) -> usize {
     match series {
         ResolvedSeries::Bar(s) => s.grid_index,
@@ -311,51 +317,67 @@ fn series_grid_index(series: &ResolvedSeries) -> usize {
     }
 }
 
-fn build_subplot_contexts(resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<SubplotContext> {
-    layout.grids.iter().map(|grid_info| {
-        let grid_index = grid_info.grid_index;
+fn build_subplot_contexts(resolved: &ChartModel, layout: &LayoutOutput) -> Vec<SubplotContext> {
+    layout
+        .grids
+        .iter()
+        .map(|grid_info| {
+            let grid_index = grid_info.grid_index;
 
-        let x_axes = resolved.x_axes.iter()
-            .filter(|axis| axis.grid_index == grid_index)
-            .cloned()
-            .collect();
+            let x_axes = resolved
+                .x_axes
+                .iter()
+                .filter(|axis| axis.grid_index == grid_index)
+                .cloned()
+                .collect();
 
-        let y_axes = resolved.y_axes.iter()
-            .filter(|axis| axis.grid_index == grid_index)
-            .cloned()
-            .collect();
+            let y_axes = resolved
+                .y_axes
+                .iter()
+                .filter(|axis| axis.grid_index == grid_index)
+                .cloned()
+                .collect();
 
-        let series = resolved.series.iter()
-            .enumerate()
-            .filter(|(_, s)| series_grid_index(s) == grid_index)
-            .map(|(i, s)| (i, s.clone()))
-            .collect();
+            let series = resolved
+                .series
+                .iter()
+                .enumerate()
+                .filter(|(_, s)| series_grid_index(s) == grid_index)
+                .map(|(i, s)| (i, s.clone()))
+                .collect();
 
-        SubplotContext {
-            grid_index,
-            grid_info: grid_info.clone(),
-            x_axes,
-            y_axes,
-            series,
-        }
-    }).collect()
+            SubplotContext {
+                grid_index,
+                grid_info: grid_info.clone(),
+                x_axes,
+                y_axes,
+                series,
+            }
+        })
+        .collect()
 }
 
 fn compute_data_coord_for_grid(
-    resolved: &ResolvedOption,
+    resolved: &ChartModel,
     grid_info: &GridLayoutInfo,
     grid_index: usize,
 ) -> DataCoordinateSystem {
     let _plot_bounds = grid_info.grid_inner_bbox;
 
-    let x_axes: Vec<_> = resolved.x_axes.iter()
+    let x_axes: Vec<_> = resolved
+        .x_axes
+        .iter()
         .filter(|axis| axis.grid_index == grid_index)
         .collect();
-    let y_axes: Vec<_> = resolved.y_axes.iter()
+    let y_axes: Vec<_> = resolved
+        .y_axes
+        .iter()
         .filter(|axis| axis.grid_index == grid_index)
         .collect();
 
-    let global_to_local_y: std::collections::HashMap<usize, usize> = resolved.y_axes.iter()
+    let global_to_local_y: std::collections::HashMap<usize, usize> = resolved
+        .y_axes
+        .iter()
         .enumerate()
         .filter(|(_, axis)| axis.grid_index == grid_index)
         .enumerate()
@@ -406,7 +428,8 @@ fn compute_data_coord_for_grid(
             x_axis_values.extend(x_vals);
         }
 
-        let local_y_axis_index = global_to_local_y.get(&y_axis_index)
+        let local_y_axis_index = global_to_local_y
+            .get(&y_axis_index)
             .copied()
             .unwrap_or(0)
             .min(y_axis_values.len() - 1);
@@ -425,74 +448,81 @@ fn compute_data_coord_for_grid(
         y_axis_values[local_y_axis_index].extend(values);
     }
 
-    let y_ranges: Vec<(f64, f64)> = y_axes.iter().enumerate().map(|(i, axis)| {
-        let values = &y_axis_values[i];
-        let needs_zero_base = y_axis_needs_zero_base[i];
+    let y_ranges: Vec<(f64, f64)> = y_axes
+        .iter()
+        .enumerate()
+        .map(|(i, axis)| {
+            let values = &y_axis_values[i];
+            let needs_zero_base = y_axis_needs_zero_base[i];
 
-        let mut max_stacked_value = 0.0f64;
-        for group_values in y_axis_stack_groups[i].values() {
-            let data_len = group_values.first().map(|v| v.len()).unwrap_or(0);
-            for j in 0..data_len {
-                let sum: f64 = group_values.iter().map(|v| v.get(j).copied().unwrap_or(0.0)).sum();
-                max_stacked_value = max_stacked_value.max(sum);
+            let mut max_stacked_value = 0.0f64;
+            for group_values in y_axis_stack_groups[i].values() {
+                let data_len = group_values.first().map(|v| v.len()).unwrap_or(0);
+                for j in 0..data_len {
+                    let sum: f64 = group_values
+                        .iter()
+                        .map(|v| v.get(j).copied().unwrap_or(0.0))
+                        .sum();
+                    max_stacked_value = max_stacked_value.max(sum);
+                }
             }
-        }
 
-        let (data_min, data_max) = if values.is_empty() {
-            (0.0, 100.0)
-        } else {
-            let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
-            let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            let max = max.max(max_stacked_value);
-            if min == max {
-                (min - 10.0, max + 10.0)
+            let (data_min, data_max) = if values.is_empty() {
+                (0.0, 100.0)
             } else {
-                (min, max)
-            }
-        };
-
-        let compute_value_range = |data_min: f64, data_max: f64, needs_zero_base: bool| {
-            let min = axis.min.unwrap_or_else(|| {
-                if needs_zero_base && data_min >= 0.0 {
-                    0.0
+                let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+                let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let max = max.max(max_stacked_value);
+                if min == max {
+                    (min - 10.0, max + 10.0)
                 } else {
+                    (min, max)
+                }
+            };
+
+            let compute_value_range = |data_min: f64, data_max: f64, needs_zero_base: bool| {
+                let min = axis.min.unwrap_or_else(|| {
+                    if needs_zero_base && data_min >= 0.0 {
+                        0.0
+                    } else {
+                        let range = data_max - data_min;
+                        if range > 0.0 {
+                            data_min - range * 0.05
+                        } else {
+                            data_min - 1.0
+                        }
+                    }
+                });
+                let max = axis.max.unwrap_or_else(|| {
                     let range = data_max - data_min;
                     if range > 0.0 {
-                        data_min - range * 0.05
+                        data_max + range * 0.05
                     } else {
-                        data_min - 1.0
+                        data_max + 1.0
                     }
-                }
-            });
-            let max = axis.max.unwrap_or_else(|| {
-                let range = data_max - data_min;
-                if range > 0.0 {
-                    data_max + range * 0.05
-                } else {
-                    data_max + 1.0
-                }
-            });
-            (min, max)
-        };
+                });
+                (min, max)
+            };
 
-        match axis.axis_type {
-            AxisType::Category => {
-                let count = axis.data.as_ref().map(|d| d.len()).unwrap_or(0);
-                if count > 0 {
-                    if axis.boundary_gap {
-                        (0.0, count as f64)
+            match axis.axis_type {
+                AxisType::Category => {
+                    let count = axis.data.as_ref().map(|d| d.len()).unwrap_or(0);
+                    if count > 0 {
+                        if axis.boundary_gap {
+                            (0.0, count as f64)
+                        } else {
+                            (0.0, (count - 1) as f64)
+                        }
                     } else {
-                        (0.0, (count - 1) as f64)
+                        // Category axis without data (e.g., y-axis defaulting to Category type):
+                        // fall back to value-based range from series data
+                        compute_value_range(data_min, data_max, needs_zero_base)
                     }
-                } else {
-                    // Category axis without data (e.g., y-axis defaulting to Category type):
-                    // fall back to value-based range from series data
-                    compute_value_range(data_min, data_max, needs_zero_base)
                 }
+                _ => compute_value_range(data_min, data_max, needs_zero_base),
             }
-            _ => compute_value_range(data_min, data_max, needs_zero_base),
-        }
-    }).collect();
+        })
+        .collect();
 
     let x_range = if x_axes.is_empty() {
         (0.0, 1.0)
@@ -513,14 +543,28 @@ fn compute_data_coord_for_grid(
                 } else {
                     let min = axis.min.unwrap_or_else(|| {
                         let m = x_axis_values.iter().cloned().fold(f64::INFINITY, f64::min);
-                        let range = x_axis_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+                        let range = x_axis_values
+                            .iter()
+                            .cloned()
+                            .fold(f64::NEG_INFINITY, f64::max)
                             - m;
-                        if range > 0.0 { m - range * 0.05 } else { m - 1.0 }
+                        if range > 0.0 {
+                            m - range * 0.05
+                        } else {
+                            m - 1.0
+                        }
                     });
                     let max = axis.max.unwrap_or_else(|| {
-                        let m = x_axis_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                        let m = x_axis_values
+                            .iter()
+                            .cloned()
+                            .fold(f64::NEG_INFINITY, f64::max);
                         let range = m - x_axis_values.iter().cloned().fold(f64::INFINITY, f64::min);
-                        if range > 0.0 { m + range * 0.05 } else { m + 1.0 }
+                        if range > 0.0 {
+                            m + range * 0.05
+                        } else {
+                            m + 1.0
+                        }
                     });
                     (min, max)
                 }
@@ -533,8 +577,12 @@ fn compute_data_coord_for_grid(
         x_range,
         y_ranges,
         plot_bounds: grid_info.grid_inner_bbox,
-        is_category_x: x_axes.first().map(|a| matches!(a.axis_type, AxisType::Category)).unwrap_or(false),
-        category_count: x_axes.first()
+        is_category_x: x_axes
+            .first()
+            .map(|a| matches!(a.axis_type, AxisType::Category))
+            .unwrap_or(false),
+        category_count: x_axes
+            .first()
             .and_then(|a| a.data.as_ref().map(|d| d.len()))
             .unwrap_or(0),
     }

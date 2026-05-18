@@ -4,10 +4,12 @@ use crate::component::label::PieLeaderLineLabel;
 use crate::layout::DataCoordinateSystem;
 use crate::pipeline::mapper::MappedGeometry;
 use crate::pipeline::transform::TransformedSeries;
-use crate::visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement};
 use crate::text::{compute_text_offset, create_text_layout};
-use vello_cpu::kurbo::{BezPath, Point, Rect};
+use crate::visual::{
+    Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
+};
 use vello_cpu::kurbo::Shape as KurboShape;
+use vello_cpu::kurbo::{BezPath, Point, Rect};
 
 /// ECharts 风格默认调色板
 const DEFAULT_PIE_COLORS: [Color; 10] = [
@@ -26,7 +28,12 @@ const DEFAULT_PIE_COLORS: [Color; 10] = [
 /// 视觉构建器 trait
 pub trait VisualBuilder {
     /// 构建系列的所有视觉元素
-    fn build(&self, transformed: &TransformedSeries, mapped: &[MappedGeometry], coord: &DataCoordinateSystem) -> Vec<VisualElement>;
+    fn build(
+        &self,
+        transformed: &TransformedSeries,
+        mapped: &[MappedGeometry],
+        coord: &DataCoordinateSystem,
+    ) -> Vec<VisualElement>;
 }
 
 /// 柱状图视觉构建器
@@ -68,11 +75,22 @@ impl BarVisualBuilder {
 }
 
 impl VisualBuilder for BarVisualBuilder {
-    fn build(&self, transformed: &TransformedSeries, mapped: &[MappedGeometry], _coord: &DataCoordinateSystem) -> Vec<VisualElement> {
+    fn build(
+        &self,
+        transformed: &TransformedSeries,
+        mapped: &[MappedGeometry],
+        _coord: &DataCoordinateSystem,
+    ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
         for (item, geom) in transformed.items.iter().zip(mapped.iter()) {
-            let MappedGeometry::CartesianBar { center_x, bottom_y, top_y, width } = geom else {
+            let MappedGeometry::CartesianBar {
+                center_x,
+                bottom_y,
+                top_y,
+                width,
+            } = geom
+            else {
                 continue;
             };
 
@@ -103,12 +121,15 @@ impl VisualBuilder for BarVisualBuilder {
                     font_size: self.label_config.font_size,
                     font_family: "sans-serif".to_string(),
                     color: self.label_config.color,
-                    font_weight: crate::option::FontWeight::Named(crate::option::FontWeightNamed::Normal),
+                    font_weight: crate::option::FontWeight::Named(
+                        crate::option::FontWeightNamed::Normal,
+                    ),
                     ..Default::default()
                 };
 
                 let layout = create_text_layout(&label_text, &label_font, None);
-                let (x_offset, y_offset) = compute_text_offset(&layout, TextAlign::Center, TextBaseline::Bottom);
+                let (x_offset, y_offset) =
+                    compute_text_offset(&layout, TextAlign::Center, TextBaseline::Bottom);
                 let final_position = Point::new(center_x + x_offset, label_y + y_offset);
 
                 elements.push(VisualElement::TextRun {
@@ -202,10 +223,19 @@ impl LineVisualBuilder {
 }
 
 impl VisualBuilder for LineVisualBuilder {
-    fn build(&self, _transformed: &TransformedSeries, mapped: &[MappedGeometry], coord: &DataCoordinateSystem) -> Vec<VisualElement> {
+    fn build(
+        &self,
+        _transformed: &TransformedSeries,
+        mapped: &[MappedGeometry],
+        coord: &DataCoordinateSystem,
+    ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
-        let MappedGeometry::CartesianLine { points, area_baseline } = &mapped[0] else {
+        let MappedGeometry::CartesianLine {
+            points,
+            area_baseline,
+        } = &mapped[0]
+        else {
             return elements;
         };
 
@@ -214,19 +244,20 @@ impl VisualBuilder for LineVisualBuilder {
 
         // 面积填充
         if let Some(baseline) = area_baseline
-            && let Some(mut area_color) = self.area_color {
-                let alpha = (area_color.a as f64 * self.area_opacity).clamp(0.0, 255.0) as u8;
-                area_color.a = alpha;
+            && let Some(mut area_color) = self.area_color
+        {
+            let alpha = (area_color.a as f64 * self.area_opacity).clamp(0.0, 255.0) as u8;
+            area_color.a = alpha;
 
-                let fill_path = build_area_fill_path(points, baseline, self.smooth, &bounds);
-                elements.push(VisualElement::Path {
-                    path: fill_path,
-                    style: FillStrokeStyle {
-                        fill: Some(area_color),
-                        stroke: None,
-                    },
-                });
-            }
+            let fill_path = build_area_fill_path(points, baseline, self.smooth, &bounds);
+            elements.push(VisualElement::Path {
+                path: fill_path,
+                style: FillStrokeStyle {
+                    fill: Some(area_color),
+                    stroke: None,
+                },
+            });
+        }
 
         // 折线
         if points.len() >= 2 {
@@ -241,11 +272,14 @@ impl VisualBuilder for LineVisualBuilder {
                 });
             } else {
                 // 对于非平滑折线，也需要裁剪到边界内
-                let clipped_points: Vec<Point> = points.iter()
-                    .map(|p| Point::new(
-                        p.x.clamp(bounds.x0, bounds.x1),
-                        p.y.clamp(bounds.y0, bounds.y1)
-                    ))
+                let clipped_points: Vec<Point> = points
+                    .iter()
+                    .map(|p| {
+                        Point::new(
+                            p.x.clamp(bounds.x0, bounds.x1),
+                            p.y.clamp(bounds.y0, bounds.y1),
+                        )
+                    })
                     .collect();
                 elements.push(VisualElement::Polyline {
                     points: clipped_points,
@@ -351,7 +385,10 @@ fn catmull_rom_spline(points: &[Point], tension: f64, bounds: &Rect) -> BezPath 
 
     for i in 0..n - 1 {
         let p0 = if i == 0 {
-            Point::new(2.0 * points[0].x - points[1].x, 2.0 * points[0].y - points[1].y)
+            Point::new(
+                2.0 * points[0].x - points[1].x,
+                2.0 * points[0].y - points[1].y,
+            )
         } else {
             points[i - 1]
         };
@@ -428,7 +465,12 @@ impl PieVisualBuilder {
 }
 
 impl VisualBuilder for PieVisualBuilder {
-    fn build(&self, transformed: &TransformedSeries, mapped: &[MappedGeometry], _coord: &DataCoordinateSystem) -> Vec<VisualElement> {
+    fn build(
+        &self,
+        transformed: &TransformedSeries,
+        mapped: &[MappedGeometry],
+        _coord: &DataCoordinateSystem,
+    ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
         // 第一遍：预计算所有标签信息
@@ -437,7 +479,13 @@ impl VisualBuilder for PieVisualBuilder {
 
         if self.label_config.show {
             for (i, (item, geom)) in transformed.items.iter().zip(mapped.iter()).enumerate() {
-                let MappedGeometry::PolarSector { outer_radius, start_angle, sweep_angle, .. } = geom else {
+                let MappedGeometry::PolarSector {
+                    outer_radius,
+                    start_angle,
+                    sweep_angle,
+                    ..
+                } = geom
+                else {
                     continue;
                 };
 
@@ -446,9 +494,14 @@ impl VisualBuilder for PieVisualBuilder {
                 let is_right_side = mid_angle.cos() >= 0.0;
 
                 let label_text = if let Some(formatter) = self.label_config.formatter {
-                    formatter(item.original.name.as_deref().unwrap_or(""), item.original.value)
+                    formatter(
+                        item.original.name.as_deref().unwrap_or(""),
+                        item.original.value,
+                    )
                 } else {
-                    item.original.name.as_ref()
+                    item.original
+                        .name
+                        .as_ref()
                         .map(|n| format!("{}: {:.0}", n, item.original.value))
                         .unwrap_or_else(|| format!("{:.0}", item.original.value))
                 };
@@ -457,7 +510,9 @@ impl VisualBuilder for PieVisualBuilder {
                     font_size: self.label_config.font_size,
                     font_family: "sans-serif".to_string(),
                     color: self.label_config.color,
-                    font_weight: crate::option::FontWeight::Named(crate::option::FontWeightNamed::Normal),
+                    font_weight: crate::option::FontWeight::Named(
+                        crate::option::FontWeightNamed::Normal,
+                    ),
                     ..Default::default()
                 };
 
@@ -468,13 +523,27 @@ impl VisualBuilder for PieVisualBuilder {
                     max_text_width = text_width;
                 }
 
-                label_infos.push((i, label_text, mid_angle, text_width, is_right_side, *outer_radius));
+                label_infos.push((
+                    i,
+                    label_text,
+                    mid_angle,
+                    text_width,
+                    is_right_side,
+                    *outer_radius,
+                ));
             }
         }
 
         // 第二遍：绘制扇形和标签
         for (i, (_item, geom)) in transformed.items.iter().zip(mapped.iter()).enumerate() {
-            let MappedGeometry::PolarSector { center, inner_radius, outer_radius, start_angle, sweep_angle } = geom else {
+            let MappedGeometry::PolarSector {
+                center,
+                inner_radius,
+                outer_radius,
+                start_angle,
+                sweep_angle,
+            } = geom
+            else {
                 continue;
             };
 
@@ -529,7 +598,11 @@ impl VisualBuilder for PieVisualBuilder {
             }
             path.close_path();
 
-            let color = self.colors.get(i).copied().unwrap_or_else(|| DEFAULT_PIE_COLORS[i % DEFAULT_PIE_COLORS.len()]);
+            let color = self
+                .colors
+                .get(i)
+                .copied()
+                .unwrap_or_else(|| DEFAULT_PIE_COLORS[i % DEFAULT_PIE_COLORS.len()]);
             elements.push(VisualElement::Path {
                 path,
                 style: FillStrokeStyle {
@@ -543,25 +616,26 @@ impl VisualBuilder for PieVisualBuilder {
 
             // 绘制标签和引导线
             if self.label_config.show
-                && let Some(label_info) = label_infos.iter().find(|(idx, _, _, _, _, _)| *idx == i) {
-                    let (_, label_text, mid_angle, text_width, is_right_side, _) = label_info;
-                    let mid_angle = *mid_angle;
-                    let is_right_side = *is_right_side;
-                    let text_width = *text_width;
+                && let Some(label_info) = label_infos.iter().find(|(idx, _, _, _, _, _)| *idx == i)
+            {
+                let (_, label_text, mid_angle, text_width, is_right_side, _) = label_info;
+                let mid_angle = *mid_angle;
+                let is_right_side = *is_right_side;
+                let text_width = *text_width;
 
-                    // 使用 PieLeaderLineLabel 组件绘制标签和引导线
-                    let label = PieLeaderLineLabel::new(
-                        label_text.clone(),
-                        *center,
-                        *outer_radius,
-                        mid_angle,
-                        is_right_side,
-                        text_width,
-                    )
-                    .with_label_config(&self.label_config);
+                // 使用 PieLeaderLineLabel 组件绘制标签和引导线
+                let label = PieLeaderLineLabel::new(
+                    label_text.clone(),
+                    *center,
+                    *outer_radius,
+                    mid_angle,
+                    is_right_side,
+                    text_width,
+                )
+                .with_label_config(&self.label_config);
 
-                    elements.extend(label.build());
-                }
+                elements.extend(label.build());
+            }
         }
 
         elements
@@ -607,7 +681,12 @@ impl ScatterVisualBuilder {
 }
 
 impl VisualBuilder for ScatterVisualBuilder {
-    fn build(&self, transformed: &TransformedSeries, mapped: &[MappedGeometry], _coord: &DataCoordinateSystem) -> Vec<VisualElement> {
+    fn build(
+        &self,
+        transformed: &TransformedSeries,
+        mapped: &[MappedGeometry],
+        _coord: &DataCoordinateSystem,
+    ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
         for (item, geom) in transformed.items.iter().zip(mapped.iter()) {
@@ -633,13 +712,17 @@ impl VisualBuilder for ScatterVisualBuilder {
                     font_size: self.label_config.font_size,
                     font_family: "sans-serif".to_string(),
                     color: self.label_config.color,
-                    font_weight: crate::option::FontWeight::Named(crate::option::FontWeightNamed::Normal),
+                    font_weight: crate::option::FontWeight::Named(
+                        crate::option::FontWeightNamed::Normal,
+                    ),
                     ..Default::default()
                 };
 
                 let layout = create_text_layout(&label_text, &label_font, None);
-                let (x_offset, y_offset) = compute_text_offset(&layout, TextAlign::Center, TextBaseline::Bottom);
-                let final_position = Point::new(x + x_offset, y - self.symbol_size / 2.0 - 3.0 + y_offset);
+                let (x_offset, y_offset) =
+                    compute_text_offset(&layout, TextAlign::Center, TextBaseline::Bottom);
+                let final_position =
+                    Point::new(x + x_offset, y - self.symbol_size / 2.0 - 3.0 + y_offset);
 
                 elements.push(VisualElement::TextRun {
                     text: label_text,

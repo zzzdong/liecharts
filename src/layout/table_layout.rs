@@ -109,13 +109,13 @@ impl TableLayout {
             .collect();
 
         // 计算固定列总宽度
-        let fixed_total: f64 = self
+        let fixed_total: f64 = self.columns.iter().filter_map(|col| col.fixed_width).sum();
+
+        let fixed_count = self
             .columns
             .iter()
-            .filter_map(|col| col.fixed_width)
-            .sum();
-
-        let fixed_count = self.columns.iter().filter(|c| c.fixed_width.is_some()).count();
+            .filter(|c| c.fixed_width.is_some())
+            .count();
         let flexible_count = col_count - fixed_count;
 
         if flexible_count == 0 {
@@ -174,8 +174,15 @@ impl TableLayout {
             (table_bounds.y0 + self.padding, self.header_height)
         } else {
             // 数据行
-            let data_row = if self.header_height > 0.0 { row - 1 } else { row };
-            let y = table_bounds.y0 + self.padding + self.header_height + data_row as f64 * self.row_height;
+            let data_row = if self.header_height > 0.0 {
+                row - 1
+            } else {
+                row
+            };
+            let y = table_bounds.y0
+                + self.padding
+                + self.header_height
+                + data_row as f64 * self.row_height;
             (y, self.row_height)
         };
 
@@ -245,7 +252,8 @@ impl Layoutable for TableLayoutElement {
         // 确保满足约束
         let constrained_size = Size::new(
             size.width.clamp(constraint.min_width, constraint.max_width),
-            size.height.clamp(constraint.min_height, constraint.max_height),
+            size.height
+                .clamp(constraint.min_height, constraint.max_height),
         );
 
         self.result = Some(LayoutResult::new(constrained_size));
@@ -266,7 +274,7 @@ impl Layoutable for TableLayoutElement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{TableHeaderConfig, TableBodyConfig, TextStyle};
+    use crate::model::{TableBodyConfig, TableHeaderConfig, TextStyle};
     use crate::visual::{Color, TextAlign};
 
     fn create_test_series() -> TableSeries {

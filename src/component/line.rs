@@ -1,8 +1,8 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{LineSeries, ResolvedOption};
-use crate::pipeline::mapper::CoordinateMapper;
+use crate::model::{ChartModel, LineSeries};
 use crate::pipeline::builder::VisualBuilder;
+use crate::pipeline::mapper::CoordinateMapper;
 use crate::visual::{Stroke, VisualElement};
 
 pub struct LineSeriesComponent {
@@ -57,7 +57,9 @@ impl LineSeriesComponent {
         } else {
             None
         };
-        let area_opacity = self.series.area_style
+        let area_opacity = self
+            .series
+            .area_style
             .as_ref()
             .map(|a| a.opacity)
             .unwrap_or(0.7);
@@ -98,7 +100,11 @@ impl SeriesComponent for LineSeriesComponent {
 }
 
 impl ChartComponent for LineSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

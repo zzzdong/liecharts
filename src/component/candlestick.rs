@@ -1,7 +1,7 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{CandlestickSeries, ResolvedOption};
-use crate::visual::{Stroke, VisualElement, FillStrokeStyle};
+use crate::model::{CandlestickSeries, ChartModel};
+use crate::visual::{FillStrokeStyle, Stroke, VisualElement};
 use vello_cpu::kurbo::{BezPath, Point, Rect};
 
 pub struct CandlestickSeriesComponent {
@@ -44,7 +44,11 @@ impl CandlestickSeriesComponent {
                 (open_y.min(close_y), open_y.max(close_y))
             };
 
-            let body_color = if is_up { self.series.color_up } else { self.series.color_down };
+            let body_color = if is_up {
+                self.series.color_up
+            } else {
+                self.series.color_down
+            };
             let border_color = if is_up {
                 self.series.item_style.border_color.unwrap_or(body_color)
             } else {
@@ -106,7 +110,11 @@ impl SeriesComponent for CandlestickSeriesComponent {
 }
 
 impl ChartComponent for CandlestickSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

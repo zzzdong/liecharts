@@ -82,11 +82,7 @@ impl GridManager {
     /// 2. 应用最小尺寸约束
     /// 3. 检测冲突并调整（简单策略：按顺序排列）
     /// 4. 返回最终布局
-    pub fn compute_layout(
-        &self,
-        grids: &[GridDefinition],
-        container: Rect,
-    ) -> Vec<GridRect> {
+    pub fn compute_layout(&self, grids: &[GridDefinition], container: Rect) -> Vec<GridRect> {
         if grids.is_empty() {
             return Vec::new();
         }
@@ -330,10 +326,42 @@ mod tests {
         let manager = GridManager::new(context);
 
         let grids = vec![
-            GridDefinition::new(0, create_test_grid(Position::Auto, Position::Auto, Position::Auto, Position::Auto)),
-            GridDefinition::new(1, create_test_grid(Position::Auto, Position::Auto, Position::Auto, Position::Auto)),
-            GridDefinition::new(2, create_test_grid(Position::Auto, Position::Auto, Position::Auto, Position::Auto)),
-            GridDefinition::new(3, create_test_grid(Position::Auto, Position::Auto, Position::Auto, Position::Auto)),
+            GridDefinition::new(
+                0,
+                create_test_grid(
+                    Position::Auto,
+                    Position::Auto,
+                    Position::Auto,
+                    Position::Auto,
+                ),
+            ),
+            GridDefinition::new(
+                1,
+                create_test_grid(
+                    Position::Auto,
+                    Position::Auto,
+                    Position::Auto,
+                    Position::Auto,
+                ),
+            ),
+            GridDefinition::new(
+                2,
+                create_test_grid(
+                    Position::Auto,
+                    Position::Auto,
+                    Position::Auto,
+                    Position::Auto,
+                ),
+            ),
+            GridDefinition::new(
+                3,
+                create_test_grid(
+                    Position::Auto,
+                    Position::Auto,
+                    Position::Auto,
+                    Position::Auto,
+                ),
+            ),
         ];
 
         let container = Rect::new(0.0, 0.0, 800.0, 600.0);

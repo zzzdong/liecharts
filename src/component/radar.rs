@@ -1,10 +1,12 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{RadarConfig, RadarSeries, ResolvedOption};
-use crate::visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement};
+use crate::model::{ChartModel, RadarConfig, RadarSeries};
 use crate::text::create_text_layout;
-use vello_cpu::kurbo::{BezPath, Point, Vec2};
+use crate::visual::{
+    Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
+};
 use std::f64::consts::PI;
+use vello_cpu::kurbo::{BezPath, Point, Vec2};
 
 pub struct RadarSeriesComponent {
     series: RadarSeries,
@@ -14,7 +16,11 @@ pub struct RadarSeriesComponent {
 }
 
 impl RadarSeriesComponent {
-    pub fn new(series: &RadarSeries, series_index: usize, radar_config: Option<&RadarConfig>) -> Self {
+    pub fn new(
+        series: &RadarSeries,
+        series_index: usize,
+        radar_config: Option<&RadarConfig>,
+    ) -> Self {
         Self {
             series: series.clone(),
             series_index,
@@ -192,29 +198,39 @@ impl RadarSeriesComponent {
             let mut points: Vec<Point> = Vec::new();
             for (i, &val) in values.iter().enumerate().take(n) {
                 let max_val = config.indicator[i].max;
-                let ratio = if max_val > 0.0 { (val / max_val).clamp(0.0, 1.0) } else { 0.0 };
+                let ratio = if max_val > 0.0 {
+                    (val / max_val).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
                 let r = inner_r + (outer_r - inner_r) * ratio;
                 let dir = directions[i];
                 points.push(Point::new(center.x + dir.x * r, center.y + dir.y * r));
             }
 
             if let Some(area_style) = &self.series.area_style
-                && points.len() >= 2 {
-                    let mut path = BezPath::new();
-                    path.move_to(points[0]);
-                    for pt in points.iter().skip(1) {
-                        path.line_to(*pt);
-                    }
-                    path.close_path();
-
-                    elements.push(VisualElement::Path {
-                        path,
-                        style: FillStrokeStyle {
-                            fill: Some(area_style.color.unwrap_or(self.series.color).set_alpha(area_style.opacity)),
-                            stroke: None,
-                        },
-                    });
+                && points.len() >= 2
+            {
+                let mut path = BezPath::new();
+                path.move_to(points[0]);
+                for pt in points.iter().skip(1) {
+                    path.line_to(*pt);
                 }
+                path.close_path();
+
+                elements.push(VisualElement::Path {
+                    path,
+                    style: FillStrokeStyle {
+                        fill: Some(
+                            area_style
+                                .color
+                                .unwrap_or(self.series.color)
+                                .set_alpha(area_style.opacity),
+                        ),
+                        stroke: None,
+                    },
+                });
+            }
 
             let mut line_points = points.clone();
             line_points.push(points[0]);
@@ -257,7 +273,11 @@ impl SeriesComponent for RadarSeriesComponent {
 }
 
 impl ChartComponent for RadarSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

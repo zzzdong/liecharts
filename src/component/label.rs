@@ -1,7 +1,7 @@
-use crate::visual::{Color, StrokeStyle, TextAlign, TextBaseline, VisualElement};
-use crate::text::{compute_text_offset, create_text_layout};
-use crate::pipeline::LabelConfig;
 use crate::model;
+use crate::pipeline::LabelConfig;
+use crate::text::{compute_text_offset, create_text_layout};
+use crate::visual::{Color, StrokeStyle, TextAlign, TextBaseline, VisualElement};
 use vello_cpu::kurbo::Point;
 
 /// 通用标签组件，用于柱状图、折线图、散点图等
@@ -35,7 +35,9 @@ impl LabelComponent {
                 font_size: 12.0,
                 font_family: "sans-serif".to_string(),
                 color: Color::new(51, 51, 51),
-                font_weight: crate::option::FontWeight::Named(crate::option::FontWeightNamed::Normal),
+                font_weight: crate::option::FontWeight::Named(
+                    crate::option::FontWeightNamed::Normal,
+                ),
                 ..Default::default()
             },
             align: TextAlign::Center,
@@ -168,7 +170,11 @@ impl PieLeaderLineLabel {
         is_right_side: bool,
         text_width: f64,
     ) -> Self {
-        let text_align = if is_right_side { TextAlign::Left } else { TextAlign::Right };
+        let text_align = if is_right_side {
+            TextAlign::Left
+        } else {
+            TextAlign::Right
+        };
         Self {
             text: text.into(),
             center,
@@ -187,7 +193,9 @@ impl PieLeaderLineLabel {
                 font_size: 12.0,
                 font_family: "sans-serif".to_string(),
                 color: Color::new(51, 51, 51),
-                font_weight: crate::option::FontWeight::Named(crate::option::FontWeightNamed::Normal),
+                font_weight: crate::option::FontWeight::Named(
+                    crate::option::FontWeightNamed::Normal,
+                ),
                 ..Default::default()
             },
             align: text_align,
@@ -237,8 +245,10 @@ impl PieLeaderLineLabel {
         let edge_y = self.center.y + self.outer_radius * self.mid_angle.sin();
         let edge_point = Point::new(edge_x, edge_y);
 
-        let turn_x = self.center.x + (self.outer_radius + self.first_segment_length) * self.mid_angle.cos();
-        let turn_y = self.center.y + (self.outer_radius + self.first_segment_length) * self.mid_angle.sin();
+        let turn_x =
+            self.center.x + (self.outer_radius + self.first_segment_length) * self.mid_angle.cos();
+        let turn_y =
+            self.center.y + (self.outer_radius + self.first_segment_length) * self.mid_angle.sin();
         let turn_point = Point::new(turn_x, turn_y);
 
         let text_edge_x = if self.is_right_side {

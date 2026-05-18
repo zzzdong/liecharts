@@ -46,7 +46,10 @@ impl TitleLayout {
             });
             let main_with_newline = format!("{}\n", self.text);
             layout_text(
-                &[(&main_with_newline, &self.text_style), (subtext, &sub_style)],
+                &[
+                    (&main_with_newline, &self.text_style),
+                    (subtext, &sub_style),
+                ],
                 None,
                 TextAlign::Center,
             )
@@ -69,7 +72,8 @@ impl Layoutable for TitleLayout {
         if let Some(ref mut result) = self.result {
             let x = resolve_position(&self.left, bounds.width(), result.desired_size.width);
             let max_y = (bounds.height() - result.desired_size.height).max(0.0);
-            let y = resolve_position(&self.top, bounds.height(), result.desired_size.height).min(max_y);
+            let y =
+                resolve_position(&self.top, bounds.height(), result.desired_size.height).min(max_y);
 
             result.bounds = Rect::new(
                 bounds.x0 + x,
@@ -91,7 +95,6 @@ pub struct LegendLayout {
     orient: crate::model::Orient,
     left: crate::model::Position,
     top: crate::model::Position,
-    text_style: TextStyle,
     item_heights: Vec<f64>,
     item_widths: Vec<f64>,
     wrap_cols: usize,
@@ -105,22 +108,32 @@ impl LegendLayout {
         left: crate::model::Position,
         top: crate::model::Position,
         text_style: TextStyle,
+        symbol_size: f64,
+        item_height: f64,
     ) -> Self {
-        // 预计算每项宽度和高度
-        let item_widths: Vec<f64> = data.iter()
-            .map(|s| measure_text_size(s, &text_style).width + 30.0)  // 色块(14) + 间距(5+5)
+        // 预计算每项宽度和高度（与渲染端 LegendComponent 保持一致）
+        // 宽度 = 色块 + 间距(5) + 文本宽度 + 右边距(10)
+        // 高度取所有项中最大的文本高度，确保横向同行时行高统一
+        let mut max_text_height = 0.0f64;
+        let item_widths: Vec<f64> = data
+            .iter()
+            .map(|s| {
+                let size = measure_text_size(s, &text_style);
+                let text_h = size.height + 8.0;
+                if text_h > max_text_height {
+                    max_text_height = text_h;
+                }
+                symbol_size + 5.0 + size.width + 10.0
+            })
             .collect();
-        let text_height = measure_text_size("A", &text_style).height + 8.0;
-        let item_heights: Vec<f64> = data.iter()
-            .map(|_| text_height)
-            .collect();
+        let item_height = item_height.max(max_text_height);
+        let item_heights: Vec<f64> = data.iter().map(|_| item_height).collect();
 
         Self {
             data,
             orient,
             left,
             top,
-            text_style,
             item_heights,
             item_widths,
             wrap_cols: 0,
@@ -183,7 +196,8 @@ impl LegendLayout {
             crate::model::Orient::Horizontal => {
                 if max_width.is_infinite() {
                     // 不换行：所有项目在一行
-                    let total_width: f64 = self.item_widths.iter().sum::<f64>() + 10.0 * (self.data.len().saturating_sub(1)) as f64;
+                    let total_width: f64 = self.item_widths.iter().sum::<f64>()
+                        + 10.0 * (self.data.len().saturating_sub(1)) as f64;
                     let height = self.item_heights[0];
                     Size::new(total_width, height)
                 } else {
@@ -195,7 +209,8 @@ impl LegendLayout {
             }
             crate::model::Orient::Vertical => {
                 let width = self.item_widths.iter().copied().fold(0.0f64, f64::max);
-                let height: f64 = self.item_heights.iter().sum::<f64>() + 5.0 * (self.data.len().saturating_sub(1)) as f64;
+                let height: f64 = self.item_heights.iter().sum::<f64>()
+                    + 5.0 * (self.data.len().saturating_sub(1)) as f64;
                 Size::new(width, height)
             }
         }
@@ -221,7 +236,8 @@ impl Layoutable for LegendLayout {
         if let Some(ref mut result) = self.result {
             let x = resolve_position(&self.left, bounds.width(), result.desired_size.width);
             let max_y = (bounds.height() - result.desired_size.height).max(0.0);
-            let y = resolve_position(&self.top, bounds.height(), result.desired_size.height).min(max_y);
+            let y =
+                resolve_position(&self.top, bounds.height(), result.desired_size.height).min(max_y);
 
             result.bounds = Rect::new(
                 bounds.x0 + x,
@@ -258,11 +274,14 @@ impl AxisLayout {
                 .map(|d| {
                     d.iter()
                         .map(|s| {
-                            measure_text_size(s, &TextStyle {
-                                font_size: config.axis_label.font_size,
-                                font_family: config.axis_label.font_family.clone(),
-                                ..Default::default()
-                            })
+                            measure_text_size(
+                                s,
+                                &TextStyle {
+                                    font_size: config.axis_label.font_size,
+                                    font_family: config.axis_label.font_family.clone(),
+                                    ..Default::default()
+                                },
+                            )
                             .width
                         })
                         .fold(0.0, f64::max)
@@ -286,11 +305,14 @@ impl AxisLayout {
                 .map(|d| {
                     d.iter()
                         .map(|s| {
-                            measure_text_size(s, &TextStyle {
-                                font_size: config.axis_label.font_size,
-                                font_family: config.axis_label.font_family.clone(),
-                                ..Default::default()
-                            })
+                            measure_text_size(
+                                s,
+                                &TextStyle {
+                                    font_size: config.axis_label.font_size,
+                                    font_family: config.axis_label.font_family.clone(),
+                                    ..Default::default()
+                                },
+                            )
                             .height
                         })
                         .fold(0.0, f64::max)
@@ -310,23 +332,22 @@ impl AxisLayout {
     /// 统一公式：tick_length + label_padding + label_extent
     /// 名称不参与布局计算（与 ECharts 行为一致），仅用于渲染定位。
     fn total_outside_extent(&self) -> f64 {
-        self.config.tick_length
-            + self.config.label_padding
-            + self.label_extent
+        self.config.tick_length + self.config.label_padding + self.label_extent
     }
-
 }
 
 impl Layoutable for AxisLayout {
     fn measure(&mut self, constraint: SizeConstraint) -> Size {
         let total = self.total_outside_extent();
         let size = match self.config.position {
-            AxisPosition::Bottom | AxisPosition::Top => {
-                Size::new(constraint.max_width, total.clamp(constraint.min_height, constraint.max_height))
-            }
-            AxisPosition::Left | AxisPosition::Right => {
-                Size::new(total.clamp(constraint.min_width, constraint.max_width), constraint.max_height)
-            }
+            AxisPosition::Bottom | AxisPosition::Top => Size::new(
+                constraint.max_width,
+                total.clamp(constraint.min_height, constraint.max_height),
+            ),
+            AxisPosition::Left | AxisPosition::Right => Size::new(
+                total.clamp(constraint.min_width, constraint.max_width),
+                constraint.max_height,
+            ),
         };
         self.result = Some(LayoutResult::new(size));
         size

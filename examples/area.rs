@@ -1,22 +1,18 @@
-use liecharts::{
-    AxisType, DataPoint, LieChart, LieChartOption, SeriesOption,
-};
+use liecharts::{AxisType, ChartBuilder, DataPoint, LieChart, SeriesOption};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let chart = LieChart::new(800, 600);
-
-    let option = LieChartOption {
-        title: Some(liecharts::TitleOption {
+    let model = ChartBuilder::new()
+        .with_title(liecharts::TitleOption {
             text: Some("访问量趋势面积图".to_string()),
             subtext: Some("Area Chart".to_string()),
             ..Default::default()
-        }),
-        legend: Some(liecharts::LegendOption {
+        })
+        .with_legend(liecharts::LegendOption {
             show: Some(true),
             data: Some(vec!["访问量".to_string()]),
             ..Default::default()
-        }),
-        x_axis: vec![liecharts::AxisOption {
+        })
+        .with_x_axis(liecharts::AxisOption {
             axis_type: Some(AxisType::Category),
             data: Some(vec![
                 "1月".to_string(),
@@ -27,13 +23,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "6月".to_string(),
             ]),
             ..Default::default()
-        }],
-        y_axis: vec![liecharts::AxisOption {
+        })
+        .with_y_axis(liecharts::AxisOption {
             axis_type: Some(AxisType::Value),
             name: Some("访问量".to_string()),
             ..Default::default()
-        }],
-        series: vec![SeriesOption::Line(liecharts::LineSeriesOption {
+        })
+        .with_series(SeriesOption::Line(liecharts::LineSeriesOption {
             name: Some("访问量".to_string()),
             data: vec![
                 DataPoint::Number(120.0),
@@ -48,11 +44,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 opacity: None,
             }),
             ..Default::default()
-        })],
-        ..Default::default()
-    };
+        }))
+        .build()?;
 
-    chart.render_to_image(option, "area.png")?;
+    let chart = LieChart::new(800, 600);
+    chart.render_to_image(&model, "area.png")?;
     println!("面积图已保存到 area.png");
 
     Ok(())

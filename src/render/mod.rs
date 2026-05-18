@@ -31,7 +31,12 @@ pub trait Renderer {
     fn draw_path(&mut self, path: &BezPath, style: &FillStrokeStyle);
 
     /// 绘制渐变填充路径
-    fn draw_gradient_path(&mut self, path: &BezPath, gradient: &GradientDef, stroke: Option<&Stroke>);
+    fn draw_gradient_path(
+        &mut self,
+        path: &BezPath,
+        gradient: &GradientDef,
+        stroke: Option<&Stroke>,
+    );
 
     /// 绘制文本
     fn draw_text(
@@ -88,7 +93,11 @@ pub trait Renderer {
             VisualElement::Path { path, style } => {
                 self.draw_path(path, style);
             }
-            VisualElement::GradientPath { path, gradient, stroke } => {
+            VisualElement::GradientPath {
+                path,
+                gradient,
+                stroke,
+            } => {
                 self.draw_gradient_path(path, gradient, stroke.as_ref());
             }
             VisualElement::TextRun {
@@ -99,7 +108,15 @@ pub trait Renderer {
                 layout,
                 ..
             } => {
-                self.draw_text(text, *position, style.color, style.font_size, &style.font_family, *rotation, layout.as_ref());
+                self.draw_text(
+                    text,
+                    *position,
+                    style.color,
+                    style.font_size,
+                    &style.font_family,
+                    *rotation,
+                    layout.as_ref(),
+                );
             }
             VisualElement::Group {
                 children,

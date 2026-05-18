@@ -1,10 +1,10 @@
+use crate::visual::{Color, TextAlign, TextBaseline};
+use crate::{ChartError, model};
+use parley::style::{FontFamily, StyleProperty};
+use parley::{Alignment, AlignmentOptions, FontContext, LayoutContext};
 use std::cell::RefCell;
 use std::sync::Arc;
-use parley::style::{FontFamily, StyleProperty};
-use parley::{FontContext, LayoutContext, Alignment, AlignmentOptions};
 use vello_cpu::color::{AlphaColor, Srgb};
-use crate::{ChartError, model};
-use crate::visual::{TextAlign, TextBaseline, Color};
 
 /// 文本布局包装类型
 pub type TextLayout = parley::Layout<TextColor>;
@@ -27,11 +27,11 @@ pub fn with_layout_context<R, F: FnOnce(&mut LayoutContext<TextColor>) -> R>(f: 
 }
 
 /// 同时访问两个上下文的便捷函数
-pub fn with_text_contexts<R, F: FnOnce(&mut FontContext, &mut LayoutContext<TextColor>) -> R>(f: F) -> R {
+pub fn with_text_contexts<R, F: FnOnce(&mut FontContext, &mut LayoutContext<TextColor>) -> R>(
+    f: F,
+) -> R {
     FONT_CONTEXT.with(|font_cx| {
-        LAYOUT_CONTEXT.with(|layout_cx| {
-            f(&mut font_cx.borrow_mut(), &mut layout_cx.borrow_mut())
-        })
+        LAYOUT_CONTEXT.with(|layout_cx| f(&mut font_cx.borrow_mut(), &mut layout_cx.borrow_mut()))
     })
 }
 
@@ -86,14 +86,16 @@ pub enum FontSource {
 /// // 从内存加载（例如从 CDN 下载的字节）
 /// liecharts::register_font(liecharts::FontSource::Memory(font_bytes), Some("MyFont")).unwrap();
 /// ```
-pub fn register_font(source: FontSource, family_name_override: Option<&str>) -> crate::error::Result<()> {
+pub fn register_font(
+    source: FontSource,
+    family_name_override: Option<&str>,
+) -> crate::error::Result<()> {
     use parley::fontique::Blob;
 
     let data = match source {
         FontSource::Path(path) => {
-            let bytes = std::fs::read(&path).map_err(|e| {
-                ChartError::FontLoadError(format!("读取字体文件失败: {e}"))
-            })?;
+            let bytes = std::fs::read(&path)
+                .map_err(|e| ChartError::FontLoadError(format!("读取字体文件失败: {e}")))?;
             Blob::new(Arc::new(bytes))
         }
         FontSource::Memory(bytes) => Blob::new(Arc::new(bytes)),
@@ -111,9 +113,8 @@ pub fn register_font(source: FontSource, family_name_override: Option<&str>) -> 
     Ok(())
 }
 
-
 /// 创建文本布局
-/// 
+///
 /// 使用 parley 以 **左对齐** 排版文本，返回布局以获取自然宽度/高度。
 /// 组件的对齐（居中、右对齐等）应在拿到 layout 尺寸后手动计算位置偏移。
 pub fn create_text_layout(
@@ -176,7 +177,6 @@ pub fn layout_text(
     })
 }
 
-
 /// 使用指定的 FontContext 和 LayoutContext 创建多段样式文本布局。
 ///
 /// 这是 `layout_text` 的低级版本，适用于需要复用上下文的场景。
@@ -190,7 +190,13 @@ pub fn layout_text_with_contexts(
     layout_cx: &mut LayoutContext<TextColor>,
 ) -> TextLayout {
     if texts.is_empty() {
-        return layout_text_with_contexts(&[("", &model::TextStyle::default())], max_width, align, font_cx, layout_cx);
+        return layout_text_with_contexts(
+            &[("", &model::TextStyle::default())],
+            max_width,
+            align,
+            font_cx,
+            layout_cx,
+        );
     }
 
     // 1. 直接拼接所有文本（不带额外分隔符，用户可在文本中自行添加 \n）
@@ -210,7 +216,9 @@ pub fn layout_text_with_contexts(
     let default_font_stack = FontFamily::named(&first_style.font_family);
     builder.push_default(StyleProperty::FontFamily(default_font_stack));
     builder.push_default(StyleProperty::FontSize(first_style.font_size as f32));
-    builder.push_default(StyleProperty::Brush(color_to_text_color(&first_style.color)));
+    builder.push_default(StyleProperty::Brush(color_to_text_color(
+        &first_style.color,
+    )));
 
     // 3. 后续各段覆盖样式
     for (i, (_, style)) in texts.iter().enumerate().skip(1) {

@@ -1,20 +1,18 @@
-use liecharts::{AxisType, DataPoint, LieChart, LieChartOption, SeriesOption};
+use liecharts::{AxisType, ChartBuilder, DataPoint, LieChart, SeriesOption};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let chart = LieChart::new(800, 600);
-
-    let option = LieChartOption {
-        title: Some(liecharts::TitleOption {
+    let model = ChartBuilder::new()
+        .with_title(liecharts::TitleOption {
             text: Some("月度销售数据".to_string()),
             subtext: Some("2024年".to_string()),
             ..Default::default()
-        }),
-        legend: Some(liecharts::LegendOption {
+        })
+        .with_legend(liecharts::LegendOption {
             show: Some(true),
             data: Some(vec!["销售额".to_string()]),
             ..Default::default()
-        }),
-        x_axis: vec![liecharts::AxisOption {
+        })
+        .with_x_axis(liecharts::AxisOption {
             axis_type: Some(AxisType::Category),
             data: Some(vec![
                 "1月".to_string(),
@@ -25,13 +23,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "6月".to_string(),
             ]),
             ..Default::default()
-        }],
-        y_axis: vec![liecharts::AxisOption {
+        })
+        .with_y_axis(liecharts::AxisOption {
             axis_type: Some(AxisType::Value),
             name: Some("销售额(万元)".to_string()),
             ..Default::default()
-        }],
-        series: vec![SeriesOption::Bar(liecharts::BarSeriesOption {
+        })
+        .with_series(SeriesOption::Bar(liecharts::BarSeriesOption {
             name: Some("销售额".to_string()),
             data: vec![
                 DataPoint::Number(120.0),
@@ -42,11 +40,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 DataPoint::Number(110.0),
             ],
             ..Default::default()
-        })],
-        ..Default::default()
-    };
+        }))
+        .build()?;
 
-    chart.render_to_image(option, "bar.png")?;
+    let chart = LieChart::new(800, 600);
+    chart.render_to_image(&model, "bar.png")?;
     println!("柱状图已保存到 bar.png");
 
     Ok(())

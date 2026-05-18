@@ -1,17 +1,13 @@
-use liecharts::{
-    DataPoint, LieChart, LieChartOption, SeriesOption,
-};
+use liecharts::{ChartBuilder, DataPoint, LieChart, SeriesOption};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let chart = LieChart::new(800, 600);
-
-    let option = LieChartOption {
-        title: Some(liecharts::TitleOption {
+    let model = ChartBuilder::new()
+        .with_title(liecharts::TitleOption {
             text: Some("极坐标柱状图".to_string()),
             subtext: Some("Polar Bar Chart".to_string()),
             ..Default::default()
-        }),
-        legend: Some(liecharts::LegendOption {
+        })
+        .with_legend(liecharts::LegendOption {
             show: Some(true),
             data: Some(vec![
                 "直接访问".to_string(),
@@ -21,8 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "搜索引擎".to_string(),
             ]),
             ..Default::default()
-        }),
-        series: vec![SeriesOption::PolarBar(liecharts::PolarBarSeriesOption {
+        })
+        .with_series(SeriesOption::PolarBar(liecharts::PolarBarSeriesOption {
             name: Some("访问来源".to_string()),
             data: vec![
                 DataPoint::Number(335.0),
@@ -32,14 +28,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 DataPoint::Number(1548.0),
             ],
             ..Default::default()
-        })],
-        ..Default::default()
-    };
+        }))
+        .build()?;
 
-    chart.render_to_image(option.clone(), "polar_bar.png")?;
+    let chart = LieChart::new(800, 600);
+    chart.render_to_image(&model, "polar_bar.png")?;
     println!("极坐标柱状图已保存到 polar_bar.png");
-    chart.render_to_svg(option, "polar_bar.svg")?;
-    println!("极坐标柱状图已保存到 polar_bar.svg");
 
     Ok(())
 }

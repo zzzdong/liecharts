@@ -1,9 +1,9 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{BarSeries, ResolvedOption};
-use crate::pipeline::mapper::{CoordinateMapper, CartesianBarMapper};
+use crate::model::{BarSeries, ChartModel};
+use crate::pipeline::builder::{BarVisualBuilder, VisualBuilder};
+use crate::pipeline::mapper::{CartesianBarMapper, CoordinateMapper};
 use crate::pipeline::transform::{DataTransformer, IdentityTransformer};
-use crate::pipeline::builder::{VisualBuilder, BarVisualBuilder};
 use crate::visual::{Stroke, VisualElement};
 
 pub struct BarSeriesComponent {
@@ -35,8 +35,7 @@ impl BarSeriesComponent {
         let bar_width = self.series.bar_width.unwrap_or(cat_width * 0.6);
         let bar_width_ratio = bar_width / cat_width;
 
-        let mapper = CartesianBarMapper::new()
-            .with_bar_width_ratio(bar_width_ratio);
+        let mapper = CartesianBarMapper::new().with_bar_width_ratio(bar_width_ratio);
         let mapped = mapper.map(transformed, coord, self.series.y_axis_index);
 
         // 3. Build
@@ -99,7 +98,11 @@ impl SeriesComponent for BarSeriesComponent {
 }
 
 impl ChartComponent for BarSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

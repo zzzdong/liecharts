@@ -1,9 +1,9 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{BubbleSeries, ResolvedOption};
+use crate::model::{BubbleSeries, ChartModel};
 use crate::visual::{FillStrokeStyle, VisualElement};
-use vello_cpu::kurbo::{Circle, Point};
 use vello_cpu::kurbo::Shape as KurboShape;
+use vello_cpu::kurbo::{Circle, Point};
 
 pub struct BubbleSeriesComponent {
     series: BubbleSeries,
@@ -33,7 +33,7 @@ impl BubbleSeriesComponent {
             let x = coord.x_to_pixel(bubble.x);
             let y = coord.y_to_pixel(bubble.y, self.series.y_axis_index);
 
-            let radius = (bubble.size.sqrt() * self.series.symbol_size_scale).max(2.0).min(50.0);
+            let radius = (bubble.size.sqrt() * self.series.symbol_size_scale).clamp(2.0, 50.0);
 
             let circle = Circle::new(Point::new(x, y), radius);
             let path = circle.into_path(0.1);
@@ -42,10 +42,7 @@ impl BubbleSeriesComponent {
                 path,
                 style: FillStrokeStyle {
                     fill: Some(fill_color),
-                    stroke: Some(crate::visual::Stroke {
-                        color,
-                        width: 1.0,
-                    }),
+                    stroke: Some(crate::visual::Stroke { color, width: 1.0 }),
                 },
             });
         }
@@ -69,7 +66,11 @@ impl SeriesComponent for BubbleSeriesComponent {
 }
 
 impl ChartComponent for BubbleSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

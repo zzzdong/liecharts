@@ -1,15 +1,13 @@
-use liecharts::{LieChart, LieChartOption, SeriesOption};
+use liecharts::{ChartBuilder, LieChart, SeriesOption};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let chart = LieChart::new(800, 600);
-
-    let option = LieChartOption {
-        title: Some(liecharts::TitleOption {
+    let model = ChartBuilder::new()
+        .with_title(liecharts::TitleOption {
             text: Some("产品销售数据表".to_string()),
             subtext: Some("Table Chart".to_string()),
             ..Default::default()
-        }),
-        series: vec![SeriesOption::Table(liecharts::TableSeriesOption {
+        })
+        .with_series(SeriesOption::Table(liecharts::TableSeriesOption {
             name: Some("销售数据".to_string()),
             columns: Some(vec![
                 "产品".to_string(),
@@ -49,11 +47,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ],
             ]),
             ..Default::default()
-        })],
-        ..Default::default()
-    };
+        }))
+        .build()?;
 
-    chart.render_to_image(option, "table.png")?;
+    let chart = LieChart::new(800, 600);
+    chart.render_to_image(&model, "table.png")?;
     println!("数据表已保存到 table.png");
 
     Ok(())

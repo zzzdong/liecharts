@@ -1,14 +1,16 @@
 //! Pixmap 渲染器 - 使用 vello_cpu 渲染为位图
 
 use crate::error::Result;
-use crate::visual::{Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement};
 use crate::render::Renderer;
 use crate::text::TextLayout;
-use vello_cpu::{Pixmap, Resources};
+use crate::visual::{
+    Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement,
+};
 use vello_cpu::RenderContext;
 use vello_cpu::kurbo::Shape as KurboShape;
 use vello_cpu::kurbo::{BezPath, Circle, Point, Rect, Stroke as KurboStroke};
 use vello_cpu::peniko::color::AlphaColor;
+use vello_cpu::{Pixmap, Resources};
 
 /// Vello CPU 渲染器，输出 Pixmap
 ///
@@ -128,18 +130,29 @@ impl Renderer for PixmapRenderer {
         }
     }
 
-    fn draw_gradient_path(&mut self, path: &BezPath, gradient: &GradientDef, stroke: Option<&Stroke>) {
-        use vello_cpu::peniko::{Gradient, Extend};
-        use vello_cpu::peniko::{GradientKind, LinearGradientPosition, ColorStops, ColorStop, InterpolationAlphaSpace};
-        use vello_cpu::peniko::color::{DynamicColor, ColorSpaceTag, HueDirection};
+    fn draw_gradient_path(
+        &mut self,
+        path: &BezPath,
+        gradient: &GradientDef,
+        stroke: Option<&Stroke>,
+    ) {
         use vello_cpu::kurbo::Point as KurboPoint;
+        use vello_cpu::peniko::color::{ColorSpaceTag, DynamicColor, HueDirection};
+        use vello_cpu::peniko::{
+            ColorStop, ColorStops, GradientKind, InterpolationAlphaSpace, LinearGradientPosition,
+        };
+        use vello_cpu::peniko::{Extend, Gradient};
 
-        let stops: Vec<ColorStop> = gradient.stops.iter().map(|(offset, color)| {
-            ColorStop {
+        let stops: Vec<ColorStop> = gradient
+            .stops
+            .iter()
+            .map(|(offset, color)| ColorStop {
                 offset: *offset as f32,
-                color: DynamicColor::from_alpha_color(AlphaColor::from_rgba8(color.r, color.g, color.b, color.a)),
-            }
-        }).collect();
+                color: DynamicColor::from_alpha_color(AlphaColor::from_rgba8(
+                    color.r, color.g, color.b, color.a,
+                )),
+            })
+            .collect();
 
         // 使用路径的包围盒来确定渐变坐标，使渐变覆盖整个路径区域
         let bounds = path.bounding_box();
@@ -166,7 +179,16 @@ impl Renderer for PixmapRenderer {
         }
     }
 
-    fn draw_text(&mut self, _text: &str, position: Point, _color: Color, _font_size: f64, _font_family: &str, rotation: f64, layout: Option<&TextLayout>) {
+    fn draw_text(
+        &mut self,
+        _text: &str,
+        position: Point,
+        _color: Color,
+        _font_size: f64,
+        _font_family: &str,
+        rotation: f64,
+        layout: Option<&TextLayout>,
+    ) {
         use vello_cpu::kurbo::Affine;
 
         let Some(layout) = layout else {
@@ -175,8 +197,7 @@ impl Renderer for PixmapRenderer {
 
         // position 是组件已计算好的文本块左上角
         // glyph 坐标是 layout 内绝对坐标，直接平移+旋转即可
-        let transform = Affine::translate((position.x, position.y))
-            * Affine::rotate(rotation);
+        let transform = Affine::translate((position.x, position.y)) * Affine::rotate(rotation);
 
         // 遍历布局中的每一行和每个 glyph run
         for line in layout.lines() {
@@ -208,7 +229,8 @@ impl Renderer for PixmapRenderer {
                         self.ctx.set_paint(brush.0);
 
                         // 使用 vello_cpu 渲染 glyph run
-                        self.ctx.glyph_run(&mut self.resources, font_data)
+                        self.ctx
+                            .glyph_run(&mut self.resources, font_data)
                             .font_size(run_font_size)
                             .glyph_transform(transform)
                             .fill_glyphs(glyphs.into_iter());

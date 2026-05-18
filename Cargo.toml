@@ -1,7 +1,7 @@
 [package]
 name = "liecharts"
 version = "0.1.0-beta"
-authors = ["zzzdong <zzzdong@example.com>"]
+authors = ["zzzdong <kuwater@163.com>"]
 edition = "2024"
 
 description = "A Rust charting library with PNG and SVG rendering support"

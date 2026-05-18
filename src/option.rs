@@ -1,5 +1,5 @@
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt;
 
@@ -13,7 +13,6 @@ pub enum TextAlignOption {
     Center,
     Right,
 }
-
 
 impl From<TextAlignOption> for crate::visual::TextAlign {
     fn from(option: TextAlignOption) -> Self {
@@ -43,52 +42,52 @@ pub enum PositionPreset {
 
 /// 位置枚举 - 支持预设值、像素值或百分比值
 #[derive(Debug, Clone, PartialEq)]
-pub enum Position {
+pub enum PositionOption {
     Preset(PositionPreset),
     Pixel(f64),
     Percent(f64),
 }
 
-impl Position {
+impl PositionOption {
     pub fn auto() -> Self {
-        Position::Preset(PositionPreset::Auto)
+        PositionOption::Preset(PositionPreset::Auto)
     }
     pub fn center() -> Self {
-        Position::Preset(PositionPreset::Center)
+        PositionOption::Preset(PositionPreset::Center)
     }
     pub fn left() -> Self {
-        Position::Preset(PositionPreset::Left)
+        PositionOption::Preset(PositionPreset::Left)
     }
     pub fn right() -> Self {
-        Position::Preset(PositionPreset::Right)
+        PositionOption::Preset(PositionPreset::Right)
     }
     pub fn top() -> Self {
-        Position::Preset(PositionPreset::Top)
+        PositionOption::Preset(PositionPreset::Top)
     }
     pub fn bottom() -> Self {
-        Position::Preset(PositionPreset::Bottom)
+        PositionOption::Preset(PositionPreset::Bottom)
     }
     pub fn px(value: f64) -> Self {
-        Position::Pixel(value)
+        PositionOption::Pixel(value)
     }
     pub fn percent(value: f64) -> Self {
-        Position::Percent(value)
+        PositionOption::Percent(value)
     }
 }
 
-impl Default for Position {
+impl Default for PositionOption {
     fn default() -> Self {
-        Position::Preset(PositionPreset::Auto)
+        PositionOption::Preset(PositionPreset::Auto)
     }
 }
 
-impl Serialize for Position {
+impl Serialize for PositionOption {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         match self {
-            Position::Preset(p) => {
+            PositionOption::Preset(p) => {
                 let s = match p {
                     PositionPreset::Auto => "auto",
                     PositionPreset::Center => "center",
@@ -99,13 +98,13 @@ impl Serialize for Position {
                 };
                 serializer.serialize_str(s)
             }
-            Position::Pixel(v) => serializer.serialize_f64(*v),
-            Position::Percent(v) => serializer.serialize_str(&format!("{}%", v)),
+            PositionOption::Pixel(v) => serializer.serialize_f64(*v),
+            PositionOption::Percent(v) => serializer.serialize_str(&format!("{}%", v)),
         }
     }
 }
 
-impl<'de> Deserialize<'de> for Position {
+impl<'de> Deserialize<'de> for PositionOption {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -113,30 +112,30 @@ impl<'de> Deserialize<'de> for Position {
         struct PositionVisitor;
 
         impl<'de> Visitor<'de> for PositionVisitor {
-            type Value = Position;
+            type Value = PositionOption;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a position value: preset string, number, or percentage string")
             }
 
-            fn visit_str<E: de::Error>(self, value: &str) -> Result<Position, E> {
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<PositionOption, E> {
                 if value.ends_with('%') {
                     let v = value
                         .trim_end_matches('%')
                         .parse::<f64>()
                         .map_err(|_| de::Error::custom(format!("invalid percentage: {}", value)))?;
-                    Ok(Position::Percent(v))
+                    Ok(PositionOption::Percent(v))
                 } else {
                     match value {
-                        "auto" => Ok(Position::Preset(PositionPreset::Auto)),
-                        "center" => Ok(Position::Preset(PositionPreset::Center)),
-                        "left" => Ok(Position::Preset(PositionPreset::Left)),
-                        "right" => Ok(Position::Preset(PositionPreset::Right)),
-                        "top" => Ok(Position::Preset(PositionPreset::Top)),
-                        "bottom" => Ok(Position::Preset(PositionPreset::Bottom)),
+                        "auto" => Ok(PositionOption::Preset(PositionPreset::Auto)),
+                        "center" => Ok(PositionOption::Preset(PositionPreset::Center)),
+                        "left" => Ok(PositionOption::Preset(PositionPreset::Left)),
+                        "right" => Ok(PositionOption::Preset(PositionPreset::Right)),
+                        "top" => Ok(PositionOption::Preset(PositionPreset::Top)),
+                        "bottom" => Ok(PositionOption::Preset(PositionPreset::Bottom)),
                         _ => {
                             if let Ok(v) = value.parse::<f64>() {
-                                Ok(Position::Pixel(v))
+                                Ok(PositionOption::Pixel(v))
                             } else {
                                 Err(de::Error::custom(format!("invalid position: {}", value)))
                             }
@@ -145,16 +144,16 @@ impl<'de> Deserialize<'de> for Position {
                 }
             }
 
-            fn visit_f64<E: de::Error>(self, value: f64) -> Result<Position, E> {
-                Ok(Position::Pixel(value))
+            fn visit_f64<E: de::Error>(self, value: f64) -> Result<PositionOption, E> {
+                Ok(PositionOption::Pixel(value))
             }
 
-            fn visit_u64<E: de::Error>(self, value: u64) -> Result<Position, E> {
-                Ok(Position::Pixel(value as f64))
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<PositionOption, E> {
+                Ok(PositionOption::Pixel(value as f64))
             }
 
-            fn visit_i64<E: de::Error>(self, value: i64) -> Result<Position, E> {
-                Ok(Position::Pixel(value as f64))
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<PositionOption, E> {
+                Ok(PositionOption::Pixel(value as f64))
             }
         }
 
@@ -209,7 +208,7 @@ impl ColorOption {
         }
     }
 
-    fn to_hex_string(&self) -> String {
+    fn hex_string(&self) -> String {
         if self.a == 255 {
             format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
         } else {
@@ -226,7 +225,7 @@ impl Default for ColorOption {
 
 impl Serialize for ColorOption {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.to_hex_string())
+        serializer.serialize_str(&self.hex_string())
     }
 }
 
@@ -266,7 +265,6 @@ pub enum NameLocation {
     End,
 }
 
-
 // ============================================================
 // Orient 枚举
 // ============================================================
@@ -279,7 +277,6 @@ pub enum Orient {
     Horizontal,
     Vertical,
 }
-
 
 // ============================================================
 // LineType 枚举
@@ -294,7 +291,6 @@ pub enum LineType {
     Dashed,
     Dotted,
 }
-
 
 // ============================================================
 // FontWeight 枚举
@@ -341,7 +337,6 @@ pub enum SymbolType {
     None,
 }
 
-
 // ============================================================
 // LabelPosition 枚举
 // ============================================================
@@ -360,7 +355,6 @@ pub enum LabelPosition {
     Center,
 }
 
-
 // ============================================================
 // AxisType 枚举
 // ============================================================
@@ -375,7 +369,6 @@ pub enum AxisType {
     Time,
     Log,
 }
-
 
 // ============================================================
 // AxisPosition 枚举 - 坐标轴位置
@@ -392,7 +385,6 @@ pub enum AxisPosition {
     Right,
 }
 
-
 // ============================================================
 // FontStyle 枚举 - 字体风格
 // ============================================================
@@ -406,7 +398,6 @@ pub enum FontStyle {
     Italic,
     Oblique,
 }
-
 
 // ============================================================
 // LabelAlign 枚举 - 标签水平对齐
@@ -422,7 +413,6 @@ pub enum LabelAlign {
     Right,
 }
 
-
 // ============================================================
 // LabelVerticalAlign 枚举 - 标签垂直对齐
 // ============================================================
@@ -436,7 +426,6 @@ pub enum LabelVerticalAlign {
     Middle,
     Bottom,
 }
-
 
 // ============================================================
 // 配置结构体
@@ -463,14 +452,13 @@ pub struct LieChartOption {
     pub text_style: Option<TextStyleOption>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TitleOption {
     pub text: Option<String>,
     pub subtext: Option<String>,
-    pub left: Option<Position>,
-    pub top: Option<Position>,
+    pub left: Option<PositionOption>,
+    pub top: Option<PositionOption>,
     pub text_style: Option<TextStyleOption>,
     pub subtext_style: Option<TextStyleOption>,
 }
@@ -480,8 +468,8 @@ impl Default for TitleOption {
         Self {
             text: None,
             subtext: None,
-            left: Some(Position::center()),
-            top: Some(Position::auto()),
+            left: Some(PositionOption::center()),
+            top: Some(PositionOption::auto()),
             text_style: None,
             subtext_style: None,
         }
@@ -493,8 +481,8 @@ impl Default for TitleOption {
 pub struct LegendOption {
     pub show: Option<bool>,
     pub data: Option<Vec<String>>,
-    pub left: Option<Position>,
-    pub top: Option<Position>,
+    pub left: Option<PositionOption>,
+    pub top: Option<PositionOption>,
     pub orient: Option<Orient>,
     pub text_style: Option<TextStyleOption>,
     pub item_width: Option<f64>,
@@ -505,20 +493,20 @@ pub struct LegendOption {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GridOption {
-    pub left: Option<Position>,
-    pub right: Option<Position>,
-    pub top: Option<Position>,
-    pub bottom: Option<Position>,
+    pub left: Option<PositionOption>,
+    pub right: Option<PositionOption>,
+    pub top: Option<PositionOption>,
+    pub bottom: Option<PositionOption>,
     pub contain_label: Option<bool>,
 }
 
 impl Default for GridOption {
     fn default() -> Self {
         Self {
-            left: Some(Position::percent(10.0)),
-            right: Some(Position::percent(10.0)),
-            top: Some(Position::percent(15.0)),
-            bottom: Some(Position::percent(15.0)),
+            left: Some(PositionOption::percent(10.0)),
+            right: Some(PositionOption::percent(10.0)),
+            top: Some(PositionOption::percent(15.0)),
+            bottom: Some(PositionOption::percent(15.0)),
             contain_label: Some(true),
         }
     }
@@ -818,9 +806,7 @@ pub struct TableCellStyleOption {
 
 impl Default for TableCellStyleOption {
     fn default() -> Self {
-        Self {
-            padding: Some(8.0),
-        }
+        Self { padding: Some(8.0) }
     }
 }
 
@@ -899,7 +885,6 @@ pub struct BarSeriesOption {
     pub label: Option<LabelOption>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]
@@ -912,7 +897,6 @@ pub struct CandlestickSeriesOption {
     pub item_style: Option<CandlestickItemStyleOption>,
     pub label: Option<LabelOption>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -949,7 +933,6 @@ pub struct CandlestickItemStyleOption {
     pub border_color: Option<ColorOption>,
     pub border_color0: Option<ColorOption>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1012,7 +995,6 @@ pub struct RadarIndicatorOption {
     pub name: Option<String>,
     pub max: Option<f64>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1247,7 +1229,10 @@ impl Default for GaugeSeriesOption {
     fn default() -> Self {
         Self {
             name: None,
-            data: vec![GaugeDataPoint { value: 0.0, name: None }],
+            data: vec![GaugeDataPoint {
+                value: 0.0,
+                name: None,
+            }],
             min: Some(0.0),
             max: Some(100.0),
             center: Some(vec!["50%".to_string(), "50%".to_string()]),

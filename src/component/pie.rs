@@ -1,9 +1,9 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{PieSeries, ResolvedOption};
+use crate::model::{ChartModel, PieSeries};
+use crate::pipeline::builder::VisualBuilder;
 use crate::pipeline::mapper::{CoordinateMapper, PolarPieMapper};
 use crate::pipeline::transform::{DataTransformer, IdentityTransformer};
-use crate::pipeline::builder::VisualBuilder;
 use crate::visual::{Color, VisualElement};
 
 pub struct PieSeriesComponent {
@@ -60,10 +60,15 @@ impl PieSeriesComponent {
             crate::pipeline::LabelConfig::default()
         };
 
-        let colors: Vec<Color> = self.series.data.iter()
+        let colors: Vec<Color> = self
+            .series
+            .data
+            .iter()
             .enumerate()
             .map(|(i, _)| {
-                ctx.resolved.colors.get(i % ctx.resolved.colors.len())
+                ctx.resolved
+                    .colors
+                    .get(i % ctx.resolved.colors.len())
                     .copied()
                     .unwrap_or(Color::new(0, 0, 0))
             })
@@ -93,7 +98,11 @@ impl SeriesComponent for PieSeriesComponent {
 }
 
 impl ChartComponent for PieSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

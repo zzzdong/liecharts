@@ -79,12 +79,16 @@ impl DataTransformer for StackedTransformer {
 
             // 如果指定了 filter，只处理匹配的组
             if let Some(ref filter) = self.stack_filter
-                && stack_name.as_ref() != Some(filter) {
-                    // 非目标组，使用恒等变换
-                    continue;
-                }
+                && stack_name.as_ref() != Some(filter)
+            {
+                // 非目标组，使用恒等变换
+                continue;
+            }
 
-            stack_groups.entry(stack_name).or_default().push((idx, series));
+            stack_groups
+                .entry(stack_name)
+                .or_default()
+                .push((idx, series));
         }
 
         // 2. 收集结果

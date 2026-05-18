@@ -34,7 +34,12 @@ pub enum MappedGeometry {
 
 /// 坐标映射器 trait
 pub trait CoordinateMapper {
-    fn map(&self, transformed: &TransformedSeries, coord: &DataCoordinateSystem, y_axis_index: usize) -> Vec<MappedGeometry>;
+    fn map(
+        &self,
+        transformed: &TransformedSeries,
+        coord: &DataCoordinateSystem,
+        y_axis_index: usize,
+    ) -> Vec<MappedGeometry>;
 }
 
 /// 笛卡尔坐标柱状图映射器
@@ -63,7 +68,12 @@ impl CartesianBarMapper {
 }
 
 impl CoordinateMapper for CartesianBarMapper {
-    fn map(&self, transformed: &TransformedSeries, coord: &DataCoordinateSystem, y_axis_index: usize) -> Vec<MappedGeometry> {
+    fn map(
+        &self,
+        transformed: &TransformedSeries,
+        coord: &DataCoordinateSystem,
+        y_axis_index: usize,
+    ) -> Vec<MappedGeometry> {
         let cat_width = coord.category_width();
         let bar_width = cat_width * self.bar_width_ratio;
         let y_range = coord.get_y_range(y_axis_index);
@@ -117,7 +127,12 @@ impl CartesianLineMapper {
 }
 
 impl CoordinateMapper for CartesianLineMapper {
-    fn map(&self, transformed: &TransformedSeries, coord: &DataCoordinateSystem, y_axis_index: usize) -> Vec<MappedGeometry> {
+    fn map(
+        &self,
+        transformed: &TransformedSeries,
+        coord: &DataCoordinateSystem,
+        y_axis_index: usize,
+    ) -> Vec<MappedGeometry> {
         let points: Vec<Point> = transformed
             .items
             .iter()
@@ -142,7 +157,7 @@ impl CoordinateMapper for CartesianLineMapper {
                 // 非堆叠图：使用Y轴最小值作为基线
                 Some(y_range.0)
             };
-            
+
             Some(
                 transformed
                     .items
@@ -152,10 +167,7 @@ impl CoordinateMapper for CartesianLineMapper {
                             Some(b) => coord.y_to_pixel(b, y_axis_index),
                             None => coord.y_to_pixel(item.baseline, y_axis_index),
                         };
-                        Point::new(
-                            coord.x_to_pixel(item.data_index as f64 + 0.5),
-                            y,
-                        )
+                        Point::new(coord.x_to_pixel(item.data_index as f64 + 0.5), y)
                     })
                     .collect(),
             )
@@ -204,7 +216,12 @@ impl PolarPieMapper {
 }
 
 impl CoordinateMapper for PolarPieMapper {
-    fn map(&self, transformed: &TransformedSeries, coord: &DataCoordinateSystem, _y_axis_index: usize) -> Vec<MappedGeometry> {
+    fn map(
+        &self,
+        transformed: &TransformedSeries,
+        coord: &DataCoordinateSystem,
+        _y_axis_index: usize,
+    ) -> Vec<MappedGeometry> {
         let total: f64 = transformed
             .items
             .iter()
@@ -262,7 +279,12 @@ impl CartesianScatterMapper {
 }
 
 impl CoordinateMapper for CartesianScatterMapper {
-    fn map(&self, transformed: &TransformedSeries, coord: &DataCoordinateSystem, y_axis_index: usize) -> Vec<MappedGeometry> {
+    fn map(
+        &self,
+        transformed: &TransformedSeries,
+        coord: &DataCoordinateSystem,
+        y_axis_index: usize,
+    ) -> Vec<MappedGeometry> {
         transformed
             .items
             .iter()

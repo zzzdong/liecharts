@@ -6,9 +6,16 @@ pub mod builder;
 pub mod mapper;
 pub mod transform;
 
-pub use builder::{BarVisualBuilder, LineVisualBuilder, PieVisualBuilder, ScatterVisualBuilder, VisualBuilder};
-pub use mapper::{CartesianBarMapper, CartesianLineMapper, CartesianScatterMapper, CoordinateMapper, MappedGeometry, PolarPieMapper};
-pub use transform::{DataTransformer, IdentityTransformer, StackedTransformer, TransformedItem, TransformedSeries};
+pub use builder::{
+    BarVisualBuilder, LineVisualBuilder, PieVisualBuilder, ScatterVisualBuilder, VisualBuilder,
+};
+pub use mapper::{
+    CartesianBarMapper, CartesianLineMapper, CartesianScatterMapper, CoordinateMapper,
+    MappedGeometry, PolarPieMapper,
+};
+pub use transform::{
+    DataTransformer, IdentityTransformer, StackedTransformer, TransformedItem, TransformedSeries,
+};
 
 /// 系列样式
 #[derive(Debug, Clone)]

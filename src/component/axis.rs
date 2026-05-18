@@ -1,9 +1,9 @@
 use crate::component::ChartComponent;
 use crate::layout::{AxisPosition, LayoutOutput};
-use crate::model::{Axis, AxisNameSide, AxisType, NameLocation, ResolvedOption};
+use crate::model::{Axis, AxisNameSide, AxisType, ChartModel, NameLocation};
 use crate::option::{LabelAlign, LabelVerticalAlign};
-use crate::visual::{VisualElement, StrokeStyle, TextAlign, TextBaseline};
-use crate::text::{create_text_layout, compute_text_offset};
+use crate::text::{compute_text_offset, create_text_layout};
+use crate::visual::{StrokeStyle, TextAlign, TextBaseline, VisualElement};
 use vello_cpu::kurbo::Point;
 
 pub struct AxisComponent {
@@ -23,8 +23,14 @@ impl AxisComponent {
         }
     }
 
-    fn get_grid_info<'a>(&self, layout: &'a LayoutOutput) -> Option<&'a crate::layout::GridLayoutInfo> {
-        layout.grids.iter().find(|g| g.grid_index == self.grid_index)
+    fn get_grid_info<'a>(
+        &self,
+        layout: &'a LayoutOutput,
+    ) -> Option<&'a crate::layout::GridLayoutInfo> {
+        layout
+            .grids
+            .iter()
+            .find(|g| g.grid_index == self.grid_index)
     }
 
     fn category_label_ts(&self) -> Vec<f64> {
@@ -99,7 +105,11 @@ impl AxisComponent {
             grid_info.data_coord.x_range
         } else {
             // 对于Y轴，使用对应索引的Y轴范围
-            grid_info.data_coord.y_ranges.get(self.area_index).copied()
+            grid_info
+                .data_coord
+                .y_ranges
+                .get(self.area_index)
+                .copied()
                 .or_else(|| grid_info.data_coord.y_ranges.first().copied())
                 .unwrap_or((0.0, 100.0))
         };
@@ -127,7 +137,11 @@ impl AxisComponent {
 }
 
 impl ChartComponent for AxisComponent {
-    fn build_visual_elements(&self, _resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        _resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
         let grid_info = match self.get_grid_info(layout) {
@@ -148,18 +162,22 @@ impl ChartComponent for AxisComponent {
         // ── 轴线 ──
         if self.axis.axis_line.show {
             let (start, end) = match area.position {
-                AxisPosition::Bottom => {
-                    (Point::new(area.axis_bbox.x0, area.axis_bbox.y0), Point::new(area.axis_bbox.x1, area.axis_bbox.y0))
-                }
-                AxisPosition::Top => {
-                    (Point::new(area.axis_bbox.x0, area.axis_bbox.y1), Point::new(area.axis_bbox.x1, area.axis_bbox.y1))
-                }
-                AxisPosition::Left => {
-                    (Point::new(area.axis_bbox.x1, area.axis_bbox.y0), Point::new(area.axis_bbox.x1, area.axis_bbox.y1))
-                }
-                AxisPosition::Right => {
-                    (Point::new(area.axis_bbox.x0, area.axis_bbox.y0), Point::new(area.axis_bbox.x0, area.axis_bbox.y1))
-                }
+                AxisPosition::Bottom => (
+                    Point::new(area.axis_bbox.x0, area.axis_bbox.y0),
+                    Point::new(area.axis_bbox.x1, area.axis_bbox.y0),
+                ),
+                AxisPosition::Top => (
+                    Point::new(area.axis_bbox.x0, area.axis_bbox.y1),
+                    Point::new(area.axis_bbox.x1, area.axis_bbox.y1),
+                ),
+                AxisPosition::Left => (
+                    Point::new(area.axis_bbox.x1, area.axis_bbox.y0),
+                    Point::new(area.axis_bbox.x1, area.axis_bbox.y1),
+                ),
+                AxisPosition::Right => (
+                    Point::new(area.axis_bbox.x0, area.axis_bbox.y0),
+                    Point::new(area.axis_bbox.x0, area.axis_bbox.y1),
+                ),
             };
 
             elements.push(VisualElement::Line {
@@ -176,10 +194,13 @@ impl ChartComponent for AxisComponent {
         let tick_labels: Vec<(f64, String)> = if self.axis.axis_type == AxisType::Category {
             let ts = self.category_label_ts();
             let data = self.axis.data.as_deref().unwrap_or(&[]);
-            ts.into_iter().enumerate().map(|(i, t)| {
-                let label = data.get(i).cloned().unwrap_or_default();
-                (t, label)
-            }).collect()
+            ts.into_iter()
+                .enumerate()
+                .map(|(i, t)| {
+                    let label = data.get(i).cloned().unwrap_or_default();
+                    (t, label)
+                })
+                .collect()
         } else {
             self.value_tick_labels(layout)
         };
@@ -262,7 +283,8 @@ impl ChartComponent for AxisComponent {
             // 自动旋转检测：Bottom/Top 轴标签密集时自动倾斜 45°
             let auto_rotate = {
                 let n = tick_labels.len();
-                let is_horizontal = matches!(area.position, AxisPosition::Bottom | AxisPosition::Top);
+                let is_horizontal =
+                    matches!(area.position, AxisPosition::Bottom | AxisPosition::Top);
                 let user_rotation = self.axis.axis_label.rotate == 0.0;
                 let spacing = if n > 1 {
                     (tick_labels[1].0 - tick_labels[0].0) * tick_base_rect.width()
@@ -327,10 +349,18 @@ impl ChartComponent for AxisComponent {
                         AxisPosition::Bottom => (TextAlign::Left, TextBaseline::Top, auto_angle),
                         // Top: 锚点在刻度处，文字左下对齐，向右上倾斜 45°
                         AxisPosition::Top => (TextAlign::Left, TextBaseline::Bottom, auto_angle),
-                        _ => (TextAlign::Left, TextBaseline::Top, self.axis.axis_label.rotate),
+                        _ => (
+                            TextAlign::Left,
+                            TextBaseline::Top,
+                            self.axis.axis_label.rotate,
+                        ),
                     }
                 } else {
-                    (TextAlign::Left, TextBaseline::Top, self.axis.axis_label.rotate)
+                    (
+                        TextAlign::Left,
+                        TextBaseline::Top,
+                        self.axis.axis_label.rotate,
+                    )
                 };
 
                 elements.push(VisualElement::TextRun {
@@ -370,8 +400,9 @@ impl ChartComponent for AxisComponent {
             //
             // SVG 渲染器将 position 视为文本块左上角，忽略 align/baseline。
             // 因此先计算锚点，再用 compute_text_offset 转换为左上角坐标。
-            let is_vertical_middle = matches!(area.position, AxisPosition::Left | AxisPosition::Right)
-                && self.axis.name_location == NameLocation::Middle;
+            let is_vertical_middle =
+                matches!(area.position, AxisPosition::Left | AxisPosition::Right)
+                    && self.axis.name_location == NameLocation::Middle;
 
             let (anchor, align, baseline, rotation) = if is_vertical_middle {
                 let anchor = match area.position {
@@ -391,7 +422,12 @@ impl ChartComponent for AxisComponent {
                     }
                     _ => unreachable!(),
                 };
-                (anchor, TextAlign::Center, TextBaseline::Middle, std::f64::consts::PI / 2.0)
+                (
+                    anchor,
+                    TextAlign::Center,
+                    TextBaseline::Middle,
+                    std::f64::consts::PI / 2.0,
+                )
             } else {
                 let (anchor, align, baseline) = match area.position {
                     AxisPosition::Bottom => {
@@ -416,37 +452,59 @@ impl ChartComponent for AxisComponent {
                     }
                     AxisPosition::Left => {
                         // 左轴：轴线在 axis_bbox.x1（右边缘），名称居中于轴线
-                        let anchor = Point::new(area.axis_bbox.x1, match self.axis.name_location {
-                            NameLocation::Start => area.axis_bbox.y1 + name_gap,
-                            NameLocation::End => area.axis_bbox.y0 - name_gap,
-                            _ => unreachable!(),
-                        });
-                        (anchor, TextAlign::Center, match self.axis.name_location {
-                            NameLocation::Start => TextBaseline::Top,
-                            NameLocation::End => TextBaseline::Bottom,
-                            _ => unreachable!(),
-                        })
+                        let anchor = Point::new(
+                            area.axis_bbox.x1,
+                            match self.axis.name_location {
+                                NameLocation::Start => area.axis_bbox.y1 + name_gap,
+                                NameLocation::End => area.axis_bbox.y0 - name_gap,
+                                _ => unreachable!(),
+                            },
+                        );
+                        (
+                            anchor,
+                            TextAlign::Center,
+                            match self.axis.name_location {
+                                NameLocation::Start => TextBaseline::Top,
+                                NameLocation::End => TextBaseline::Bottom,
+                                _ => unreachable!(),
+                            },
+                        )
                     }
                     AxisPosition::Right => {
                         // 右轴：轴线在 axis_bbox.x0（左边缘），名称居中于轴线
-                        let anchor = Point::new(area.axis_bbox.x0, match self.axis.name_location {
-                            NameLocation::Start => area.axis_bbox.y1 + name_gap,
-                            NameLocation::End => area.axis_bbox.y0 - name_gap,
-                            _ => unreachable!(),
-                        });
-                        (anchor, TextAlign::Center, match self.axis.name_location {
-                            NameLocation::Start => TextBaseline::Top,
-                            NameLocation::End => TextBaseline::Bottom,
-                            _ => unreachable!(),
-                        })
+                        let anchor = Point::new(
+                            area.axis_bbox.x0,
+                            match self.axis.name_location {
+                                NameLocation::Start => area.axis_bbox.y1 + name_gap,
+                                NameLocation::End => area.axis_bbox.y0 - name_gap,
+                                _ => unreachable!(),
+                            },
+                        );
+                        (
+                            anchor,
+                            TextAlign::Center,
+                            match self.axis.name_location {
+                                NameLocation::Start => TextBaseline::Top,
+                                NameLocation::End => TextBaseline::Bottom,
+                                _ => unreachable!(),
+                            },
+                        )
                     }
                 };
                 (anchor, align, baseline, 0.0)
             };
 
             // 使用 name_text_style 中的 align/vertical_align 覆盖位置默认值
-            let final_align = if align != TextAlign::Left { align } else { name_font.align };
-            let final_baseline = if baseline != TextBaseline::Top { baseline } else { name_font.vertical_align };
+            let final_align = if align != TextAlign::Left {
+                align
+            } else {
+                name_font.align
+            };
+            let final_baseline = if baseline != TextBaseline::Top {
+                baseline
+            } else {
+                name_font.vertical_align
+            };
 
             // 将锚点转换为文本块左上角（SVG 渲染器要求）
             let (x_off, y_off) = compute_text_offset(&name_layout, final_align, final_baseline);

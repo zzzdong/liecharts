@@ -3,10 +3,10 @@
 //! 该模块提供 SeriesContext，作为系列渲染的统一入口，
 //! 封装了渲染过程中需要的所有上下文信息。
 
-use crate::layout::{GridLayoutInfo, LayoutOutput, DataCoordinateSystem};
-use crate::model::ResolvedOption;
+use crate::layout::{DataCoordinateSystem, GridLayoutInfo, LayoutOutput};
+use crate::model::ChartModel;
 use crate::visual::Color;
-use vello_cpu::kurbo::{Rect, Point};
+use vello_cpu::kurbo::{Point, Rect};
 
 /// 系列渲染上下文
 ///
@@ -18,7 +18,7 @@ pub struct SeriesContext<'a> {
     /// Grid 索引
     pub grid_index: usize,
     /// 解析后的配置
-    pub resolved: &'a ResolvedOption,
+    pub resolved: &'a ChartModel,
     /// 布局输出
     pub layout: &'a LayoutOutput,
     /// Grid 布局信息
@@ -34,7 +34,7 @@ impl<'a> SeriesContext<'a> {
     pub fn new(
         series_index: usize,
         grid_index: usize,
-        resolved: &'a ResolvedOption,
+        resolved: &'a ChartModel,
         layout: &'a LayoutOutput,
         grid_info: &'a GridLayoutInfo,
     ) -> Self {
@@ -54,11 +54,17 @@ impl<'a> SeriesContext<'a> {
     pub fn try_new(
         series_index: usize,
         grid_index: usize,
-        resolved: &'a ResolvedOption,
+        resolved: &'a ChartModel,
         layout: &'a LayoutOutput,
     ) -> Option<Self> {
         let grid_info = layout.grids.iter().find(|g| g.grid_index == grid_index)?;
-        Some(Self::new(series_index, grid_index, resolved, layout, grid_info))
+        Some(Self::new(
+            series_index,
+            grid_index,
+            resolved,
+            layout,
+            grid_info,
+        ))
     }
 
     /// 获取绘图区域边界
@@ -71,7 +77,8 @@ impl<'a> SeriesContext<'a> {
     /// 优先使用 item_color，如果没有则使用主题色轮
     pub fn get_series_color(&self, item_color: Option<Color>) -> Color {
         item_color.unwrap_or_else(|| {
-            self.resolved.colors
+            self.resolved
+                .colors
                 .get(self.series_index % self.resolved.colors.len())
                 .copied()
                 .unwrap_or_else(|| Color::new(0, 0, 0))
@@ -163,5 +170,10 @@ pub trait PolarRenderer: SeriesRenderer {
     }
 
     /// 执行极坐标渲染
-    fn render_polar(&self, ctx: &SeriesContext, center: Point, max_radius: f64) -> Vec<crate::visual::VisualElement>;
+    fn render_polar(
+        &self,
+        ctx: &SeriesContext,
+        center: Point,
+        max_radius: f64,
+    ) -> Vec<crate::visual::VisualElement>;
 }

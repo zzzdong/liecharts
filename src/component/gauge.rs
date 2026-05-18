@@ -1,11 +1,13 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{GaugeSeries, ResolvedOption};
-use crate::visual::{FillStrokeStyle, GradientDef, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement};
+use crate::model::{ChartModel, GaugeSeries};
 use crate::text::{compute_text_offset, create_text_layout};
-use vello_cpu::kurbo::{BezPath, Point};
-use vello_cpu::kurbo::Shape;
+use crate::visual::{
+    FillStrokeStyle, GradientDef, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
+};
 use std::f64::consts::PI;
+use vello_cpu::kurbo::Shape;
+use vello_cpu::kurbo::{BezPath, Point};
 
 pub struct GaugeSeriesComponent {
     series: GaugeSeries,
@@ -120,7 +122,11 @@ impl GaugeSeriesComponent {
 
                 if self.series.axis_tick_show {
                     let tick_start = Self::point_at_angle(center, bg_outer_radius - 5.0, angle);
-                    let tick_end = Self::point_at_angle(center, bg_outer_radius - 5.0 - self.series.axis_tick_length, angle);
+                    let tick_end = Self::point_at_angle(
+                        center,
+                        bg_outer_radius - 5.0 - self.series.axis_tick_length,
+                        angle,
+                    );
 
                     elements.push(VisualElement::Line {
                         start: tick_start,
@@ -134,7 +140,11 @@ impl GaugeSeriesComponent {
 
                 if self.series.split_line_show && i % (split_count / 5 + 1) == 0 {
                     let split_start = Self::point_at_angle(center, bg_outer_radius, angle);
-                    let split_end = Self::point_at_angle(center, bg_outer_radius - self.series.split_line_length, angle);
+                    let split_end = Self::point_at_angle(
+                        center,
+                        bg_outer_radius - self.series.split_line_length,
+                        angle,
+                    );
 
                     elements.push(VisualElement::Line {
                         start: split_start,
@@ -150,7 +160,11 @@ impl GaugeSeriesComponent {
                     let value = self.series.min + (self.series.max - self.series.min) * ratio;
                     let label_text = format!("{:.0}", value);
 
-                    let label_pos = Self::point_at_angle(center, bg_outer_radius + self.series.axis_label_distance, angle);
+                    let label_pos = Self::point_at_angle(
+                        center,
+                        bg_outer_radius + self.series.axis_label_distance,
+                        angle,
+                    );
 
                     let label_font = crate::model::TextStyle {
                         font_size: self.series.axis_label_font_size,
@@ -161,7 +175,8 @@ impl GaugeSeriesComponent {
                     };
 
                     let layout = create_text_layout(&label_text, &label_font, None);
-                    let (x_offset, y_offset) = compute_text_offset(&layout, TextAlign::Center, TextBaseline::Middle);
+                    let (x_offset, y_offset) =
+                        compute_text_offset(&layout, TextAlign::Center, TextBaseline::Middle);
                     let final_position = Point::new(label_pos.x + x_offset, label_pos.y + y_offset);
 
                     elements.push(VisualElement::TextRun {
@@ -185,7 +200,8 @@ impl GaugeSeriesComponent {
         }
 
         if self.series.pointer_show {
-            let value_ratio = ((self.series.value - self.series.min) / (self.series.max - self.series.min))
+            let value_ratio = ((self.series.value - self.series.min)
+                / (self.series.max - self.series.min))
                 .clamp(0.0, 1.0);
             let pointer_angle = start_angle + angle_range * value_ratio;
 
@@ -246,7 +262,8 @@ impl GaugeSeriesComponent {
                 };
 
                 let layout = create_text_layout(title_text, &title_font, None);
-                let (x_offset, y_offset) = compute_text_offset(&layout, TextAlign::Center, TextBaseline::Middle);
+                let (x_offset, y_offset) =
+                    compute_text_offset(&layout, TextAlign::Center, TextBaseline::Middle);
                 let final_position = Point::new(title_x + x_offset, title_y + y_offset);
 
                 elements.push(VisualElement::TextRun {
@@ -282,7 +299,8 @@ impl GaugeSeriesComponent {
             };
 
             let layout = create_text_layout(&detail_text, &detail_font, None);
-            let (x_offset, y_offset) = compute_text_offset(&layout, TextAlign::Center, TextBaseline::Middle);
+            let (x_offset, y_offset) =
+                compute_text_offset(&layout, TextAlign::Center, TextBaseline::Middle);
             let final_position = Point::new(detail_x + x_offset, detail_y + y_offset);
 
             elements.push(VisualElement::TextRun {
@@ -322,7 +340,11 @@ impl SeriesComponent for GaugeSeriesComponent {
 }
 
 impl ChartComponent for GaugeSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

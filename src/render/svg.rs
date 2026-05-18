@@ -1,11 +1,13 @@
 //! SVG 渲染器 - 将 VisualElement 渲染为 SVG 字符串
 
 use crate::error::Result;
-use crate::visual::{Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement};
 use crate::render::Renderer;
 use crate::text::TextLayout;
-use vello_cpu::kurbo::{BezPath, PathSeg, Point, Rect};
+use crate::visual::{
+    Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement,
+};
 use std::collections::HashMap;
+use vello_cpu::kurbo::{BezPath, PathSeg, Point, Rect};
 
 /// SVG 渲染器，输出 SVG 字符串
 ///
@@ -24,7 +26,9 @@ impl SvgRenderer {
     }
 
     /// 递归收集所有渐变定义并建立索引映射
-    fn collect_gradients(elements: &[VisualElement]) -> (Vec<&GradientDef>, HashMap<*const GradientDef, usize>) {
+    fn collect_gradients(
+        elements: &[VisualElement],
+    ) -> (Vec<&GradientDef>, HashMap<*const GradientDef, usize>) {
         let mut gradients = Vec::new();
         let mut map = HashMap::new();
         Self::collect_gradients_recursive(elements, &mut gradients, &mut map);
@@ -113,7 +117,13 @@ impl SvgRenderer {
         if color.a == 255 {
             format!("#{:02x}{:02x}{:02x}", color.r, color.g, color.b)
         } else {
-            format!("rgba({}, {}, {}, {})", color.r, color.g, color.b, color.a as f64 / 255.0)
+            format!(
+                "rgba({}, {}, {}, {})",
+                color.r,
+                color.g,
+                color.b,
+                color.a as f64 / 255.0
+            )
         }
     }
 
@@ -179,7 +189,8 @@ impl Renderer for SvgRenderer {
         }
 
         if let Some(stroke) = &style.stroke {
-            attrs.push_str(&format!(r#" stroke="{}" stroke-width="{}""#,
+            attrs.push_str(&format!(
+                r#" stroke="{}" stroke-width="{}""#,
                 Self::color_to_css(&stroke.color),
                 stroke.width
             ));
@@ -189,10 +200,7 @@ impl Renderer for SvgRenderer {
     }
 
     fn draw_circle(&mut self, center: Point, radius: f64, style: &FillStrokeStyle) {
-        let mut attrs = format!(
-            r#"cx="{}" cy="{}" r="{}""#,
-            center.x, center.y, radius
-        );
+        let mut attrs = format!(r#"cx="{}" cy="{}" r="{}""#, center.x, center.y, radius);
 
         if let Some(fill) = &style.fill {
             attrs.push_str(&format!(r#" fill="{}""#, Self::color_to_css(fill)));
@@ -201,13 +209,15 @@ impl Renderer for SvgRenderer {
         }
 
         if let Some(stroke) = &style.stroke {
-            attrs.push_str(&format!(r#" stroke="{}" stroke-width="{}""#,
+            attrs.push_str(&format!(
+                r#" stroke="{}" stroke-width="{}""#,
                 Self::color_to_css(&stroke.color),
                 stroke.width
             ));
         }
 
-        self.svg_content.push_str(&format!("<circle {} />\n", attrs));
+        self.svg_content
+            .push_str(&format!("<circle {} />\n", attrs));
     }
 
     fn draw_line(&mut self, start: Point, end: Point, style: &StrokeStyle) {
@@ -229,10 +239,7 @@ impl Renderer for SvgRenderer {
             return;
         }
 
-        let points_str: Vec<String> = points
-            .iter()
-            .map(|p| format!("{}, {}", p.x, p.y))
-            .collect();
+        let points_str: Vec<String> = points.iter().map(|p| format!("{}, {}", p.x, p.y)).collect();
 
         let polyline = format!(
             r#"<polyline points="{}" fill="none" stroke="{}" stroke-width="{}" />"#,
@@ -256,7 +263,8 @@ impl Renderer for SvgRenderer {
         }
 
         if let Some(stroke) = &style.stroke {
-            attrs.push_str(&format!(r#" stroke="{}" stroke-width="{}""#,
+            attrs.push_str(&format!(
+                r#" stroke="{}" stroke-width="{}""#,
                 Self::color_to_css(&stroke.color),
                 stroke.width
             ));
@@ -265,18 +273,25 @@ impl Renderer for SvgRenderer {
         self.svg_content.push_str(&format!("<path {} />\n", attrs));
     }
 
-    fn draw_gradient_path(&mut self, path: &BezPath, gradient: &GradientDef, stroke: Option<&Stroke>) {
+    fn draw_gradient_path(
+        &mut self,
+        path: &BezPath,
+        gradient: &GradientDef,
+        stroke: Option<&Stroke>,
+    ) {
         let d = Self::bezpath_to_svg_d(path, true);
         let mut attrs = format!(r#"d="{}""#, d);
 
-        let gradient_id = self.gradient_map
+        let gradient_id = self
+            .gradient_map
             .get(&(gradient as *const GradientDef))
             .copied()
             .unwrap_or(0);
         attrs.push_str(&format!(r#" fill="url(#g{})""#, gradient_id));
 
         if let Some(stroke) = stroke {
-            attrs.push_str(&format!(r#" stroke="{}" stroke-width="{}""#,
+            attrs.push_str(&format!(
+                r#" stroke="{}" stroke-width="{}""#,
                 Self::color_to_css(&stroke.color),
                 stroke.width
             ));
@@ -285,7 +300,16 @@ impl Renderer for SvgRenderer {
         self.svg_content.push_str(&format!("<path {} />\n", attrs));
     }
 
-    fn draw_text(&mut self, text: &str, position: Point, color: Color, font_size: f64, font_family: &str, rotation: f64, layout: Option<&TextLayout>) {
+    fn draw_text(
+        &mut self,
+        text: &str,
+        position: Point,
+        color: Color,
+        font_size: f64,
+        font_family: &str,
+        rotation: f64,
+        layout: Option<&TextLayout>,
+    ) {
         let Some(layout) = layout else {
             return;
         };
@@ -302,7 +326,10 @@ impl Renderer for SvgRenderer {
         // 添加旋转变换（围绕 position 旋转）
         let transform_attrs = if rotation != 0.0 {
             let degrees = rotation.to_degrees();
-            format!(r#" transform="rotate({}, {}, {})""#, degrees, position.x, position.y)
+            format!(
+                r#" transform="rotate({}, {}, {})""#,
+                degrees, position.x, position.y
+            )
         } else {
             String::new()
         };
@@ -370,7 +397,10 @@ impl Renderer for SvgRenderer {
             let mut transforms = Vec::new();
 
             if transform.translate.x != 0.0 || transform.translate.y != 0.0 {
-                transforms.push(format!("translate({}, {})", transform.translate.x, transform.translate.y));
+                transforms.push(format!(
+                    "translate({}, {})",
+                    transform.translate.x, transform.translate.y
+                ));
             }
 
             if transform.rotate != 0.0 {
@@ -378,7 +408,10 @@ impl Renderer for SvgRenderer {
             }
 
             if transform.scale.x != 1.0 || transform.scale.y != 1.0 {
-                transforms.push(format!("scale({}, {})", transform.scale.x, transform.scale.y));
+                transforms.push(format!(
+                    "scale({}, {})",
+                    transform.scale.x, transform.scale.y
+                ));
             }
 
             if !transforms.is_empty() {

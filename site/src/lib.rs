@@ -1,17 +1,26 @@
+use liecharts::ChartBuilder;
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub fn render_chart(json: &str, width: u32, height: u32) -> Result<String, String> {
     let option = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    let model = ChartBuilder::from_option(option)
+        .build()
+        .map_err(|e| e.to_string())?;
     let chart = liecharts::LieChart::new(width, height);
-    chart.render_svg(option).map_err(|e| e.to_string())
+
+    chart.render_svg(&model).map_err(|e| e.to_string())
 }
 
 #[wasm_bindgen]
 pub fn render_chart_png(json: &str, width: u32, height: u32) -> Result<Vec<u8>, String> {
     let option = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    let model = ChartBuilder::from_option(option)
+        .build()
+        .map_err(|e| e.to_string())?;
     let chart = liecharts::LieChart::new(width, height);
-    chart.render_png(option).map_err(|e| e.to_string())
+
+    chart.render_png(&model).map_err(|e| e.to_string())
 }
 
 /// 获取所有可用的主题名称列表（JSON 字符串数组）。
@@ -31,9 +40,6 @@ pub fn get_available_themes() -> String {
 /// `bytes` 为字体文件的原始二进制数据（TTF/OTF）。
 #[wasm_bindgen]
 pub fn register_font_bytes(name: &str, bytes: &[u8]) -> Result<(), String> {
-    liecharts::register_font(
-        liecharts::FontSource::Memory(bytes.to_vec()),
-        Some(name),
-    )
-    .map_err(|e| e.to_string())
+    liecharts::register_font(liecharts::FontSource::Memory(bytes.to_vec()), Some(name))
+        .map_err(|e| e.to_string())
 }

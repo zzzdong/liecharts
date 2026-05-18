@@ -1,14 +1,12 @@
+use crate::error::ChartError;
 use crate::option::{
-    AxisOption, AxisPosition, ColorOption, DataPoint, GridOption, ItemStyleOption,
-    LegendOption, LineStyleOption, TextStyleOption,
-    TitleOption, LieChartOption, SeriesOption,
-    FontStyle as FontStyleOption, FontWeight, FontWeightNamed, SymbolType as OptionSymbolType, LabelPosition as OptionLabelPosition,
-    LabelAlign, LabelVerticalAlign, TextAlignOption,
-    RadarOption,
+    AxisOption, AxisPosition, ColorOption, DataPoint, FontStyle as FontStyleOption, FontWeight,
+    FontWeightNamed, GridOption, ItemStyleOption, LabelAlign, LabelPosition as OptionLabelPosition,
+    LabelVerticalAlign, LegendOption, LieChartOption, LineStyleOption, PositionOption, RadarOption,
+    SeriesOption, SymbolType as OptionSymbolType, TextAlignOption, TextStyleOption, TitleOption,
 };
-use crate::visual::{Color, TextAlign, TextBaseline};
 use crate::theme::Theme;
-use crate::ChartError;
+use crate::visual::{Color, TextAlign, TextBaseline};
 
 impl From<ColorOption> for Color {
     fn from(c: ColorOption) -> Self {
@@ -17,7 +15,7 @@ impl From<ColorOption> for Color {
 }
 
 #[derive(Debug, Clone)]
-pub struct ResolvedOption {
+pub struct ChartModel {
     pub title: Option<Title>,
     pub legend: Option<Legend>,
     pub grids: Vec<Grid>,
@@ -560,19 +558,12 @@ pub struct TableBodyConfig {
     pub align: TextAlign,
 }
 
-impl ResolvedOption {
-    pub fn merge(option: LieChartOption, theme: Option<Theme>) -> crate::error::Result<Self> {
-        let default_theme = Theme::echarts();
-        let theme = &theme.unwrap_or(default_theme);
-
+impl ChartModel {
+    pub fn new(option: LieChartOption, theme: Theme) -> crate::error::Result<Self> {
         let colors: Vec<Color> = option
             .color
             .as_ref()
-            .map(|c| {
-                c.iter()
-                    .map(|c| Color::from(*c))
-                    .collect::<Vec<_>>()
-            })
+            .map(|c| c.iter().map(|c| Color::from(*c)).collect::<Vec<_>>())
             .filter(|v: &Vec<Color>| !v.is_empty())
             .unwrap_or_else(|| {
                 theme
@@ -587,10 +578,10 @@ impl ResolvedOption {
             .map(Color::from)
             .unwrap_or_else(|| theme.get_background_color());
 
-        let title = option.title.map(|t| Self::resolve_title(t, theme));
+        let title = option.title.map(|t| Self::resolve_title(t, &theme));
 
-        let legend = option.legend.map(|l| Self::resolve_legend(l, theme));
-        
+        let legend = option.legend.map(|l| Self::resolve_legend(l, &theme));
+
         // 处理多 grid：如果没有指定 grid，创建一个默认的
         let grids = if option.grid.is_empty() {
             vec![Grid {
@@ -607,25 +598,27 @@ impl ResolvedOption {
         let x_axes = option
             .x_axis
             .into_iter()
-            .map(|a| Self::resolve_axis(a, theme, AxisPosition::Bottom))
+            .map(|a| Self::resolve_axis(a, &theme, AxisPosition::Bottom))
             .collect();
 
         let y_axes = option
             .y_axis
             .into_iter()
-            .map(|a| Self::resolve_axis(a, theme, AxisPosition::Left))
+            .map(|a| Self::resolve_axis(a, &theme, AxisPosition::Left))
             .collect();
 
         let series = option
             .series
             .into_iter()
             .enumerate()
-            .map(|(idx, s)| Self::resolve_series(s, theme, &colors, idx))
+            .map(|(idx, s)| Self::resolve_series(s, &theme, &colors, idx))
             .collect::<crate::error::Result<Vec<_>>>()?;
 
-        let radar = option.radar.map(|r| Self::resolve_radar(r, theme));
+        let radar = option.radar.map(|r| Self::resolve_radar(r, &theme));
 
-        let text_style = option.text_style.map(|s| Self::resolve_text_style(s, theme));
+        let text_style = option
+            .text_style
+            .map(|s| Self::resolve_text_style(s, &theme));
 
         Ok(Self {
             title,
@@ -644,7 +637,7 @@ impl ResolvedOption {
     fn resolve_title(option: TitleOption, theme: &Theme) -> Title {
         let default_title_style = theme.get_title_text_style();
         let default_subtitle_style = theme.get_subtitle_text_style();
-        
+
         Title {
             text: option.text.unwrap_or_default(),
             subtext: option.subtext,
@@ -683,8 +676,9 @@ impl ResolvedOption {
 
     fn resolve_legend(option: LegendOption, theme: &Theme) -> Legend {
         let default_legend_style = theme.get_legend_text_style();
-        let (default_item_width, default_item_height, default_symbol_size) = theme.get_legend_config();
-        
+        let (default_item_width, default_item_height, default_symbol_size) =
+            theme.get_legend_config();
+
         Legend {
             show: option.show.unwrap_or(true),
             data: option.data.unwrap_or_default(),
@@ -741,26 +735,29 @@ impl ResolvedOption {
         }
     }
 
-    fn convert_position(pos: crate::option::Position) -> Position {
+    fn convert_position(pos: PositionOption) -> Position {
         match pos {
-            crate::option::Position::Preset(crate::option::PositionPreset::Auto) => Position::Auto,
-            crate::option::Position::Preset(crate::option::PositionPreset::Center) => Position::Center,
-            crate::option::Position::Preset(crate::option::PositionPreset::Left) => Position::Left(0.0),
-            crate::option::Position::Preset(crate::option::PositionPreset::Right) => Position::Right(0.0),
-            crate::option::Position::Preset(crate::option::PositionPreset::Top) => Position::Top(0.0),
-            crate::option::Position::Preset(crate::option::PositionPreset::Bottom) => Position::Bottom(0.0),
-            crate::option::Position::Pixel(v) => Position::Value(v),
-            crate::option::Position::Percent(v) => Position::Percent(v),
+            PositionOption::Preset(crate::option::PositionPreset::Auto) => Position::Auto,
+            PositionOption::Preset(crate::option::PositionPreset::Center) => Position::Center,
+            PositionOption::Preset(crate::option::PositionPreset::Left) => Position::Left(0.0),
+            PositionOption::Preset(crate::option::PositionPreset::Right) => Position::Right(0.0),
+            PositionOption::Preset(crate::option::PositionPreset::Top) => Position::Top(0.0),
+            PositionOption::Preset(crate::option::PositionPreset::Bottom) => Position::Bottom(0.0),
+            PositionOption::Pixel(v) => Position::Value(v),
+            PositionOption::Percent(v) => Position::Percent(v),
         }
     }
 
     fn resolve_axis(option: AxisOption, theme: &Theme, default_position: AxisPosition) -> Axis {
-        let axis_type = option.axis_type.map(|t| match t {
-            crate::option::AxisType::Category => AxisType::Category,
-            crate::option::AxisType::Value => AxisType::Value,
-            crate::option::AxisType::Time => AxisType::Time,
-            crate::option::AxisType::Log => AxisType::Log,
-        }).unwrap_or(AxisType::Category);
+        let axis_type = option
+            .axis_type
+            .map(|t| match t {
+                crate::option::AxisType::Category => AxisType::Category,
+                crate::option::AxisType::Value => AxisType::Value,
+                crate::option::AxisType::Time => AxisType::Time,
+                crate::option::AxisType::Log => AxisType::Log,
+            })
+            .unwrap_or(AxisType::Category);
 
         let default_axis_label = theme.get_axis_label_style();
         let default_axis_line = theme.get_axis_line_style();
@@ -775,7 +772,9 @@ impl ResolvedOption {
                 .name_location
                 .map(|n| match n {
                     crate::option::NameLocation::Start => NameLocation::Start,
-                    crate::option::NameLocation::Middle | crate::option::NameLocation::Center => NameLocation::Middle,
+                    crate::option::NameLocation::Middle | crate::option::NameLocation::Center => {
+                        NameLocation::Middle
+                    }
                     crate::option::NameLocation::End => NameLocation::End,
                 })
                 .unwrap_or(NameLocation::End),
@@ -800,8 +799,12 @@ impl ResolvedOption {
                         .map(Color::from)
                         .unwrap_or_else(|| Color::from_hex(&default_axis_label.color).unwrap()),
                     font_size: l.font_size.unwrap_or(default_axis_label.font_size),
-                    font_family: l.font_family.unwrap_or_else(|| default_axis_label.font_family.clone()),
-                    font_weight: l.font_weight.unwrap_or(FontWeight::Named(FontWeightNamed::Normal)),
+                    font_family: l
+                        .font_family
+                        .unwrap_or_else(|| default_axis_label.font_family.clone()),
+                    font_weight: l
+                        .font_weight
+                        .unwrap_or(FontWeight::Named(FontWeightNamed::Normal)),
                     align: l.align.unwrap_or(LabelAlign::Center),
                     vertical_align: l.vertical_align.unwrap_or(LabelVerticalAlign::Middle),
                     margin: l.margin.unwrap_or(5.0),
@@ -824,7 +827,13 @@ impl ResolvedOption {
                     show: l.show.unwrap_or(true),
                     line_style: l
                         .line_style
-                        .map(|s| Self::resolve_line_style(s, theme, Color::from_hex(&default_axis_line.color).unwrap()))
+                        .map(|s| {
+                            Self::resolve_line_style(
+                                s,
+                                theme,
+                                Color::from_hex(&default_axis_line.color).unwrap(),
+                            )
+                        })
                         .unwrap_or_else(|| LineStyle {
                             color: Color::from_hex(&default_axis_line.color).unwrap(),
                             width: default_axis_line.width,
@@ -846,7 +855,13 @@ impl ResolvedOption {
                     align_with_label: t.align_with_label.unwrap_or(false),
                     line_style: t
                         .line_style
-                        .map(|s| Self::resolve_line_style(s, theme, Color::from_hex(&default_axis_tick.color).unwrap()))
+                        .map(|s| {
+                            Self::resolve_line_style(
+                                s,
+                                theme,
+                                Color::from_hex(&default_axis_tick.color).unwrap(),
+                            )
+                        })
                         .unwrap_or_else(|| LineStyle {
                             color: Color::from_hex(&default_axis_tick.color).unwrap(),
                             width: default_axis_tick.width,
@@ -868,7 +883,13 @@ impl ResolvedOption {
                     show: l.show.unwrap_or(true),
                     line_style: l
                         .line_style
-                        .map(|s| Self::resolve_line_style(s, theme, Color::from_hex(&default_split_line.color).unwrap()))
+                        .map(|s| {
+                            Self::resolve_line_style(
+                                s,
+                                theme,
+                                Color::from_hex(&default_split_line.color).unwrap(),
+                            )
+                        })
                         .unwrap_or_else(|| LineStyle {
                             color: Color::from_hex(&default_split_line.color).unwrap(),
                             width: default_split_line.width,
@@ -885,7 +906,9 @@ impl ResolvedOption {
                 }),
             min: option.min,
             max: option.max,
-            boundary_gap: option.boundary_gap.unwrap_or(axis_type == AxisType::Category),
+            boundary_gap: option
+                .boundary_gap
+                .unwrap_or(axis_type == AxisType::Category),
             position: option.position.unwrap_or(default_position),
             grid_index: option.grid_index.unwrap_or(0),
             tick_length: 5.0,
@@ -901,7 +924,10 @@ impl ResolvedOption {
         colors: &[Color],
         index: usize,
     ) -> crate::error::Result<ResolvedSeries> {
-        let color = colors.get(index % colors.len()).copied().unwrap_or(Color::new(0, 0, 0));
+        let color = colors
+            .get(index % colors.len())
+            .copied()
+            .unwrap_or(Color::new(0, 0, 0));
 
         match option {
             SeriesOption::Line(opt) => {
@@ -926,7 +952,10 @@ impl ResolvedOption {
                     y_axis_index: opt.y_axis_index.unwrap_or(0),
                     grid_index: opt.grid_index.unwrap_or(0),
                     smooth: opt.smooth.unwrap_or(false),
-                    symbol: opt.symbol.map(Self::convert_symbol).unwrap_or(Symbol::Circle),
+                    symbol: opt
+                        .symbol
+                        .map(Self::convert_symbol)
+                        .unwrap_or(Symbol::Circle),
                     symbol_size: opt.symbol_size.unwrap_or(4.0),
                     line_style,
                     item_style: opt
@@ -958,7 +987,10 @@ impl ResolvedOption {
                     stack: opt.stack.clone(),
                     y_axis_index: opt.y_axis_index.unwrap_or(0),
                     grid_index: opt.grid_index.unwrap_or(0),
-                    bar_width: opt.bar_width.as_ref().map(|s| Self::parse_percent_or_value(s)),
+                    bar_width: opt
+                        .bar_width
+                        .as_ref()
+                        .map(|s| Self::parse_percent_or_value(s)),
                     item_style: opt
                         .item_style
                         .map(|s| Self::resolve_item_style(s, theme))
@@ -975,10 +1007,7 @@ impl ResolvedOption {
                             .map(Self::convert_label_position)
                             .unwrap_or(LabelPosition::Top),
                         formatter: l.formatter,
-                        color: l
-                            .color
-                            .map(Color::from)
-                            .unwrap_or(Color::new(0, 0, 0)),
+                        color: l.color.map(Color::from).unwrap_or(Color::new(0, 0, 0)),
                         font_size: l.font_size.unwrap_or(12.0),
                         font_family: l.font_family.unwrap_or_else(|| "sans-serif".to_string()),
                     }),
@@ -986,15 +1015,17 @@ impl ResolvedOption {
                 }))
             }
             SeriesOption::Candlestick(opt) => {
-                let data: Vec<CandlestickDataItem> = opt.data.iter().map(|d| {
-                    CandlestickDataItem {
+                let data: Vec<CandlestickDataItem> = opt
+                    .data
+                    .iter()
+                    .map(|d| CandlestickDataItem {
                         open: d.open,
                         close: d.close,
                         low: d.low,
                         high: d.high,
                         name: d.name.clone(),
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 let default_up_color = theme.get_theme_color(0);
                 let default_down_color = Color::new(60, 179, 113);
@@ -1028,10 +1059,7 @@ impl ResolvedOption {
                             .map(Self::convert_label_position)
                             .unwrap_or(LabelPosition::Top),
                         formatter: l.formatter,
-                        color: l
-                            .color
-                            .map(Color::from)
-                            .unwrap_or(Color::new(0, 0, 0)),
+                        color: l.color.map(Color::from).unwrap_or(Color::new(0, 0, 0)),
                         font_size: l.font_size.unwrap_or(12.0),
                         font_family: l.font_family.unwrap_or_else(|| "sans-serif".to_string()),
                     }),
@@ -1088,10 +1116,7 @@ impl ResolvedOption {
                             .map(Self::convert_label_position)
                             .unwrap_or(LabelPosition::Outside),
                         formatter: l.formatter,
-                        color: l
-                            .color
-                            .map(Color::from)
-                            .unwrap_or(Color::new(0, 0, 0)),
+                        color: l.color.map(Color::from).unwrap_or(Color::new(0, 0, 0)),
                         font_size: l.font_size.unwrap_or(12.0),
                         font_family: l.font_family.unwrap_or_else(|| "sans-serif".to_string()),
                     }),
@@ -1100,7 +1125,11 @@ impl ResolvedOption {
             }
             SeriesOption::Scatter(opt) => {
                 let data = Self::resolve_scatter_data(&opt.data)?;
-                let series_color = opt.item_style.as_ref().and_then(|s| s.color.map(Color::from)).unwrap_or(color);
+                let series_color = opt
+                    .item_style
+                    .as_ref()
+                    .and_then(|s| s.color.map(Color::from))
+                    .unwrap_or(color);
                 Ok(ResolvedSeries::Scatter(ScatterSeries {
                     name: opt.name.unwrap_or_default(),
                     data,
@@ -1120,10 +1149,14 @@ impl ResolvedOption {
                 }))
             }
             SeriesOption::Radar(opt) => {
-                let data = opt.data.into_iter().map(|d| RadarData {
-                    value: d.value,
-                    name: d.name,
-                }).collect();
+                let data = opt
+                    .data
+                    .into_iter()
+                    .map(|d| RadarData {
+                        value: d.value,
+                        name: d.name,
+                    })
+                    .collect();
                 Ok(ResolvedSeries::Radar(RadarSeries {
                     name: opt.name.unwrap_or_default(),
                     data,
@@ -1148,20 +1181,26 @@ impl ResolvedOption {
                         color: s.color.map(Color::from),
                         opacity: s.opacity.unwrap_or(0.3),
                     }),
-                    symbol: opt.symbol.map(Self::convert_symbol).unwrap_or(Symbol::Circle),
+                    symbol: opt
+                        .symbol
+                        .map(Self::convert_symbol)
+                        .unwrap_or(Symbol::Circle),
                     symbol_size: opt.symbol_size.unwrap_or(4.0),
                     color,
                 }))
             }
             SeriesOption::PolarBar(opt) => {
                 let data = Self::resolve_data(&opt.data)?;
-                let bar_colors = opt.color.map(|c| {
-                    c.iter().map(|c| Color::from(*c)).collect()
-                }).unwrap_or_else(|| colors.to_vec());
+                let bar_colors = opt
+                    .color
+                    .map(|c| c.iter().map(|c| Color::from(*c)).collect())
+                    .unwrap_or_else(|| colors.to_vec());
                 Ok(ResolvedSeries::PolarBar(PolarBarSeries {
                     name: opt.name.unwrap_or_default(),
                     data,
-                    item_style: opt.item_style.map(|s| Self::resolve_item_style(s, theme))
+                    item_style: opt
+                        .item_style
+                        .map(|s| Self::resolve_item_style(s, theme))
                         .unwrap_or_else(|| ItemStyle {
                             color: Some(color),
                             border_color: None,
@@ -1170,40 +1209,56 @@ impl ResolvedOption {
                         }),
                     colors: bar_colors,
                     pad_angle: opt.pad_angle.unwrap_or(2.0).to_radians(),
-                    start_angle: opt.start_angle.unwrap_or(0.0).to_radians() - std::f64::consts::PI / 2.0,
+                    start_angle: opt.start_angle.unwrap_or(0.0).to_radians()
+                        - std::f64::consts::PI / 2.0,
                 }))
             }
             SeriesOption::PolarScatter(opt) => {
-                let data: Vec<PolarScatterData> = opt.data.into_iter().map(|d| {
-                    PolarScatterData {
+                let data: Vec<PolarScatterData> = opt
+                    .data
+                    .into_iter()
+                    .map(|d| PolarScatterData {
                         angle: d.angle.to_radians() - std::f64::consts::PI / 2.0,
                         radius: d.radius,
                         symbol_size: d.symbol_size.unwrap_or(opt.symbol_size.unwrap_or(10.0)),
                         name: d.name,
-                    }
-                }).collect();
+                    })
+                    .collect();
                 Ok(ResolvedSeries::PolarScatter(PolarScatterSeries {
                     name: opt.name.unwrap_or_default(),
                     data,
-                    item_style: opt.item_style.map(|s| Self::resolve_item_style(s, theme))
+                    item_style: opt
+                        .item_style
+                        .map(|s| Self::resolve_item_style(s, theme))
                         .unwrap_or_else(|| ItemStyle {
                             color: Some(color),
                             border_color: None,
                             border_width: 0.0,
                             opacity: 1.0,
                         }),
-                    symbol: opt.symbol.map(Self::convert_symbol).unwrap_or(Symbol::Circle),
+                    symbol: opt
+                        .symbol
+                        .map(Self::convert_symbol)
+                        .unwrap_or(Symbol::Circle),
                     default_symbol_size: opt.symbol_size.unwrap_or(10.0),
                 }))
             }
             SeriesOption::Bubble(opt) => {
-                let data: Vec<BubbleData> = opt.data.into_iter().map(|d| BubbleData {
-                    x: d.x,
-                    y: d.y,
-                    size: d.size.unwrap_or(20.0),
-                    name: d.name,
-                }).collect();
-                let series_color = opt.item_style.as_ref().and_then(|s| s.color.map(Color::from)).unwrap_or(color);
+                let data: Vec<BubbleData> = opt
+                    .data
+                    .into_iter()
+                    .map(|d| BubbleData {
+                        x: d.x,
+                        y: d.y,
+                        size: d.size.unwrap_or(20.0),
+                        name: d.name,
+                    })
+                    .collect();
+                let series_color = opt
+                    .item_style
+                    .as_ref()
+                    .and_then(|s| s.color.map(Color::from))
+                    .unwrap_or(color);
                 Ok(ResolvedSeries::Bubble(BubbleSeries {
                     name: opt.name.unwrap_or_default(),
                     data,
@@ -1224,17 +1279,23 @@ impl ResolvedOption {
             }
             SeriesOption::Gauge(opt) => {
                 let value = opt.data.first().map(|d| d.value).unwrap_or(0.0);
-                let center = opt.center.map(|c| {
-                    if c.len() >= 2 {
-                        (
-                            Self::parse_percent_or_value(&c[0]),
-                            Self::parse_percent_or_value(&c[1]),
-                        )
-                    } else {
-                        (50.0, 50.0)
-                    }
-                }).unwrap_or((50.0, 50.0));
-                let radius = opt.radius.map(|r| Self::parse_percent_or_value(&r)).unwrap_or(75.0);
+                let center = opt
+                    .center
+                    .map(|c| {
+                        if c.len() >= 2 {
+                            (
+                                Self::parse_percent_or_value(&c[0]),
+                                Self::parse_percent_or_value(&c[1]),
+                            )
+                        } else {
+                            (50.0, 50.0)
+                        }
+                    })
+                    .unwrap_or((50.0, 50.0));
+                let radius = opt
+                    .radius
+                    .map(|r| Self::parse_percent_or_value(&r))
+                    .unwrap_or(75.0);
                 let pointer = opt.pointer.unwrap_or_default();
                 let title = opt.title.unwrap_or_default();
                 let detail = opt.detail.unwrap_or_default();
@@ -1249,7 +1310,8 @@ impl ResolvedOption {
                     end_angle: opt.end_angle.unwrap_or(45.0),
                     split_number: opt.split_number.unwrap_or(10),
                     axis_line_show: opt.axis_line.as_ref().and_then(|a| a.show).unwrap_or(true),
-                    axis_line_style: opt.axis_line
+                    axis_line_style: opt
+                        .axis_line
                         .and_then(|a| a.line_style)
                         .map(|s| Self::resolve_line_style(s, theme, color))
                         .unwrap_or_else(|| LineStyle {
@@ -1258,14 +1320,19 @@ impl ResolvedOption {
                             line_type: LineType::Solid,
                         }),
                     pointer_show: pointer.show.unwrap_or(true),
-                    pointer_length: pointer.length.map(|l| Self::parse_percent_or_value(&l)).unwrap_or(70.0),
+                    pointer_length: pointer
+                        .length
+                        .map(|l| Self::parse_percent_or_value(&l))
+                        .unwrap_or(70.0),
                     pointer_width: pointer.width.unwrap_or(6.0),
-                    pointer_color: pointer.item_style
+                    pointer_color: pointer
+                        .item_style
                         .and_then(|s| s.color.map(Color::from))
                         .unwrap_or(color),
                     axis_tick_show: opt.axis_tick.as_ref().and_then(|a| a.show).unwrap_or(true),
                     axis_tick_length: opt.axis_tick.as_ref().and_then(|a| a.length).unwrap_or(8.0),
-                    axis_tick_style: opt.axis_tick
+                    axis_tick_style: opt
+                        .axis_tick
                         .and_then(|a| a.line_style)
                         .map(|s| Self::resolve_line_style(s, theme, Color::new(80, 80, 80)))
                         .unwrap_or_else(|| LineStyle {
@@ -1274,20 +1341,39 @@ impl ResolvedOption {
                             line_type: LineType::Solid,
                         }),
                     axis_label_show: opt.axis_label.as_ref().and_then(|a| a.show).unwrap_or(true),
-                    axis_label_distance: opt.axis_label.as_ref().and_then(|a| a.distance).unwrap_or(15.0),
-                    axis_label_color: opt.axis_label.as_ref()
+                    axis_label_distance: opt
+                        .axis_label
+                        .as_ref()
+                        .and_then(|a| a.distance)
+                        .unwrap_or(15.0),
+                    axis_label_color: opt
+                        .axis_label
+                        .as_ref()
                         .and_then(|a| a.color.map(Color::from))
                         .unwrap_or(Color::new(50, 50, 50)),
-                    axis_label_font_size: opt.axis_label.as_ref().and_then(|a| a.font_size).unwrap_or(12.0),
-                    axis_label_font_family: opt.axis_label.as_ref()
+                    axis_label_font_size: opt
+                        .axis_label
+                        .as_ref()
+                        .and_then(|a| a.font_size)
+                        .unwrap_or(12.0),
+                    axis_label_font_family: opt
+                        .axis_label
+                        .as_ref()
                         .and_then(|a| a.font_family.clone())
                         .unwrap_or_else(|| "sans-serif".to_string()),
-                    axis_label_font_weight: opt.axis_label.as_ref()
+                    axis_label_font_weight: opt
+                        .axis_label
+                        .as_ref()
                         .and_then(|a| a.font_weight)
                         .unwrap_or(FontWeight::Named(FontWeightNamed::Normal)),
                     split_line_show: opt.split_line.as_ref().and_then(|a| a.show).unwrap_or(true),
-                    split_line_length: opt.split_line.as_ref().and_then(|a| a.length).unwrap_or(15.0),
-                    split_line_style: opt.split_line
+                    split_line_length: opt
+                        .split_line
+                        .as_ref()
+                        .and_then(|a| a.length)
+                        .unwrap_or(15.0),
+                    split_line_style: opt
+                        .split_line
                         .and_then(|a| a.line_style)
                         .map(|s| Self::resolve_line_style(s, theme, Color::new(60, 60, 60)))
                         .unwrap_or_else(|| LineStyle {
@@ -1296,42 +1382,80 @@ impl ResolvedOption {
                             line_type: LineType::Solid,
                         }),
                     title_show: title.show.unwrap_or(true),
-                    title_offset: title.offset_center.map(|o| {
-                        if o.len() >= 2 {
-                            (Self::parse_percent_or_value(&o[0]), Self::parse_percent_or_value(&o[1]))
-                        } else {
-                            (0.0, -20.0)
-                        }
-                    }).unwrap_or((0.0, -20.0)),
-                    title_color: title.color.map(Color::from).unwrap_or(Color::new(80, 80, 80)),
+                    title_offset: title
+                        .offset_center
+                        .map(|o| {
+                            if o.len() >= 2 {
+                                (
+                                    Self::parse_percent_or_value(&o[0]),
+                                    Self::parse_percent_or_value(&o[1]),
+                                )
+                            } else {
+                                (0.0, -20.0)
+                            }
+                        })
+                        .unwrap_or((0.0, -20.0)),
+                    title_color: title
+                        .color
+                        .map(Color::from)
+                        .unwrap_or(Color::new(80, 80, 80)),
                     title_font_size: title.font_size.unwrap_or(14.0),
-                    title_font_family: title.font_family.clone().unwrap_or_else(|| "sans-serif".to_string()),
-                    title_font_weight: title.font_weight.unwrap_or(FontWeight::Named(FontWeightNamed::Normal)),
+                    title_font_family: title
+                        .font_family
+                        .clone()
+                        .unwrap_or_else(|| "sans-serif".to_string()),
+                    title_font_weight: title
+                        .font_weight
+                        .unwrap_or(FontWeight::Named(FontWeightNamed::Normal)),
                     detail_show: detail.show.unwrap_or(true),
                     detail_formatter: detail.formatter,
-                    detail_offset: detail.offset_center.map(|o| {
-                        if o.len() >= 2 {
-                            (Self::parse_percent_or_value(&o[0]), Self::parse_percent_or_value(&o[1]))
-                        } else {
-                            (0.0, 30.0)
-                        }
-                    }).unwrap_or((0.0, 30.0)),
+                    detail_offset: detail
+                        .offset_center
+                        .map(|o| {
+                            if o.len() >= 2 {
+                                (
+                                    Self::parse_percent_or_value(&o[0]),
+                                    Self::parse_percent_or_value(&o[1]),
+                                )
+                            } else {
+                                (0.0, 30.0)
+                            }
+                        })
+                        .unwrap_or((0.0, 30.0)),
                     detail_color: detail.color.map(Color::from).unwrap_or(color),
                     detail_font_size: detail.font_size.unwrap_or(24.0),
-                    detail_font_family: detail.font_family.clone().unwrap_or_else(|| "sans-serif".to_string()),
-                    detail_font_weight: detail.font_weight.unwrap_or(FontWeight::Named(FontWeightNamed::Normal)),
+                    detail_font_family: detail
+                        .font_family
+                        .clone()
+                        .unwrap_or_else(|| "sans-serif".to_string()),
+                    detail_font_weight: detail
+                        .font_weight
+                        .unwrap_or(FontWeight::Named(FontWeightNamed::Normal)),
                     color,
-                    gradient_colors: opt.gradient_colors.as_ref().map(|stops| {
-                        stops.iter().map(|s| {
-                            (s.offset, Color::from_hex(&s.color).unwrap_or_else(|| Color::new(100, 100, 100)))
-                        }).collect()
-                    }).unwrap_or_else(|| vec![
-                        (0.0, Color::from_hex("#3fbe95").unwrap()),
-                        (0.25, Color::from_hex("#b6d634").unwrap()),
-                        (0.5, Color::from_hex("#ffd10a").unwrap()),
-                        (0.75, Color::from_hex("#ff994d").unwrap()),
-                        (1.0, Color::from_hex("#fb628b").unwrap()),
-                    ]),
+                    gradient_colors: opt
+                        .gradient_colors
+                        .as_ref()
+                        .map(|stops| {
+                            stops
+                                .iter()
+                                .map(|s| {
+                                    (
+                                        s.offset,
+                                        Color::from_hex(&s.color)
+                                            .unwrap_or_else(|| Color::new(100, 100, 100)),
+                                    )
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_else(|| {
+                            vec![
+                                (0.0, Color::from_hex("#3fbe95").unwrap()),
+                                (0.25, Color::from_hex("#b6d634").unwrap()),
+                                (0.5, Color::from_hex("#ffd10a").unwrap()),
+                                (0.75, Color::from_hex("#ff994d").unwrap()),
+                                (1.0, Color::from_hex("#fb628b").unwrap()),
+                            ]
+                        }),
                 }))
             }
             SeriesOption::Table(opt) => {
@@ -1347,10 +1471,12 @@ impl ResolvedOption {
                         show: header.show.unwrap_or(true),
                         height: header.height.unwrap_or(40.0),
                         style: Self::resolve_text_style(header_style, theme),
-                        background_color: header.background_color
+                        background_color: header
+                            .background_color
                             .map(Color::from)
                             .unwrap_or_else(|| Color::new(248, 248, 248)),
-                        align: header.align
+                        align: header
+                            .align
                             .map(Self::convert_text_align)
                             .unwrap_or(TextAlign::Center),
                     },
@@ -1358,13 +1484,16 @@ impl ResolvedOption {
                         show: body.show.unwrap_or(true),
                         row_height: body.row_height.unwrap_or(32.0),
                         style: Self::resolve_text_style(body_style, theme),
-                        even_row_background_color: body.even_row_background_color
+                        even_row_background_color: body
+                            .even_row_background_color
                             .map(Color::from)
                             .unwrap_or_else(|| Color::new(255, 255, 255)),
-                        odd_row_background_color: body.odd_row_background_color
+                        odd_row_background_color: body
+                            .odd_row_background_color
                             .map(Color::from)
                             .unwrap_or_else(|| Color::new(250, 250, 250)),
-                        align: body.align
+                        align: body
+                            .align
                             .map(Self::convert_text_align)
                             .unwrap_or(TextAlign::Center),
                     },
@@ -1376,24 +1505,41 @@ impl ResolvedOption {
     }
 
     fn resolve_radar(option: RadarOption, theme: &Theme) -> RadarConfig {
-        let indicator = option.indicator.unwrap_or_default().into_iter().map(|i| {
-            RadarIndicator {
+        let indicator = option
+            .indicator
+            .unwrap_or_default()
+            .into_iter()
+            .map(|i| RadarIndicator {
                 name: i.name.unwrap_or_default(),
                 max: i.max.unwrap_or(100.0),
-            }
-        }).collect();
+            })
+            .collect();
 
-        let center = option.center.unwrap_or_else(|| vec!["50%".to_string(), "50%".to_string()]);
-        let center_x = Self::parse_percent_or_value(&center.first().cloned().unwrap_or_else(|| "50%".to_string()));
-        let center_y = Self::parse_percent_or_value(&center.get(1).cloned().unwrap_or_else(|| "50%".to_string()));
+        let center = option
+            .center
+            .unwrap_or_else(|| vec!["50%".to_string(), "50%".to_string()]);
+        let center_x = Self::parse_percent_or_value(
+            &center.first().cloned().unwrap_or_else(|| "50%".to_string()),
+        );
+        let center_y = Self::parse_percent_or_value(
+            &center.get(1).cloned().unwrap_or_else(|| "50%".to_string()),
+        );
 
-        let radius = option.radius.unwrap_or_else(|| vec!["0%".to_string(), "75%".to_string()]);
-        let radius_inner = Self::parse_percent_or_value(&radius.first().cloned().unwrap_or_else(|| "0%".to_string()));
-        let radius_outer = Self::parse_percent_or_value(&radius.get(1).cloned().unwrap_or_else(|| "75%".to_string()));
+        let radius = option
+            .radius
+            .unwrap_or_else(|| vec!["0%".to_string(), "75%".to_string()]);
+        let radius_inner = Self::parse_percent_or_value(
+            &radius.first().cloned().unwrap_or_else(|| "0%".to_string()),
+        );
+        let radius_outer = Self::parse_percent_or_value(
+            &radius.get(1).cloned().unwrap_or_else(|| "75%".to_string()),
+        );
 
         // 解析 name 配置（指标名称样式）
         let name_config = option.name.unwrap_or_default();
-        let name_text_style = name_config.text_style.map(|s| Self::resolve_text_style(s, theme))
+        let name_text_style = name_config
+            .text_style
+            .map(|s| Self::resolve_text_style(s, theme))
             .unwrap_or_else(|| TextStyle {
                 color: Color::new(80, 80, 80),
                 font_size: 12.0,
@@ -1418,25 +1564,29 @@ impl ResolvedOption {
     fn resolve_data(data: &[DataPoint]) -> crate::error::Result<Vec<DataItem>> {
         data.iter()
             .map(|dp| match dp {
-                DataPoint::Number(n) => Ok(DataItem { name: None, value: *n }),
+                DataPoint::Number(n) => Ok(DataItem {
+                    name: None,
+                    value: *n,
+                }),
                 DataPoint::Array(arr) => {
                     if arr.len() >= 2 {
                         let name = arr.first().and_then(|v| v.as_str()).map(|s| s.to_string());
-                        let value = arr
-                            .get(1)
-                            .and_then(|v| v.as_f64())
-                            .ok_or_else(|| ChartError::InvalidColor("Invalid data value".to_string()))?;
+                        let value = arr.get(1).and_then(|v| v.as_f64()).ok_or_else(|| {
+                            ChartError::InvalidColor("Invalid data value".to_string())
+                        })?;
                         Ok(DataItem { name, value })
                     } else {
                         Err(ChartError::InvalidColor("Invalid data array".to_string()))
                     }
                 }
                 DataPoint::Object(obj) => {
-                    let name = obj.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
-                    let value = obj
-                        .get("value")
-                        .and_then(|v| v.as_f64())
-                        .ok_or_else(|| ChartError::InvalidColor("Invalid data value".to_string()))?;
+                    let name = obj
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
+                    let value = obj.get("value").and_then(|v| v.as_f64()).ok_or_else(|| {
+                        ChartError::InvalidColor("Invalid data value".to_string())
+                    })?;
                     Ok(DataItem { name, value })
                 }
             })
@@ -1452,29 +1602,31 @@ impl ResolvedOption {
                 )),
                 DataPoint::Array(arr) => {
                     if arr.len() >= 2 {
-                        let x = arr.first()
-                            .and_then(|v| v.as_f64())
-                            .ok_or_else(|| ChartError::InvalidColor("Invalid x value".to_string()))?;
-                        let y = arr
-                            .get(1)
-                            .and_then(|v| v.as_f64())
-                            .ok_or_else(|| ChartError::InvalidColor("Invalid y value".to_string()))?;
+                        let x = arr.first().and_then(|v| v.as_f64()).ok_or_else(|| {
+                            ChartError::InvalidColor("Invalid x value".to_string())
+                        })?;
+                        let y = arr.get(1).and_then(|v| v.as_f64()).ok_or_else(|| {
+                            ChartError::InvalidColor("Invalid y value".to_string())
+                        })?;
                         let name = arr.get(2).and_then(|v| v.as_str()).map(|s| s.to_string());
                         Ok(ScatterDataItem { x, y, name })
                     } else {
-                        Err(ChartError::InvalidColor("Scatter data array must have at least 2 elements [x, y]".to_string()))
+                        Err(ChartError::InvalidColor(
+                            "Scatter data array must have at least 2 elements [x, y]".to_string(),
+                        ))
                     }
                 }
                 DataPoint::Object(obj) => {
-                    let x = obj
-                        .get("x")
-                        .and_then(|v| v.as_f64())
-                        .ok_or_else(|| ChartError::InvalidColor("Missing or invalid x value".to_string()))?;
-                    let y = obj
-                        .get("y")
-                        .and_then(|v| v.as_f64())
-                        .ok_or_else(|| ChartError::InvalidColor("Missing or invalid y value".to_string()))?;
-                    let name = obj.get("name").and_then(|v| v.as_str()).map(|s| s.to_string());
+                    let x = obj.get("x").and_then(|v| v.as_f64()).ok_or_else(|| {
+                        ChartError::InvalidColor("Missing or invalid x value".to_string())
+                    })?;
+                    let y = obj.get("y").and_then(|v| v.as_f64()).ok_or_else(|| {
+                        ChartError::InvalidColor("Missing or invalid y value".to_string())
+                    })?;
+                    let name = obj
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string());
                     Ok(ScatterDataItem { x, y, name })
                 }
             })
@@ -1491,31 +1643,43 @@ impl ResolvedOption {
             font_family: option
                 .font_family
                 .unwrap_or_else(|| theme.title.text_style.font_family.clone()),
-            font_weight: option.font_weight.unwrap_or(FontWeight::Named(FontWeightNamed::Normal)),
-            font_style: option.font_style.map(|f| match f {
-                FontStyleOption::Normal => FontStyle::Normal,
-                FontStyleOption::Italic => FontStyle::Italic,
-                FontStyleOption::Oblique => FontStyle::Oblique,
-            }).unwrap_or(FontStyle::Normal),
-            align: option.align.map(|a| match a {
-                TextAlignOption::Left => TextAlign::Left,
-                TextAlignOption::Center => TextAlign::Center,
-                TextAlignOption::Right => TextAlign::Right,
-            }).unwrap_or(TextAlign::Left),
-            vertical_align: option.vertical_align.map(|v| match v {
-                LabelVerticalAlign::Top => TextBaseline::Top,
-                LabelVerticalAlign::Middle => TextBaseline::Middle,
-                LabelVerticalAlign::Bottom => TextBaseline::Bottom,
-            }).unwrap_or(TextBaseline::Top),
+            font_weight: option
+                .font_weight
+                .unwrap_or(FontWeight::Named(FontWeightNamed::Normal)),
+            font_style: option
+                .font_style
+                .map(|f| match f {
+                    FontStyleOption::Normal => FontStyle::Normal,
+                    FontStyleOption::Italic => FontStyle::Italic,
+                    FontStyleOption::Oblique => FontStyle::Oblique,
+                })
+                .unwrap_or(FontStyle::Normal),
+            align: option
+                .align
+                .map(|a| match a {
+                    TextAlignOption::Left => TextAlign::Left,
+                    TextAlignOption::Center => TextAlign::Center,
+                    TextAlignOption::Right => TextAlign::Right,
+                })
+                .unwrap_or(TextAlign::Left),
+            vertical_align: option
+                .vertical_align
+                .map(|v| match v {
+                    LabelVerticalAlign::Top => TextBaseline::Top,
+                    LabelVerticalAlign::Middle => TextBaseline::Middle,
+                    LabelVerticalAlign::Bottom => TextBaseline::Bottom,
+                })
+                .unwrap_or(TextBaseline::Top),
         }
     }
 
-    fn resolve_line_style(option: LineStyleOption, _theme: &Theme, default_color: Color) -> LineStyle {
+    fn resolve_line_style(
+        option: LineStyleOption,
+        _theme: &Theme,
+        default_color: Color,
+    ) -> LineStyle {
         LineStyle {
-            color: option
-                .color
-                .map(Color::from)
-                .unwrap_or(default_color),
+            color: option.color.map(Color::from).unwrap_or(default_color),
             width: option.width.unwrap_or(1.0),
             line_type: option
                 .line_type

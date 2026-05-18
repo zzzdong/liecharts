@@ -1,7 +1,7 @@
 //! 视觉元素模块 - 纯数据描述，与渲染后端解耦
 
-use vello_cpu::kurbo::{BezPath, Point, Rect, Vec2};
 use crate::text::TextLayout;
+use vello_cpu::kurbo::{BezPath, Point, Rect, Vec2};
 
 /// 视觉元素枚举 - 纯数据描述，可被任何渲染后端解释
 ///
@@ -45,11 +45,11 @@ pub enum VisualElement {
     // ---- 文本 ----
     TextRun {
         text: String,
-        position: Point,  // 锚点位置（配合 align/baseline 确定文本块左上角）
-        style: crate::model::TextStyle,  // 字体样式（包含 color, font_size, font_family, font_weight, font_style, align, vertical_align）
-        rotation: f64,  // 弧度
+        position: Point, // 锚点位置（配合 align/baseline 确定文本块左上角）
+        style: crate::model::TextStyle, // 字体样式（包含 color, font_size, font_family, font_weight, font_style, align, vertical_align）
+        rotation: f64,                  // 弧度
         max_width: Option<f64>,
-        layout: Option<TextLayout>,  // 预排版结果
+        layout: Option<TextLayout>, // 预排版结果
     },
 
     // ---- 变换组合 ----
@@ -66,7 +66,11 @@ impl Clone for VisualElement {
                 rect: *rect,
                 style: style.clone(),
             },
-            VisualElement::Circle { center, radius, style } => VisualElement::Circle {
+            VisualElement::Circle {
+                center,
+                radius,
+                style,
+            } => VisualElement::Circle {
                 center: *center,
                 radius: *radius,
                 style: style.clone(),
@@ -84,12 +88,23 @@ impl Clone for VisualElement {
                 path: path.clone(),
                 style: style.clone(),
             },
-            VisualElement::GradientPath { path, gradient, stroke } => VisualElement::GradientPath {
+            VisualElement::GradientPath {
+                path,
+                gradient,
+                stroke,
+            } => VisualElement::GradientPath {
                 path: path.clone(),
                 gradient: gradient.clone(),
                 stroke: stroke.clone(),
             },
-            VisualElement::TextRun { text, position, style, rotation, max_width, layout } => VisualElement::TextRun {
+            VisualElement::TextRun {
+                text,
+                position,
+                style,
+                rotation,
+                max_width,
+                layout,
+            } => VisualElement::TextRun {
                 text: text.clone(),
                 position: *position,
                 style: style.clone(),
@@ -97,7 +112,10 @@ impl Clone for VisualElement {
                 max_width: *max_width,
                 layout: layout.clone(),
             },
-            VisualElement::Group { children, transform } => VisualElement::Group {
+            VisualElement::Group {
+                children,
+                transform,
+            } => VisualElement::Group {
                 children: children.clone(),
                 transform: *transform,
             },
@@ -113,7 +131,11 @@ impl std::fmt::Debug for VisualElement {
                 .field("rect", rect)
                 .field("style", style)
                 .finish(),
-            VisualElement::Circle { center, radius, style } => f
+            VisualElement::Circle {
+                center,
+                radius,
+                style,
+            } => f
                 .debug_struct("Circle")
                 .field("center", center)
                 .field("radius", radius)
@@ -135,13 +157,24 @@ impl std::fmt::Debug for VisualElement {
                 .field("path", &"<BezPath>")
                 .field("style", style)
                 .finish(),
-            VisualElement::GradientPath { path: _, gradient, stroke } => f
+            VisualElement::GradientPath {
+                path: _,
+                gradient,
+                stroke,
+            } => f
                 .debug_struct("GradientPath")
                 .field("path", &"<BezPath>")
                 .field("gradient", gradient)
                 .field("stroke", stroke)
                 .finish(),
-            VisualElement::TextRun { text, position, style, rotation, max_width, layout } => f
+            VisualElement::TextRun {
+                text,
+                position,
+                style,
+                rotation,
+                max_width,
+                layout,
+            } => f
                 .debug_struct("TextRun")
                 .field("text", text)
                 .field("position", position)
@@ -150,7 +183,10 @@ impl std::fmt::Debug for VisualElement {
                 .field("max_width", max_width)
                 .field("layout", &layout.as_ref().map(|_| "<TextLayout>"))
                 .finish(),
-            VisualElement::Group { children, transform } => f
+            VisualElement::Group {
+                children,
+                transform,
+            } => f
                 .debug_struct("Group")
                 .field("children", children)
                 .field("transform", transform)
@@ -159,13 +195,11 @@ impl std::fmt::Debug for VisualElement {
     }
 }
 
-
-
 /// 2D 变换
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Transform {
     pub translate: Vec2,
-    pub rotate: f64,  // 弧度
+    pub rotate: f64, // 弧度
     pub scale: Vec2,
 }
 
@@ -340,10 +374,8 @@ pub enum TextAlign {
     Right,
 }
 
-
 /// 文本基线方式
-#[derive(Clone, Copy, Debug, PartialEq)]
-#[derive(Default)]
+#[derive(Clone, Copy, Debug, PartialEq, Default)]
 pub enum TextBaseline {
     Top,
     Middle,
@@ -351,6 +383,5 @@ pub enum TextBaseline {
     #[default]
     Alphabetic,
 }
-
 
 // 文本样式已移除：改用 model::TextStyle + TextRun 的 align/baseline/rotation 字段

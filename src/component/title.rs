@@ -1,8 +1,8 @@
 use crate::component::ChartComponent;
 use crate::layout::LayoutOutput;
-use crate::model::{ResolvedOption, Title};
-use crate::visual::{VisualElement, TextAlign, TextBaseline};
+use crate::model::{ChartModel, Title};
 use crate::text::create_text_layout;
+use crate::visual::{TextAlign, TextBaseline, VisualElement};
 use vello_cpu::kurbo::Point;
 
 pub struct TitleComponent {
@@ -11,12 +11,18 @@ pub struct TitleComponent {
 
 impl TitleComponent {
     pub fn new(title: &Title) -> Self {
-        Self { title: title.clone() }
+        Self {
+            title: title.clone(),
+        }
     }
 }
 
 impl ChartComponent for TitleComponent {
-    fn build_visual_elements(&self, _resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        _resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
         if let Some(bbox) = layout.title_bbox {
@@ -46,7 +52,11 @@ impl ChartComponent for TitleComponent {
             });
 
             if let Some(subtext) = &self.title.subtext {
-                let sub_font = self.title.subtext_style.as_ref().unwrap_or(&self.title.text_style);
+                let sub_font = self
+                    .title
+                    .subtext_style
+                    .as_ref()
+                    .unwrap_or(&self.title.text_style);
                 let sub_layout = create_text_layout(subtext, sub_font, None);
                 let sub_width = sub_layout.width() as f64;
 

@@ -1,8 +1,8 @@
 use crate::component::ChartComponent;
 use crate::layout::LayoutOutput;
-use crate::model::{Legend, ResolvedOption};
-use crate::visual::{Color, FillStrokeStyle, TextAlign, TextBaseline, VisualElement};
+use crate::model::{ChartModel, Legend};
 use crate::text::{compute_text_offset, create_text_layout};
+use crate::visual::{Color, FillStrokeStyle, TextAlign, TextBaseline, VisualElement};
 use vello_cpu::kurbo::{Point, Rect};
 
 pub struct LegendComponent {
@@ -11,12 +11,18 @@ pub struct LegendComponent {
 
 impl LegendComponent {
     pub fn new(legend: &Legend) -> Self {
-        Self { legend: legend.clone() }
+        Self {
+            legend: legend.clone(),
+        }
     }
 }
 
 impl ChartComponent for LegendComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
         if !self.legend.show {
@@ -28,7 +34,10 @@ impl ChartComponent for LegendComponent {
             let symbol_size = self.legend.symbol_size;
             let font_config = &self.legend.text_style;
 
-            let item_widths: Vec<f64> = self.legend.data.iter()
+            let item_widths: Vec<f64> = self
+                .legend
+                .data
+                .iter()
                 .map(|name| {
                     let text_w = crate::layout::measure_text_size(name, font_config).width;
                     symbol_size + 5.0 + text_w + 10.0
@@ -42,7 +51,8 @@ impl ChartComponent for LegendComponent {
                     let mut col_count = 0_usize;
 
                     for (i, name) in self.legend.data.iter().enumerate() {
-                        let color = resolved.series_color_by_name(name)
+                        let color = resolved
+                            .series_color_by_name(name)
                             .or_else(|| resolved.colors.get(i % resolved.colors.len()).copied())
                             .unwrap_or(Color::new(0, 0, 0));
                         let iw = item_widths[i];
@@ -65,7 +75,8 @@ impl ChartComponent for LegendComponent {
                         });
 
                         let layout_obj = create_text_layout(name, font_config, None);
-                        let (_, y_offset) = compute_text_offset(&layout_obj, TextAlign::Left, TextBaseline::Middle);
+                        let (_, y_offset) =
+                            compute_text_offset(&layout_obj, TextAlign::Left, TextBaseline::Middle);
 
                         elements.push(VisualElement::TextRun {
                             text: name.clone(),
@@ -90,7 +101,8 @@ impl ChartComponent for LegendComponent {
                 }
                 crate::model::Orient::Vertical => {
                     for (i, name) in self.legend.data.iter().enumerate() {
-                        let color = resolved.series_color_by_name(name)
+                        let color = resolved
+                            .series_color_by_name(name)
                             .or_else(|| resolved.colors.get(i % resolved.colors.len()).copied())
                             .unwrap_or(Color::new(0, 0, 0));
 
@@ -108,7 +120,8 @@ impl ChartComponent for LegendComponent {
                         });
 
                         let layout_obj = create_text_layout(name, font_config, None);
-                        let (_, y_offset) = compute_text_offset(&layout_obj, TextAlign::Left, TextBaseline::Middle);
+                        let (_, y_offset) =
+                            compute_text_offset(&layout_obj, TextAlign::Left, TextBaseline::Middle);
 
                         elements.push(VisualElement::TextRun {
                             text: name.clone(),

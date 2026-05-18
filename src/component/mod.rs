@@ -1,5 +1,5 @@
 use crate::layout::LayoutOutput;
-use crate::model::ResolvedOption;
+use crate::model::ChartModel;
 use crate::visual::VisualElement;
 
 // 基础模块
@@ -26,11 +26,10 @@ pub mod title;
 
 // 基础模块导出
 pub use base::{SeriesComponentBase, SeriesComponentExt};
-pub use context::{SeriesContext, SeriesRenderer, CartesianRenderer, PolarRenderer};
+pub use context::{CartesianRenderer, PolarRenderer, SeriesContext, SeriesRenderer};
 pub use renderers::{
-    SeriesStyle, LabelConfig, LabelPosition,
+    LabelConfig, LabelPosition, SeriesStyle, color_utils, create_label_config, grid_utils,
     render_cartesian_pipeline, render_polar_pipeline,
-    create_label_config, grid_utils, color_utils,
 };
 
 // 组件导出
@@ -55,7 +54,11 @@ pub use title::TitleComponent;
 /// 所有图表组件（标题、图例、坐标轴、数据系列等）都实现此 trait，
 /// 将配置和布局信息转换为视觉元素列表。
 pub trait ChartComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement>;
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement>;
 }
 
 /// 系列组件 trait - 所有数据系列组件的基础接口
@@ -72,14 +75,20 @@ pub trait SeriesComponent: ChartComponent {
     fn is_empty(&self) -> bool;
 
     /// 获取 grid 信息
-    fn get_grid_info<'a>(&self, layout: &'a LayoutOutput) -> Option<&'a crate::layout::GridLayoutInfo> {
-        layout.grids.iter().find(|g| g.grid_index == self.grid_index())
+    fn get_grid_info<'a>(
+        &self,
+        layout: &'a LayoutOutput,
+    ) -> Option<&'a crate::layout::GridLayoutInfo> {
+        layout
+            .grids
+            .iter()
+            .find(|g| g.grid_index == self.grid_index())
     }
 
     /// 创建渲染上下文
     fn create_context<'a>(
         &self,
-        resolved: &'a ResolvedOption,
+        resolved: &'a ChartModel,
         layout: &'a LayoutOutput,
     ) -> Option<SeriesContext<'a>> {
         let grid_info = self.get_grid_info(layout)?;

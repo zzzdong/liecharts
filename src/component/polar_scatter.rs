@@ -1,10 +1,12 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{PolarScatterSeries, ResolvedOption};
-use crate::visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement};
+use crate::model::{ChartModel, PolarScatterSeries};
 use crate::text::create_text_layout;
-use vello_cpu::kurbo::Point;
+use crate::visual::{
+    Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
+};
 use std::f64::consts::PI;
+use vello_cpu::kurbo::Point;
 
 pub struct PolarScatterSeriesComponent {
     series: PolarScatterSeries,
@@ -41,7 +43,10 @@ impl PolarScatterSeriesComponent {
         let stroke = Stroke::new(grid_color, 1.0);
         let stroke_style = StrokeStyle::new(grid_color, 1.0);
 
-        let max_data_radius = self.series.data.iter()
+        let max_data_radius = self
+            .series
+            .data
+            .iter()
             .map(|d| d.radius)
             .fold(0.0, f64::max)
             .max(1.0);
@@ -66,7 +71,9 @@ impl PolarScatterSeriesComponent {
                 font_size: 10.0,
                 font_family: "sans-serif".to_string(),
                 color: Color::new(100, 100, 100),
-                font_weight: crate::option::FontWeight::Named(crate::option::FontWeightNamed::Normal),
+                font_weight: crate::option::FontWeight::Named(
+                    crate::option::FontWeightNamed::Normal,
+                ),
                 ..Default::default()
             };
 
@@ -110,12 +117,18 @@ impl PolarScatterSeriesComponent {
     fn build_scatter_points(&self, center: Point, max_radius: f64) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
-        let max_data_radius = self.series.data.iter()
+        let max_data_radius = self
+            .series
+            .data
+            .iter()
             .map(|d| d.radius)
             .fold(0.0, f64::max)
             .max(1.0);
 
-        let color = self.series.item_style.color
+        let color = self
+            .series
+            .item_style
+            .color
             .unwrap_or(Color::new(84, 112, 198));
 
         for data_item in &self.series.data {
@@ -174,8 +187,14 @@ impl PolarScatterSeriesComponent {
                     let mut path = vello_cpu::kurbo::BezPath::new();
                     let sqrt3_2 = 0.86602540378;
                     path.move_to(Point::new(point_center.x, point_center.y - symbol_size));
-                    path.line_to(Point::new(point_center.x + symbol_size * sqrt3_2, point_center.y + symbol_size * 0.5));
-                    path.line_to(Point::new(point_center.x - symbol_size * sqrt3_2, point_center.y + symbol_size * 0.5));
+                    path.line_to(Point::new(
+                        point_center.x + symbol_size * sqrt3_2,
+                        point_center.y + symbol_size * 0.5,
+                    ));
+                    path.line_to(Point::new(
+                        point_center.x - symbol_size * sqrt3_2,
+                        point_center.y + symbol_size * 0.5,
+                    ));
                     path.close_path();
                     elements.push(VisualElement::Path {
                         path,
@@ -217,7 +236,11 @@ impl SeriesComponent for PolarScatterSeriesComponent {
 }
 
 impl ChartComponent for PolarScatterSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

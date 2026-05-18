@@ -1,4 +1,4 @@
-use liecharts::LieChart;
+use liecharts::{ChartBuilder, LieChart};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let json_config = r#"
@@ -43,10 +43,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     "#;
 
-    let option: liecharts::LieChartOption = serde_json::from_str(json_config)?;
+    let model = ChartBuilder::from_option_json(json_config)?.build()?;
     let chart = LieChart::new(800, 600);
 
-    chart.render_to_image(option, "json_config.png")?;
+    chart.render_to_image(&model, "json_config.png")?;
     println!("JSON配置图表已保存到 json_config.png");
 
     Ok(())

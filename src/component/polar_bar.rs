@@ -1,10 +1,12 @@
 use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
 use crate::layout::LayoutOutput;
-use crate::model::{PolarBarSeries, ResolvedOption};
-use crate::visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement};
+use crate::model::{ChartModel, PolarBarSeries};
 use crate::text::create_text_layout;
-use vello_cpu::kurbo::{Arc, BezPath, PathSeg, Point, Shape, Vec2};
+use crate::visual::{
+    Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
+};
 use std::f64::consts::PI;
+use vello_cpu::kurbo::{Arc, BezPath, PathSeg, Point, Shape, Vec2};
 
 pub struct PolarBarSeriesComponent {
     series: PolarBarSeries,
@@ -63,7 +65,9 @@ impl PolarBarSeriesComponent {
                 font_size: 10.0,
                 font_family: "sans-serif".to_string(),
                 color: Color::new(100, 100, 100),
-                font_weight: crate::option::FontWeight::Named(crate::option::FontWeightNamed::Normal),
+                font_weight: crate::option::FontWeight::Named(
+                    crate::option::FontWeightNamed::Normal,
+                ),
                 ..Default::default()
             };
 
@@ -144,7 +148,10 @@ impl PolarBarSeriesComponent {
                 continue;
             }
 
-            let color = self.series.colors.get(i % self.series.colors.len())
+            let color = self
+                .series
+                .colors
+                .get(i % self.series.colors.len())
                 .copied()
                 .unwrap_or(Color::new(100, 100, 100));
 
@@ -166,12 +173,10 @@ impl PolarBarSeriesComponent {
                     sweep_angle,
                     0.0,
                 );
-                arc.to_path(0.5).segments().for_each(|seg| {
-                    match seg {
-                        PathSeg::Line(line) => path.line_to(line.p1),
-                        PathSeg::Quad(quad) => path.quad_to(quad.p1, quad.p2),
-                        PathSeg::Cubic(cubic) => path.curve_to(cubic.p1, cubic.p2, cubic.p3),
-                    }
+                arc.to_path(0.5).segments().for_each(|seg| match seg {
+                    PathSeg::Line(line) => path.line_to(line.p1),
+                    PathSeg::Quad(quad) => path.quad_to(quad.p1, quad.p2),
+                    PathSeg::Cubic(cubic) => path.curve_to(cubic.p1, cubic.p2, cubic.p3),
                 });
             }
 
@@ -206,7 +211,11 @@ impl SeriesComponent for PolarBarSeriesComponent {
 }
 
 impl ChartComponent for PolarBarSeriesComponent {
-    fn build_visual_elements(&self, resolved: &ResolvedOption, layout: &LayoutOutput) -> Vec<VisualElement> {
+    fn build_visual_elements(
+        &self,
+        resolved: &ChartModel,
+        layout: &LayoutOutput,
+    ) -> Vec<VisualElement> {
         let ctx = match self.create_context(resolved, layout) {
             Some(ctx) => ctx,
             None => return Vec::new(),

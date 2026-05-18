@@ -1,8 +1,10 @@
 use crate::component::ChartComponent;
 use crate::layout::{LayoutOutput, TableLayout};
-use crate::model::{ResolvedOption, TableSeries};
-use crate::visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement};
+use crate::model::{ChartModel, TableSeries};
 use crate::text::create_text_layout;
+use crate::visual::{
+    Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
+};
 use vello_cpu::kurbo::{Point, Rect};
 
 pub struct TableSeriesComponent {
@@ -21,7 +23,9 @@ impl TableSeriesComponent {
 
     /// 获取表格所属的 grid 边界
     fn get_grid_bounds(&self, layout: &LayoutOutput) -> Option<Rect> {
-        layout.grids.iter()
+        layout
+            .grids
+            .iter()
             .find(|g| g.grid_index == self.series.grid_index)
             .map(|g| g.grid_inner_bbox)
     }
@@ -30,13 +34,14 @@ impl TableSeriesComponent {
 impl ChartComponent for TableSeriesComponent {
     fn build_visual_elements(
         &self,
-        _resolved: &ResolvedOption,
+        _resolved: &ChartModel,
         layout: &LayoutOutput,
     ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
 
         // 使用 grid_index 找到正确的 grid
-        let plot_bounds = self.get_grid_bounds(layout)
+        let plot_bounds = self
+            .get_grid_bounds(layout)
             .unwrap_or_else(|| Rect::new(0.0, 0.0, 800.0, 600.0));
 
         let padding = 8.0;
@@ -61,7 +66,12 @@ impl ChartComponent for TableSeriesComponent {
         // ── 表头 ──
         if header.show {
             elements.push(VisualElement::Rect {
-                rect: Rect::new(table_left, table_top, table_left + table_width, table_top + header.height),
+                rect: Rect::new(
+                    table_left,
+                    table_top,
+                    table_left + table_width,
+                    table_top + header.height,
+                ),
                 style: FillStrokeStyle {
                     fill: Some(header.background_color),
                     stroke: None,
@@ -107,7 +117,12 @@ impl ChartComponent for TableSeriesComponent {
 
             // 行背景
             elements.push(VisualElement::Rect {
-                rect: Rect::new(table_left, row_y, table_left + table_width, row_y + body.row_height),
+                rect: Rect::new(
+                    table_left,
+                    row_y,
+                    table_left + table_width,
+                    row_y + body.row_height,
+                ),
                 style: FillStrokeStyle {
                     fill: Some(bg_color),
                     stroke: None,
@@ -123,7 +138,8 @@ impl ChartComponent for TableSeriesComponent {
                 };
 
                 let col_width = col_widths.get(col_idx).copied().unwrap_or(100.0);
-                let cx = table_left + col_widths.iter().take(col_idx).sum::<f64>() + col_width / 2.0;
+                let cx =
+                    table_left + col_widths.iter().take(col_idx).sum::<f64>() + col_width / 2.0;
                 let cy = row_y + body.row_height / 2.0;
 
                 let layout_obj = create_text_layout(&cell_text, &body.style, Some(cell_max_w));
@@ -184,7 +200,12 @@ impl ChartComponent for TableSeriesComponent {
 
         // ── 外边框（加粗） ──
         elements.push(VisualElement::Rect {
-            rect: Rect::new(table_left, table_top, table_left + table_width, table_top + total_height),
+            rect: Rect::new(
+                table_left,
+                table_top,
+                table_left + table_width,
+                table_top + total_height,
+            ),
             style: FillStrokeStyle {
                 fill: None,
                 stroke: Some(Stroke {

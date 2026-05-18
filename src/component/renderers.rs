@@ -2,8 +2,8 @@
 //!
 //! 该模块提供了一系列辅助函数，用于简化系列组件的渲染逻辑。
 
-use crate::component::context::{SeriesContext, CartesianRenderer, PolarRenderer};
-use crate::visual::{VisualElement, Color, Stroke};
+use crate::component::context::{CartesianRenderer, PolarRenderer, SeriesContext};
+use crate::visual::{Color, Stroke, VisualElement};
 use vello_cpu::kurbo::Point;
 
 /// 标准笛卡尔坐标渲染流程
@@ -33,14 +33,14 @@ pub fn render_polar_pipeline<R: PolarRenderer>(
     }
 
     let plot_bounds = ctx.plot_bounds();
-    
+
     // 计算中心点和半径
     let center_percent = renderer.center_percent();
     let center = Point::new(
         plot_bounds.x0 + plot_bounds.width() * center_percent.0 / 100.0,
         plot_bounds.y0 + plot_bounds.height() * center_percent.1 / 100.0,
     );
-    
+
     let radius_percent = renderer.radius_percent();
     let max_radius = ctx.get_polar_max_radius() * radius_percent.1 / 100.0;
 
@@ -208,10 +208,11 @@ pub mod color_utils {
     /// 获取对比色（用于文本）
     pub fn get_contrast_color(background: Color) -> Color {
         // 简单的亮度计算
-        let luminance = (0.299 * background.r as f64 + 
-                        0.587 * background.g as f64 + 
-                        0.114 * background.b as f64) / 255.0;
-        
+        let luminance = (0.299 * background.r as f64
+            + 0.587 * background.g as f64
+            + 0.114 * background.b as f64)
+            / 255.0;
+
         if luminance > 0.5 {
             Color::new(0, 0, 0) // 深色背景用黑色文字
         } else {
