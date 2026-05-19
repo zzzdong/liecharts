@@ -385,8 +385,15 @@ fn compute_data_coord_for_grid(
             }
             ResolvedSeries::Line(s) => {
                 let vals: Vec<f64> = s.data.iter().map(|item| item.value).collect();
+                let x_vals: Vec<f64> = s.data.iter().filter_map(|item| item.x_value).collect();
                 let has_area = s.area_style.is_some();
-                (vals, s.stack.clone(), s.y_axis_index, None, has_area)
+                (
+                    vals,
+                    s.stack.clone(),
+                    s.y_axis_index,
+                    Some(x_vals),
+                    has_area,
+                )
             }
             ResolvedSeries::Scatter(s) => {
                 let y_vals: Vec<f64> = s.data.iter().map(|item| item.y).collect();

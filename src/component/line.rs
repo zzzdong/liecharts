@@ -80,7 +80,11 @@ impl LineSeriesComponent {
                 width: self.series.line_style.width,
             })
             .with_area(area_color, area_opacity)
-            .with_series_style(series_style);
+            .with_series_style(series_style)
+            .with_symbol_border(
+                self.series.item_style.border_color,
+                self.series.item_style.border_width,
+            );
 
         builder.build(transformed, &mapped, coord)
     }

@@ -63,6 +63,7 @@ impl ScatterSeriesComponent {
                     original: crate::model::DataItem {
                         name: item.name.clone(),
                         value: item.y,
+                        x_value: None,
                     },
                     display_value: item.y,
                     baseline: 0.0,

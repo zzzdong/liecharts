@@ -2,48 +2,19 @@ use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     ChartBuilder::new()
-        .with_title(liecharts::TitleOption {
-            text: Some("访问量趋势面积图".to_string()),
-            subtext: Some("Area Chart".to_string()),
-            ..Default::default()
-        })
-        .with_legend(liecharts::LegendOption {
-            show: Some(true),
-            data: Some(vec!["访问量".to_string()]),
-            ..Default::default()
-        })
-        .with_x_axis(liecharts::AxisOption {
-            axis_type: Some(AxisType::Category),
-            data: Some(vec![
-                "1月".to_string(),
-                "2月".to_string(),
-                "3月".to_string(),
-                "4月".to_string(),
-                "5月".to_string(),
-                "6月".to_string(),
-            ]),
-            ..Default::default()
-        })
-        .with_y_axis(liecharts::AxisOption {
-            axis_type: Some(AxisType::Value),
-            name: Some("访问量".to_string()),
-            ..Default::default()
-        })
+        .with_title(TitleOption::new("访问量趋势面积图").subtext("Area Chart"))
+        .with_legend(LegendOption::default().data(["访问量"]).show(true))
+        .with_x_axis(AxisOption::category().data(["1月", "2月", "3月", "4月", "5月", "6月"]))
+        .with_y_axis(AxisOption::value().name("访问量"))
         .with_series(SeriesOption::Line(liecharts::LineSeriesOption {
-            name: Some("访问量".to_string()),
-            data: vec![
-                DataPoint::Number(120.0),
-                DataPoint::Number(200.0),
-                DataPoint::Number(150.0),
-                DataPoint::Number(80.0),
-                DataPoint::Number(70.0),
-                DataPoint::Number(110.0),
-            ],
             area_style: Some(liecharts::AreaStyleOption {
                 color: None,
                 opacity: None,
             }),
-            ..Default::default()
+            ..liecharts::LineSeriesOption::new(
+                "访问量",
+                vec![120.0, 200.0, 150.0, 80.0, 70.0, 110.0],
+            )
         }))
         .build(800, 600)?
         .render_to_image("area.png")?;

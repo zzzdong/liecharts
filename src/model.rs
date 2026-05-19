@@ -7,6 +7,7 @@ use crate::{
         LineStyleOption, PositionOption, RadarOption, SeriesOption, SymbolType as OptionSymbolType,
         TextAlignOption, TextStyleOption, TitleOption,
     },
+    sampling,
     theme::Theme,
     visual::{Color, TextAlign, TextBaseline},
 };
@@ -415,7 +416,10 @@ impl ChartModel {
 
         match option {
             SeriesOption::Line(opt) => {
-                let data = Self::resolve_data(&opt.data)?;
+                let mut data = Self::resolve_data(&opt.data)?;
+                if let Some(ref cfg) = opt.sampling {
+                    data = sampling::sample(&data, cfg);
+                }
                 let series_theme = theme.series.get("line");
                 let line_style = opt
                     .line_style
@@ -459,7 +463,10 @@ impl ChartModel {
                 }))
             }
             SeriesOption::Bar(opt) => {
-                let data = Self::resolve_data(&opt.data)?;
+                let mut data = Self::resolve_data(&opt.data)?;
+                if let Some(ref cfg) = opt.sampling {
+                    data = sampling::sample(&data, cfg);
+                }
                 let bar_color = opt
                     .item_style
                     .as_ref()
@@ -499,7 +506,7 @@ impl ChartModel {
                 }))
             }
             SeriesOption::Candlestick(opt) => {
-                let data: Vec<CandlestickDataItem> = opt
+                let mut data: Vec<CandlestickDataItem> = opt
                     .data
                     .iter()
                     .map(|d| CandlestickDataItem {
@@ -510,6 +517,9 @@ impl ChartModel {
                         name: d.name.clone(),
                     })
                     .collect();
+                if let Some(ref cfg) = opt.sampling {
+                    data = sampling::sample_candlestick(&data, cfg);
+                }
 
                 let default_up_color = theme.get_theme_color(0);
                 let default_down_color = Color::new(60, 179, 113);
@@ -608,7 +618,10 @@ impl ChartModel {
                 }))
             }
             SeriesOption::Scatter(opt) => {
-                let data = Self::resolve_scatter_data(&opt.data)?;
+                let mut data = Self::resolve_scatter_data(&opt.data)?;
+                if let Some(ref cfg) = opt.sampling {
+                    data = sampling::sample_scatter(&data, cfg);
+                }
                 let series_color = opt
                     .item_style
                     .as_ref()
@@ -1048,32 +1061,21 @@ impl ChartModel {
     fn resolve_data(data: &[DataPoint]) -> crate::error::Result<Vec<DataItem>> {
         data.iter()
             .map(|dp| match dp {
-                DataPoint::Number(n) => Ok(DataItem {
+                DataPoint::Value(n) => Ok(DataItem {
                     name: None,
                     value: *n,
+                    x_value: None,
                 }),
-                DataPoint::Array(arr) => {
-                    if arr.len() >= 2 {
-                        let name = arr.first().and_then(|v| v.as_str()).map(|s| s.to_string());
-                        let value = arr.get(1).and_then(|v| v.as_f64()).ok_or_else(|| {
-                            ChartError::InvalidColor("Invalid data value".to_string())
-                        })?;
-                        Ok(DataItem { name, value })
-                    } else {
-                        Err(ChartError::DataError("Invalid data array".to_string()))
-                    }
-                }
-                DataPoint::Object(obj) => {
-                    let name = obj
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                    let value = obj
-                        .get("value")
-                        .and_then(|v| v.as_f64())
-                        .ok_or_else(|| ChartError::DataError("Invalid data value".to_string()))?;
-                    Ok(DataItem { name, value })
-                }
+                DataPoint::Named(name, value) => Ok(DataItem {
+                    name: Some(name.clone()),
+                    value: *value,
+                    x_value: None,
+                }),
+                DataPoint::XY(x, value) => Ok(DataItem {
+                    name: None,
+                    value: *value,
+                    x_value: Some(*x),
+                }),
             })
             .collect()
     }
@@ -1082,40 +1084,17 @@ impl ChartModel {
     fn resolve_scatter_data(data: &[DataPoint]) -> crate::error::Result<Vec<ScatterDataItem>> {
         data.iter()
             .map(|dp| match dp {
-                DataPoint::Number(_) => Err(ChartError::DataError(
+                DataPoint::Value(_) => Err(ChartError::DataError(
                     "Scatter chart data must be [x, y] arrays or {x, y} objects".to_string(),
                 )),
-                DataPoint::Array(arr) => {
-                    if arr.len() >= 2 {
-                        let x = arr
-                            .first()
-                            .and_then(|v| v.as_f64())
-                            .ok_or_else(|| ChartError::DataError("Invalid x value".to_string()))?;
-                        let y = arr
-                            .get(1)
-                            .and_then(|v| v.as_f64())
-                            .ok_or_else(|| ChartError::DataError("Invalid y value".to_string()))?;
-                        let name = arr.get(2).and_then(|v| v.as_str()).map(|s| s.to_string());
-                        Ok(ScatterDataItem { x, y, name })
-                    } else {
-                        Err(ChartError::DataError(
-                            "Scatter data array must have at least 2 elements [x, y]".to_string(),
-                        ))
-                    }
-                }
-                DataPoint::Object(obj) => {
-                    let x = obj.get("x").and_then(|v| v.as_f64()).ok_or_else(|| {
-                        ChartError::DataError("Missing or invalid x value".to_string())
-                    })?;
-                    let y = obj.get("y").and_then(|v| v.as_f64()).ok_or_else(|| {
-                        ChartError::DataError("Missing or invalid y value".to_string())
-                    })?;
-                    let name = obj
-                        .get("name")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                    Ok(ScatterDataItem { x, y, name })
-                }
+                DataPoint::Named(_, _) => Err(ChartError::DataError(
+                    "Scatter chart data must be [x, y] arrays or {x, y} objects".to_string(),
+                )),
+                DataPoint::XY(x, y) => Ok(ScatterDataItem {
+                    x: *x,
+                    y: *y,
+                    name: None,
+                }),
             })
             .collect()
     }
@@ -1583,6 +1562,10 @@ pub struct RadarSeries {
 pub struct DataItem {
     pub name: Option<String>,
     pub value: f64,
+    /// Optional x-coordinate value. When set, the line mapper uses this
+    /// (via `x_value_to_pixel`) instead of the category index for positioning.
+    /// This enables true x-y line plots (e.g. function curves).
+    pub x_value: Option<f64>,
 }
 
 /// Resolved item style for a data point.

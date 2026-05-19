@@ -21,6 +21,7 @@
 //!     .unwrap();
 //! ```
 
+pub use crate::builder::function_data;
 pub use crate::{
     // Common option types
     AxisOption,
@@ -36,6 +37,10 @@ pub use crate::{
     LegendOption,
     LineSeriesOption,
     PieSeriesOption,
+    PositionOption,
+    // Sampling
+    SamplingOption,
+    SamplingType,
     ScatterSeriesOption,
     SeriesOption,
     Theme,

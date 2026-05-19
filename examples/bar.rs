@@ -2,45 +2,14 @@ use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     ChartBuilder::new()
-        .with_title(liecharts::TitleOption {
-            text: Some("月度销售数据".to_string()),
-            subtext: Some("2024年".to_string()),
-            ..Default::default()
-        })
-        .with_legend(liecharts::LegendOption {
-            show: Some(true),
-            data: Some(vec!["销售额".to_string()]),
-            ..Default::default()
-        })
-        .with_x_axis(liecharts::AxisOption {
-            axis_type: Some(AxisType::Category),
-            data: Some(vec![
-                "1月".to_string(),
-                "2月".to_string(),
-                "3月".to_string(),
-                "4月".to_string(),
-                "5月".to_string(),
-                "6月".to_string(),
-            ]),
-            ..Default::default()
-        })
-        .with_y_axis(liecharts::AxisOption {
-            axis_type: Some(AxisType::Value),
-            name: Some("销售额(万元)".to_string()),
-            ..Default::default()
-        })
-        .with_series(SeriesOption::Bar(liecharts::BarSeriesOption {
-            name: Some("销售额".to_string()),
-            data: vec![
-                DataPoint::Number(120.0),
-                DataPoint::Number(200.0),
-                DataPoint::Number(150.0),
-                DataPoint::Number(80.0),
-                DataPoint::Number(70.0),
-                DataPoint::Number(110.0),
-            ],
-            ..Default::default()
-        }))
+        .with_title(TitleOption::new("月度销售数据").subtext("2024年"))
+        .with_legend(LegendOption::default().data(["销售额"]).show(true))
+        .with_x_axis(AxisOption::category().data(["1月", "2月", "3月", "4月", "5月", "6月"]))
+        .with_y_axis(AxisOption::value().name("销售额(万元)"))
+        .with_series(SeriesOption::Bar(liecharts::BarSeriesOption::new(
+            "销售额",
+            vec![120.0, 200.0, 150.0, 80.0, 70.0, 110.0],
+        )))
         .build(800, 600)?
         .render_to_image("bar.png")?;
     println!("柱状图已保存到 bar.png");

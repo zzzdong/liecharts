@@ -1,9 +1,11 @@
-use std::{collections::HashMap, fmt};
+use std::fmt;
 
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{self, Visitor},
 };
+
+use crate::sampling::SamplingOption;
 
 /// Root chart configuration.
 ///
@@ -107,8 +109,8 @@ pub struct LegendOption {
 }
 
 impl LegendOption {
-    pub fn data(mut self, data: impl Into<Vec<String>>) -> Self {
-        self.data = Some(data.into());
+    pub fn data(mut self, data: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.data = Some(data.into_iter().map(Into::into).collect());
         self
     }
 
@@ -242,8 +244,8 @@ impl AxisOption {
         }
     }
 
-    pub fn data(mut self, data: impl Into<Vec<String>>) -> Self {
-        self.data = Some(data.into());
+    pub fn data(mut self, data: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.data = Some(data.into_iter().map(Into::into).collect());
         self
     }
 
@@ -618,6 +620,8 @@ pub struct LineSeriesOption {
     pub line_style: Option<LineStyleOption>,
     pub item_style: Option<ItemStyleOption>,
     pub area_style: Option<AreaStyleOption>,
+    /// Optional data sampling for large datasets.
+    pub sampling: Option<SamplingOption>,
 }
 
 impl Default for LineSeriesOption {
@@ -634,15 +638,19 @@ impl Default for LineSeriesOption {
             line_style: None,
             item_style: None,
             area_style: None,
+            sampling: None,
         }
     }
 }
 
 impl LineSeriesOption {
-    pub fn new(name: impl Into<String>, data: Vec<DataPoint>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        data: impl IntoIterator<Item = impl Into<DataPoint>>,
+    ) -> Self {
         Self {
             name: Some(name.into()),
-            data,
+            data: data.into_iter().map(Into::into).collect(),
             ..Default::default()
         }
     }
@@ -661,6 +669,11 @@ impl LineSeriesOption {
         self.area_style = Some(style);
         self
     }
+
+    pub fn sampling(mut self, sampling: SamplingOption) -> Self {
+        self.sampling = Some(sampling);
+        self
+    }
 }
 
 /// Bar/column series configuration.
@@ -676,19 +689,29 @@ pub struct BarSeriesOption {
     pub bar_width: Option<String>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
+    /// Optional data sampling for large datasets.
+    pub sampling: Option<SamplingOption>,
 }
 
 impl BarSeriesOption {
-    pub fn new(name: impl Into<String>, data: Vec<DataPoint>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        data: impl IntoIterator<Item = impl Into<DataPoint>>,
+    ) -> Self {
         Self {
             name: Some(name.into()),
-            data,
+            data: data.into_iter().map(Into::into).collect(),
             ..Default::default()
         }
     }
 
     pub fn stack(mut self, stack: impl Into<String>) -> Self {
         self.stack = Some(stack.into());
+        self
+    }
+
+    pub fn sampling(mut self, sampling: SamplingOption) -> Self {
+        self.sampling = Some(sampling);
         self
     }
 }
@@ -704,6 +727,8 @@ pub struct CandlestickSeriesOption {
     pub grid_index: Option<usize>,
     pub item_style: Option<CandlestickItemStyleOption>,
     pub label: Option<LabelOption>,
+    /// Optional data sampling for large datasets.
+    pub sampling: Option<SamplingOption>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -769,10 +794,13 @@ impl Default for PieSeriesOption {
 }
 
 impl PieSeriesOption {
-    pub fn new(name: impl Into<String>, data: Vec<DataPoint>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        data: impl IntoIterator<Item = impl Into<DataPoint>>,
+    ) -> Self {
         Self {
             name: Some(name.into()),
-            data,
+            data: data.into_iter().map(Into::into).collect(),
             ..Default::default()
         }
     }
@@ -788,15 +816,25 @@ pub struct ScatterSeriesOption {
     pub grid_index: Option<usize>,
     pub symbol_size: Option<f64>,
     pub item_style: Option<ItemStyleOption>,
+    /// Optional data sampling for large datasets.
+    pub sampling: Option<SamplingOption>,
 }
 
 impl ScatterSeriesOption {
-    pub fn new(name: impl Into<String>, data: Vec<DataPoint>) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        data: impl IntoIterator<Item = impl Into<DataPoint>>,
+    ) -> Self {
         Self {
             name: Some(name.into()),
-            data,
+            data: data.into_iter().map(Into::into).collect(),
             ..Default::default()
         }
+    }
+
+    pub fn sampling(mut self, sampling: SamplingOption) -> Self {
+        self.sampling = Some(sampling);
+        self
     }
 }
 
@@ -809,6 +847,7 @@ impl Default for ScatterSeriesOption {
             grid_index: None,
             symbol_size: Some(10.0),
             item_style: None,
+            sampling: None,
         }
     }
 }
@@ -929,6 +968,19 @@ impl Default for PolarBarSeriesOption {
             color: None,
             pad_angle: Some(2.0),
             start_angle: Some(0.0),
+        }
+    }
+}
+
+impl PolarBarSeriesOption {
+    pub fn new(
+        name: impl Into<String>,
+        data: impl IntoIterator<Item = impl Into<DataPoint>>,
+    ) -> Self {
+        Self {
+            name: Some(name.into()),
+            data: data.into_iter().map(Into::into).collect(),
+            ..Default::default()
         }
     }
 }
@@ -1166,41 +1218,180 @@ pub struct GradientColorStopOption {
 // DataPoint
 // ============================================================
 
-/// A single data point that can be created from a raw `f64` value.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
+/// A resolved data point in one of three forms:
+///
+/// | Variant | Meaning | JSON repr |
+/// |---------|---------|-----------|
+/// | `Value(v)` | value only, key from category index | `1.0` |
+/// | `Named(n, v)` | named data point | `["label", 1.0]` |
+/// | `XY(x, v)` | x-y data point | `[-1.0, 1.0]` |
+///
+/// Use [`Into<DataPoint>`] conversions to create instances conveniently:
+/// ```
+/// # use liecharts::option::DataPoint;
+/// let a: DataPoint = 42.0.into();           // Value
+/// let b: DataPoint = ("Jan", 30.0).into();  // Named
+/// let c: DataPoint = (-1.0, 1.0).into();    // XY
+/// ```
+#[derive(Debug, Clone)]
 pub enum DataPoint {
-    Number(f64),
-    Array(Vec<serde_json::Value>),
-    Object(HashMap<String, serde_json::Value>),
+    /// Value-only data point; x position is derived from category index.
+    Value(f64),
+    /// Named data point: `(category_name, value)`.
+    Named(String, f64),
+    /// X-Y data point: `(x, y)` for value-axis plots.
+    XY(f64, f64),
 }
+
+// ── helper accessors ──
 
 impl DataPoint {
-    pub fn as_number(&self) -> Option<f64> {
+    /// If this is a `Value`, returns the contained number.
+    pub fn as_value(&self) -> Option<f64> {
         match self {
-            DataPoint::Number(n) => Some(*n),
+            DataPoint::Value(n) => Some(*n),
             _ => None,
         }
     }
 
-    pub fn as_array(&self) -> Option<&Vec<serde_json::Value>> {
+    /// If this is a `Named`, returns the name and value.
+    pub fn as_named(&self) -> Option<(&str, f64)> {
         match self {
-            DataPoint::Array(arr) => Some(arr),
+            DataPoint::Named(n, v) => Some((n.as_str(), *v)),
             _ => None,
         }
     }
 
-    pub fn as_object(&self) -> Option<&HashMap<String, serde_json::Value>> {
+    /// If this is an `XY`, returns the x and y.
+    pub fn as_xy(&self) -> Option<(f64, f64)> {
         match self {
-            DataPoint::Object(obj) => Some(obj),
+            DataPoint::XY(x, y) => Some((*x, *y)),
             _ => None,
         }
     }
 }
+
+// ── From impls ──
 
 impl From<f64> for DataPoint {
     fn from(v: f64) -> Self {
-        DataPoint::Number(v)
+        DataPoint::Value(v)
+    }
+}
+
+impl From<(f64, f64)> for DataPoint {
+    fn from((x, y): (f64, f64)) -> Self {
+        DataPoint::XY(x, y)
+    }
+}
+
+impl From<(&str, f64)> for DataPoint {
+    fn from((name, value): (&str, f64)) -> Self {
+        DataPoint::Named(name.to_string(), value)
+    }
+}
+
+impl From<(String, f64)> for DataPoint {
+    fn from((name, value): (String, f64)) -> Self {
+        DataPoint::Named(name, value)
+    }
+}
+
+// ── Serialize ──
+
+impl Serialize for DataPoint {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            DataPoint::Value(v) => v.serialize(serializer),
+            DataPoint::Named(n, v) => (n.as_str(), v).serialize(serializer),
+            DataPoint::XY(x, y) => (x, y).serialize(serializer),
+        }
+    }
+}
+
+// ── Deserialize ──
+
+struct DataPointVisitor;
+
+impl<'de> Visitor<'de> for DataPointVisitor {
+    type Value = DataPoint;
+
+    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("a number, a [key, value] array, or a {name, value} object")
+    }
+
+    fn visit_f64<E: de::Error>(self, v: f64) -> Result<DataPoint, E> {
+        Ok(DataPoint::Value(v))
+    }
+
+    fn visit_i64<E: de::Error>(self, v: i64) -> Result<DataPoint, E> {
+        Ok(DataPoint::Value(v as f64))
+    }
+
+    fn visit_u64<E: de::Error>(self, v: u64) -> Result<DataPoint, E> {
+        Ok(DataPoint::Value(v as f64))
+    }
+
+    fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<DataPoint, A::Error> {
+        use serde::de::Error;
+        let first = seq
+            .next_element::<serde_json::Value>()?
+            .ok_or_else(|| A::Error::custom("expected at least 2 elements"))?;
+        let second = seq
+            .next_element::<serde_json::Value>()?
+            .ok_or_else(|| A::Error::custom("expected at least 2 elements"))?;
+
+        match first {
+            serde_json::Value::String(s) => {
+                let value = second
+                    .as_f64()
+                    .ok_or_else(|| A::Error::custom("second element must be a number"))?;
+                Ok(DataPoint::Named(s, value))
+            }
+            serde_json::Value::Number(n) => {
+                let x = n
+                    .as_f64()
+                    .ok_or_else(|| A::Error::custom("first element must be a valid number"))?;
+                let value = second
+                    .as_f64()
+                    .ok_or_else(|| A::Error::custom("second element must be a number"))?;
+                Ok(DataPoint::XY(x, value))
+            }
+            other => Err(A::Error::custom(format!(
+                "unexpected array element type: {:?}",
+                other
+            ))),
+        }
+    }
+
+    fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<DataPoint, A::Error> {
+        use serde::de::Error;
+        let mut name: Option<String> = None;
+        let mut value: Option<f64> = None;
+        let mut x: Option<f64> = None;
+
+        while let Some(k) = map.next_key::<String>()? {
+            match k.as_str() {
+                "name" => name = Some(map.next_value()?),
+                "value" => value = Some(map.next_value()?),
+                "x" => x = Some(map.next_value()?),
+                _ => {
+                    let _: serde_json::Value = map.next_value()?;
+                }
+            }
+        }
+
+        let value = value.ok_or_else(|| A::Error::custom("missing 'value' field"))?;
+        match x {
+            Some(xv) => Ok(DataPoint::XY(xv, value)),
+            None => Ok(DataPoint::Named(name.unwrap_or_default(), value)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DataPoint {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(DataPointVisitor)
     }
 }
 

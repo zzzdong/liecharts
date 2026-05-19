@@ -3,8 +3,8 @@ use crate::{
     error::{ChartError, Result},
     model::ChartModel,
     option::{
-        AxisOption, ChartOption, ColorOption, GridOption, LegendOption, RadarOption, SeriesOption,
-        TextStyleOption, TitleOption,
+        AxisOption, ChartOption, ColorOption, DataPoint, GridOption, LegendOption,
+        LineSeriesOption, RadarOption, SeriesOption, TextStyleOption, TitleOption,
     },
     theme::{Theme, ThemeRegistry},
 };
@@ -23,7 +23,10 @@ use crate::{
 ///     .with_title(TitleOption::new("My Chart"))
 ///     .with_x_axis(AxisOption::category().data(["Q1", "Q2", "Q3"]))
 ///     .with_y_axis(AxisOption::value())
-///     .with_series(SeriesOption::Bar(BarSeriesOption::new("Sales", vec![100.0, 200.0, 150.0])))
+///     .with_series(SeriesOption::Bar(BarSeriesOption::new(
+///         "Sales",
+///         vec![100.0, 200.0, 150.0],
+///     )))
 ///     .build(800, 600)
 ///     .unwrap()
 ///     .render_to_image("chart.png")
@@ -115,6 +118,37 @@ impl ChartBuilder {
         self
     }
 
+    /// Convenience method to plot a mathematical function as a smooth line series.
+    ///
+    /// Computes `f(x)` evenly across `range` with `steps` intervals,
+    /// then wraps it as a [`LineSeriesOption`] with smoothing enabled.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use liecharts::ChartBuilder;
+    ///
+    /// ChartBuilder::new()
+    ///     .add_function("y = x²", -1.0..=1.0, 100, |x| x * x)
+    ///     .build(800, 600)
+    ///     .unwrap()
+    ///     .render_to_svg("function.svg")
+    ///     .unwrap();
+    /// ```
+    pub fn add_function(
+        mut self,
+        name: impl Into<String>,
+        range: std::ops::RangeInclusive<f64>,
+        steps: usize,
+        f: impl Fn(f64) -> f64,
+    ) -> Self {
+        let data = function_data(range, steps, f);
+        self.option.series.push(SeriesOption::Line(
+            LineSeriesOption::new(name, data).smooth(true),
+        ));
+        self
+    }
+
     /// Sets the radar configuration.
     pub fn with_radar(mut self, radar: RadarOption) -> Self {
         self.option.radar = Some(radar);
@@ -175,4 +209,45 @@ impl ChartBuilder {
     pub fn render_svg(self, width: u32, height: u32) -> Result<String> {
         self.build(width, height)?.render_svg()
     }
+}
+
+/// Generates evenly-spaced (x, f(x)) data points for plotting a function.
+///
+/// This is useful when you want full control over the [`LineSeriesOption`],
+/// e.g. to configure sampling:
+///
+/// ```no_run
+/// use liecharts::{ChartBuilder, LineSeriesOption, SeriesOption, SamplingOption};
+/// use liecharts::builder::function_data;
+///
+/// ChartBuilder::new()
+///     .with_series(SeriesOption::Line(
+///         LineSeriesOption::new("y = x²", function_data(-1.0..=1.0, 100, |x| x * x))
+///             .smooth(true)
+///             .sampling(SamplingOption::lttb(200)),
+///     ))
+///     .build(800, 600)
+///     .unwrap()
+///     .render_to_svg("function.svg")
+///     .unwrap();
+/// ```
+pub fn function_data(
+    range: std::ops::RangeInclusive<f64>,
+    steps: usize,
+    f: impl Fn(f64) -> f64,
+) -> Vec<DataPoint> {
+    let start = *range.start();
+    let end = *range.end();
+    let step = if steps > 0 {
+        (end - start) / steps as f64
+    } else {
+        end - start
+    };
+
+    (0..=steps)
+        .map(|i| {
+            let x = start + i as f64 * step;
+            DataPoint::from((x, f(x)))
+        })
+        .collect()
 }

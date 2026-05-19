@@ -137,10 +137,11 @@ impl CoordinateMapper for CartesianLineMapper {
             .items
             .iter()
             .map(|item| {
-                Point::new(
-                    coord.x_to_pixel(item.data_index as f64 + 0.5),
-                    coord.y_to_pixel(item.display_value, y_axis_index),
-                )
+                let x = match item.original.x_value {
+                    Some(xv) => coord.x_value_to_pixel(xv),
+                    None => coord.x_to_pixel(item.data_index as f64 + 0.5),
+                };
+                Point::new(x, coord.y_to_pixel(item.display_value, y_axis_index))
             })
             .collect();
 
@@ -167,7 +168,11 @@ impl CoordinateMapper for CartesianLineMapper {
                             Some(b) => coord.y_to_pixel(b, y_axis_index),
                             None => coord.y_to_pixel(item.baseline, y_axis_index),
                         };
-                        Point::new(coord.x_to_pixel(item.data_index as f64 + 0.5), y)
+                        let x = match item.original.x_value {
+                            Some(xv) => coord.x_value_to_pixel(xv),
+                            None => coord.x_to_pixel(item.data_index as f64 + 0.5),
+                        };
+                        Point::new(x, y)
                     })
                     .collect(),
             )

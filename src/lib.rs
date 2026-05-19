@@ -8,6 +8,7 @@ pub mod option;
 pub mod pipeline;
 pub mod prelude;
 pub mod render;
+pub mod sampling;
 pub mod text;
 pub mod theme;
 pub mod visual;
@@ -30,4 +31,5 @@ pub use option::{
     TableBodyOption, TableCellStyleOption, TableHeaderOption, TableRowStyleOption,
     TableSeriesOption, TextAlignOption, TextStyleOption, TitleOption,
 };
+pub use sampling::{SamplingOption, SamplingType};
 pub use theme::{Theme, ThemeRegistry};

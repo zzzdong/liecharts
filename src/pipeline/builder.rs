@@ -159,6 +159,8 @@ pub struct LineVisualBuilder {
     pub smooth: bool,
     pub show_symbol: bool,
     pub symbol_size: f64,
+    pub symbol_border_color: Option<Color>,
+    pub symbol_border_width: f64,
     pub line_style: Stroke,
     pub area_color: Option<Color>,
     pub area_opacity: f64,
@@ -172,6 +174,8 @@ impl Default for LineVisualBuilder {
             smooth: false,
             show_symbol: true,
             symbol_size: 6.0,
+            symbol_border_color: None,
+            symbol_border_width: 0.0,
             line_style: Stroke {
                 color: Color::new(0, 0, 0),
                 width: 2.0,
@@ -217,6 +221,12 @@ impl LineVisualBuilder {
 
     pub fn with_series_style(mut self, style: super::SeriesStyle) -> Self {
         self.series_style = style;
+        self
+    }
+
+    pub fn with_symbol_border(mut self, color: Option<Color>, width: f64) -> Self {
+        self.symbol_border_color = color;
+        self.symbol_border_width = width;
         self
     }
 }
@@ -293,15 +303,16 @@ impl VisualBuilder for LineVisualBuilder {
         // 数据点符号
         if self.show_symbol {
             for point in points {
+                let border_stroke = self.symbol_border_color.map(|c| Stroke {
+                    color: c,
+                    width: self.symbol_border_width,
+                });
                 elements.push(VisualElement::Circle {
                     center: *point,
                     radius: self.symbol_size / 2.0,
                     style: FillStrokeStyle {
                         fill: Some(self.series_style.color),
-                        stroke: Some(Stroke {
-                            color: Color::new(255, 255, 255),
-                            width: 1.0,
-                        }),
+                        stroke: border_stroke,
                     },
                 });
             }
