@@ -1,7 +1,7 @@
-use liecharts::{AxisType, ChartBuilder, DataPoint, LieChart, SeriesOption};
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("月度销售数据".to_string()),
             subtext: Some("2024年".to_string()),
@@ -41,10 +41,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "bar.png")?;
+        .build(800, 600)?
+        .render_to_image("bar.png")?;
     println!("柱状图已保存到 bar.png");
 
     Ok(())

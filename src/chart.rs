@@ -1,68 +1,104 @@
-use crate::component::{
-    AxisComponent, BarSeriesComponent, BubbleSeriesComponent, CandlestickSeriesComponent,
-    ChartComponent, GaugeSeriesComponent, LegendComponent, LineSeriesComponent, PieSeriesComponent,
-    PolarBarSeriesComponent, PolarScatterSeriesComponent, RadarSeriesComponent,
-    ScatterSeriesComponent, TableSeriesComponent, TitleComponent,
-};
-use crate::error::{ChartError, Result};
-use crate::layout::{
-    AxisLayout, ChartLayout, DataCoordinateSystem, GridLayout, GridLayoutInfo, LayoutContext,
-    LayoutEngine, LayoutOutput, Layoutable, LegendLayout, SubplotLayout, TitleLayout,
-};
-use crate::model::{Axis, AxisType, ChartModel, ResolvedSeries};
-use crate::render::{PixmapRenderer, SvgRenderer};
-use crate::visual::{FillStrokeStyle, VisualElement};
 pub use vello_cpu::Pixmap;
 use vello_cpu::kurbo::Rect;
 
-pub struct LieChart {
+use crate::{
+    component::{
+        AxisComponent, BarSeriesComponent, BubbleSeriesComponent, CandlestickSeriesComponent,
+        ChartComponent, GaugeSeriesComponent, LegendComponent, LineSeriesComponent,
+        PieSeriesComponent, PolarBarSeriesComponent, PolarScatterSeriesComponent,
+        RadarSeriesComponent, ScatterSeriesComponent, TableSeriesComponent, TitleComponent,
+    },
+    error::{ChartError, Result},
+    layout::{
+        AxisLayout, ChartLayout, DataCoordinateSystem, GridLayout, GridLayoutInfo, LayoutContext,
+        LayoutEngine, LayoutOutput, Layoutable, LegendLayout, SubplotLayout, TitleLayout,
+    },
+    model::{Axis, AxisType, ChartModel, ResolvedSeries},
+    render::{PixmapRenderer, SvgRenderer},
+    visual::{FillStrokeStyle, VisualElement},
+};
+
+/// A renderable chart with resolved styles and layout.
+///
+/// Created via [`ChartBuilder::build`] or directly from [`ChartModel`] + dimensions.
+/// Call one of the `render_*` methods to produce the final output.
+pub struct Chart {
+    model: ChartModel,
     width: u32,
     height: u32,
 }
 
-impl LieChart {
-    pub fn new(width: u32, height: u32) -> Self {
-        Self { width, height }
+impl Chart {
+    /// Creates a `Chart` from a [`ChartModel`] and explicit dimensions.
+    pub fn new(model: ChartModel, width: u32, height: u32) -> Self {
+        Self {
+            model,
+            width,
+            height,
+        }
     }
 
-    fn build_visual_elements(
-        &self,
-        resolved: &ChartModel,
-        layout: &LayoutOutput,
-    ) -> Vec<VisualElement> {
-        let mut elements = Vec::new();
-
-        elements.push(VisualElement::Rect {
-            rect: Rect::new(0.0, 0.0, self.width as f64, self.height as f64),
-            style: FillStrokeStyle {
-                fill: Some(resolved.background),
-                stroke: None,
-            },
-        });
-
-        if let Some(title) = &resolved.title {
-            let comp = TitleComponent::new(title);
-            elements.extend(comp.build_visual_elements(resolved, layout));
-        }
-
-        if let Some(legend) = &resolved.legend {
-            let comp = LegendComponent::new(legend);
-            elements.extend(comp.build_visual_elements(resolved, layout));
-        }
-
-        let subplots = build_subplot_contexts(resolved, layout);
-        for subplot in &subplots {
-            elements.extend(subplot.build_visual_elements(resolved, layout));
-        }
-
-        elements
+    /// Extracts the underlying [`ChartModel`] for reuse at different dimensions.
+    pub fn into_model(self) -> ChartModel {
+        self.model
     }
 
-    fn compute_layout(&self, resolved: &ChartModel) -> LayoutOutput {
+    /// Returns the chart width in pixels.
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    /// Returns the chart height in pixels.
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    /// Returns a reference to the underlying [`ChartModel`].
+    pub fn model(&self) -> &ChartModel {
+        &self.model
+    }
+
+    // ==================== 渲染入口 ====================
+
+    /// Renders the chart to a PNG/JPEG image file.
+    pub fn render_to_image(&self, path: &str) -> Result<()> {
+        let (elements, width, height) = self.collect_visual_elements()?;
+        write_pixmap(&elements, width, height, path)
+    }
+
+    /// Renders the chart to an SVG file.
+    pub fn render_to_svg(&self, path: &str) -> Result<()> {
+        let (elements, width, height) = self.collect_visual_elements()?;
+        let svg = svg_string(&elements, width, height);
+        std::fs::write(path, svg)?;
+        Ok(())
+    }
+
+    pub fn render_png(&self) -> Result<Vec<u8>> {
+        let (elements, width, height) = self.collect_visual_elements()?;
+        png_bytes(&elements, width, height)
+    }
+
+    /// Renders the chart to an SVG string in memory.
+    pub fn render_svg(&self) -> Result<String> {
+        let (elements, width, height) = self.collect_visual_elements()?;
+        Ok(svg_string(&elements, width, height))
+    }
+
+    // ==================== 内部布局 ====================
+
+    /// Computes layout and collects all visual elements for rendering.
+    pub fn collect_visual_elements(&self) -> Result<(Vec<VisualElement>, u32, u32)> {
+        let layout = self.compute_layout();
+        let elements = self.build_visual_elements(&layout);
+        Ok((elements, self.width, self.height))
+    }
+
+    fn compute_layout(&self) -> LayoutOutput {
         let context = LayoutContext::new(self.width as f64, self.height as f64);
         let mut engine = LayoutEngine::new(context);
 
-        let title = resolved.title.as_ref().map(|t| {
+        let title = self.model.title.as_ref().map(|t| {
             Box::new(TitleLayout::new(
                 t.text.clone(),
                 t.subtext.clone(),
@@ -73,7 +109,7 @@ impl LieChart {
             )) as Box<dyn Layoutable>
         });
 
-        let legend = resolved.legend.as_ref().and_then(|l| {
+        let legend = self.model.legend.as_ref().and_then(|l| {
             if l.show {
                 Some(Box::new(LegendLayout::new(
                     l.data.clone(),
@@ -91,15 +127,17 @@ impl LieChart {
 
         let mut subplots: Vec<SubplotLayout> = Vec::new();
 
-        for (grid_index, grid) in resolved.grids.iter().enumerate() {
-            let x_axes: Vec<Box<dyn Layoutable>> = resolved
+        for (grid_index, grid) in self.model.grids.iter().enumerate() {
+            let x_axes: Vec<Box<dyn Layoutable>> = self
+                .model
                 .x_axes
                 .iter()
                 .filter(|axis| axis.grid_index == grid_index)
                 .map(|axis| Box::new(AxisLayout::new(axis.clone())) as Box<dyn Layoutable>)
                 .collect();
 
-            let y_axes: Vec<Box<dyn Layoutable>> = resolved
+            let y_axes: Vec<Box<dyn Layoutable>> = self
+                .model
                 .y_axes
                 .iter()
                 .filter(|axis| axis.grid_index == grid_index)
@@ -128,96 +166,39 @@ impl LieChart {
 
         for grid_info in &mut output.grids {
             let grid_index = grid_info.grid_index;
-            grid_info.data_coord = compute_data_coord_for_grid(resolved, grid_info, grid_index);
+            grid_info.data_coord = compute_data_coord_for_grid(&self.model, grid_info, grid_index);
         }
 
         output
     }
 
-    pub fn collect_visual_elements(
-        &self,
-        model: &ChartModel,
-    ) -> Result<(Vec<VisualElement>, u32, u32)> {
-        let layout = self.compute_layout(model);
-        let elements = self.build_visual_elements(model, &layout);
-        Ok((elements, self.width, self.height))
-    }
+    fn build_visual_elements(&self, layout: &LayoutOutput) -> Vec<VisualElement> {
+        let mut elements = Vec::new();
 
-    pub fn render_to_image(&self, model: &ChartModel, path: &str) -> Result<()> {
-        let (elements, width, height) = self.collect_visual_elements(model)?;
-        self.write_pixmap(&elements, width, height, path)
-    }
+        elements.push(VisualElement::Rect {
+            rect: Rect::new(0.0, 0.0, self.width as f64, self.height as f64),
+            style: FillStrokeStyle {
+                fill: Some(self.model.background),
+                stroke: None,
+            },
+        });
 
-    fn write_pixmap(
-        &self,
-        elements: &[VisualElement],
-        width: u32,
-        height: u32,
-        path: &str,
-    ) -> Result<()> {
-        let renderer = PixmapRenderer::new(width, height);
-        let pixmap = renderer.render(elements)?;
-        let pw = pixmap.width() as u32;
-        let ph = pixmap.height() as u32;
-        let data: Vec<u8> = pixmap
-            .data()
-            .iter()
-            .flat_map(|p| vec![p.r, p.g, p.b, p.a])
-            .collect();
-        let image = image::RgbaImage::from_raw(pw, ph, data)
-            .ok_or_else(|| ChartError::RenderError("Failed to create image".to_string()))?;
-        image.save(path)?;
-        Ok(())
-    }
+        if let Some(title) = &self.model.title {
+            let comp = TitleComponent::new(title);
+            elements.extend(comp.build_visual_elements(&self.model, layout));
+        }
 
-    pub fn render_to_svg(&self, model: &ChartModel, path: &str) -> Result<()> {
-        let (elements, width, height) = self.collect_visual_elements(model)?;
-        let svg = self.svg_string(&elements, width, height);
-        std::fs::write(path, svg)?;
-        Ok(())
-    }
+        if let Some(legend) = &self.model.legend {
+            let comp = LegendComponent::new(legend);
+            elements.extend(comp.build_visual_elements(&self.model, layout));
+        }
 
-    fn svg_string(&self, elements: &[VisualElement], width: u32, height: u32) -> String {
-        let renderer = SvgRenderer::new();
-        renderer.render(elements, width, height).unwrap_or_default()
-    }
+        let subplots = build_subplot_contexts(&self.model, layout);
+        for subplot in &subplots {
+            elements.extend(subplot.build_visual_elements(&self.model, layout));
+        }
 
-    pub fn render_svg(&self, model: &ChartModel) -> Result<String> {
-        let (elements, width, height) = self.collect_visual_elements(model)?;
-        Ok(self.svg_string(&elements, width, height))
-    }
-
-    fn png_bytes(&self, elements: &[VisualElement], width: u32, height: u32) -> Result<Vec<u8>> {
-        let renderer = PixmapRenderer::new(width, height);
-        let pixmap = renderer.render(elements)?;
-        let data: Vec<u8> = pixmap
-            .data()
-            .iter()
-            .flat_map(|p| vec![p.r, p.g, p.b, p.a])
-            .collect();
-        let image = image::RgbaImage::from_raw(pixmap.width() as u32, pixmap.height() as u32, data)
-            .ok_or_else(|| ChartError::RenderError("Failed to create PNG image".to_string()))?;
-        let mut buf = Vec::new();
-        image.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
-        Ok(buf)
-    }
-
-    pub fn render_png(&self, model: &ChartModel) -> Result<Vec<u8>> {
-        let (elements, width, height) = self.collect_visual_elements(model)?;
-        self.png_bytes(&elements, width, height)
-    }
-
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    pub fn height(&self) -> u32 {
-        self.height
-    }
-
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.width = width;
-        self.height = height;
+        elements
     }
 }
 
@@ -586,4 +567,42 @@ fn compute_data_coord_for_grid(
             .and_then(|a| a.data.as_ref().map(|d| d.len()))
             .unwrap_or(0),
     }
+}
+
+// ==================== 自由函数（无需 &self） ====================
+
+fn write_pixmap(elements: &[VisualElement], width: u32, height: u32, path: &str) -> Result<()> {
+    let renderer = PixmapRenderer::new(width, height);
+    let pixmap = renderer.render(elements)?;
+    let pw = pixmap.width() as u32;
+    let ph = pixmap.height() as u32;
+    let data: Vec<u8> = pixmap
+        .data()
+        .iter()
+        .flat_map(|p| vec![p.r, p.g, p.b, p.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(pw, ph, data)
+        .ok_or_else(|| ChartError::RenderError("Failed to create image".to_string()))?;
+    image.save(path)?;
+    Ok(())
+}
+
+fn svg_string(elements: &[VisualElement], width: u32, height: u32) -> String {
+    let renderer = SvgRenderer::new();
+    renderer.render(elements, width, height).unwrap_or_default()
+}
+
+fn png_bytes(elements: &[VisualElement], width: u32, height: u32) -> Result<Vec<u8>> {
+    let renderer = PixmapRenderer::new(width, height);
+    let pixmap = renderer.render(elements)?;
+    let data: Vec<u8> = pixmap
+        .data()
+        .iter()
+        .flat_map(|p| vec![p.r, p.g, p.b, p.a])
+        .collect();
+    let image = image::RgbaImage::from_raw(pixmap.width() as u32, pixmap.height() as u32, data)
+        .ok_or_else(|| ChartError::RenderError("Failed to create PNG image".to_string()))?;
+    let mut buf = Vec::new();
+    image.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
+    Ok(buf)
 }

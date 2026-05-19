@@ -1,6 +1,4 @@
-use liecharts::{
-    ChartBuilder, LieChart, PolarScatterDataPoint, PolarScatterSeriesOption, SeriesOption,
-};
+use liecharts::{PolarScatterDataPoint, PolarScatterSeriesOption, prelude::*};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wind_data: Vec<PolarScatterDataPoint> = vec![
@@ -150,7 +148,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     ];
 
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("极坐标散点图".to_string()),
             subtext: Some("风向风速分布".to_string()),
@@ -166,10 +164,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             data: wind_data,
             ..Default::default()
         }))
-        .build()?;
+        .build(800, 600)?
+        .render_to_image("polar_scatter.png")?;
 
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "polar_scatter.png")?;
     println!("极坐标散点图已保存到 polar_scatter.png");
 
     Ok(())

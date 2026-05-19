@@ -5,9 +5,10 @@
 //! 2. 可能需要滚动（内容超出 grid 时）
 //! 3. 表头和表体需要分别处理
 
+use vello_cpu::kurbo::{Rect, Size};
+
 use super::{LayoutResult, Layoutable, SizeConstraint, measure_text_size};
 use crate::model::{TableSeries, TextStyle};
-use vello_cpu::kurbo::{Rect, Size};
 
 /// 列配置
 #[derive(Debug, Clone)]
@@ -274,8 +275,10 @@ impl Layoutable for TableLayoutElement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{TableBodyConfig, TableHeaderConfig, TextStyle};
-    use crate::visual::{Color, TextAlign};
+    use crate::{
+        model::{TableBodyConfig, TableHeaderConfig, TextStyle},
+        visual::{Color, TextAlign},
+    };
 
     fn create_test_series() -> TableSeries {
         TableSeries {

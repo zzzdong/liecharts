@@ -1,8 +1,7 @@
-use liecharts::option::GaugeDataPoint;
-use liecharts::{ChartBuilder, LieChart, SeriesOption};
+use liecharts::{GaugeDataPoint, prelude::*};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("任务完成率".to_string()),
             subtext: Some("Gauge Chart".to_string()),
@@ -20,10 +19,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             center: Some(vec!["50%".to_string(), "55%".to_string()]),
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "gauge.png")?;
+        .build(800, 600)?
+        .render_to_image("gauge.png")?;
     println!("仪表盘已保存到 gauge.png");
 
     Ok(())

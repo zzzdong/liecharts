@@ -1,8 +1,11 @@
-use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
-use crate::layout::LayoutOutput;
-use crate::model::{CandlestickSeries, ChartModel};
-use crate::visual::{FillStrokeStyle, Stroke, VisualElement};
 use vello_cpu::kurbo::{BezPath, Point, Rect};
+
+use crate::{
+    component::{ChartComponent, SeriesComponent, SeriesContext},
+    layout::LayoutOutput,
+    model::{CandlestickSeries, ChartModel},
+    visual::{FillStrokeStyle, Stroke, VisualElement},
+};
 
 pub struct CandlestickSeriesComponent {
     series: CandlestickSeries,

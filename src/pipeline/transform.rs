@@ -1,7 +1,8 @@
 //! 数据变换器 - 处理堆叠、归一化等数据变换
 
-use crate::model::{DataItem, ResolvedSeries};
 use std::collections::HashMap;
+
+use crate::model::{DataItem, ResolvedSeries};
 
 /// 变换后的数据项
 #[derive(Debug, Clone)]

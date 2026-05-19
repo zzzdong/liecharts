@@ -1,12 +1,14 @@
-use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
-use crate::layout::LayoutOutput;
-use crate::model::{ChartModel, RadarConfig, RadarSeries};
-use crate::text::create_text_layout;
-use crate::visual::{
-    Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
-};
 use std::f64::consts::PI;
+
 use vello_cpu::kurbo::{BezPath, Point, Vec2};
+
+use crate::{
+    component::{ChartComponent, SeriesComponent, SeriesContext},
+    layout::LayoutOutput,
+    model::{ChartModel, RadarConfig, RadarSeries},
+    text::create_text_layout,
+    visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement},
+};
 
 pub struct RadarSeriesComponent {
     series: RadarSeries,

@@ -1,13 +1,16 @@
-use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
-use crate::layout::LayoutOutput;
-use crate::model::{ChartModel, GaugeSeries};
-use crate::text::{compute_text_offset, create_text_layout};
-use crate::visual::{
-    FillStrokeStyle, GradientDef, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
-};
 use std::f64::consts::PI;
-use vello_cpu::kurbo::Shape;
-use vello_cpu::kurbo::{BezPath, Point};
+
+use vello_cpu::kurbo::{BezPath, Point, Shape};
+
+use crate::{
+    component::{ChartComponent, SeriesComponent, SeriesContext},
+    layout::LayoutOutput,
+    model::{ChartModel, GaugeSeries},
+    text::{compute_text_offset, create_text_layout},
+    visual::{
+        FillStrokeStyle, GradientDef, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
+    },
+};
 
 pub struct GaugeSeriesComponent {
     series: GaugeSeries,

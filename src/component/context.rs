@@ -3,10 +3,13 @@
 //! 该模块提供 SeriesContext，作为系列渲染的统一入口，
 //! 封装了渲染过程中需要的所有上下文信息。
 
-use crate::layout::{DataCoordinateSystem, GridLayoutInfo, LayoutOutput};
-use crate::model::ChartModel;
-use crate::visual::Color;
 use vello_cpu::kurbo::{Point, Rect};
+
+use crate::{
+    layout::{DataCoordinateSystem, GridLayoutInfo, LayoutOutput},
+    model::ChartModel,
+    visual::Color,
+};
 
 /// 系列渲染上下文
 ///

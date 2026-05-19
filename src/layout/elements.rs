@@ -1,11 +1,14 @@
 //! 布局元素 - Title、Legend、Axis、Grid 的布局实现
 
-use super::{LayoutResult, Layoutable, SizeConstraint, measure_text_size, resolve_position};
-use crate::model::{Axis, TextStyle};
-use crate::option::AxisPosition;
-use crate::text::layout_text;
-use crate::visual::TextAlign;
 use vello_cpu::kurbo::{Rect, Size};
+
+use super::{LayoutResult, Layoutable, SizeConstraint, measure_text_size, resolve_position};
+use crate::{
+    model::{Axis, TextStyle},
+    option::AxisPosition,
+    text::layout_text,
+    visual::TextAlign,
+};
 
 /// 标题布局元素
 pub struct TitleLayout {

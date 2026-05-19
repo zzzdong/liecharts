@@ -5,12 +5,13 @@
 //! 2. 支持表格内容的最小尺寸约束
 //! 3. 改进坐标轴与 grid 的空间分配
 
+use vello_cpu::kurbo::Rect;
+
 use super::{
     DataCoordinateSystem, GridDefinition, GridManager, GridRect, LayoutContext, Layoutable,
     SizeConstraint,
 };
 use crate::option::AxisPosition;
-use vello_cpu::kurbo::Rect;
 
 /// 坐标轴区域信息
 #[derive(Debug, Clone)]

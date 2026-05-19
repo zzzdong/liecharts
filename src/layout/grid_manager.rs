@@ -6,9 +6,10 @@
 //! 3. 支持表格内容的最小尺寸约束
 //! 4. 提供自动网格布局功能
 
+use vello_cpu::kurbo::{Rect, Size};
+
 use super::LayoutContext;
 use crate::model::{Grid, Position, TableSeries};
-use vello_cpu::kurbo::{Rect, Size};
 
 /// Grid 定义 - 包含配置和计算后的布局信息
 #[derive(Debug, Clone)]

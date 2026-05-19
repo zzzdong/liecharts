@@ -1,7 +1,7 @@
-use liecharts::{AxisType, ChartBuilder, DataPoint, GridOption, LieChart, SeriesOption};
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("混合布局图表".to_string()),
             subtext: Some("Mixed Grid Layout".to_string()),
@@ -149,10 +149,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             grid_index: Some(3),
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(1000, 900);
-    chart.render_to_image(&model, "mixed_grid.png")?;
+        .build(1000, 900)?
+        .render_to_image("mixed_grid.png")?;
     println!("混合布局图表已保存到 mixed_grid.png");
 
     Ok(())

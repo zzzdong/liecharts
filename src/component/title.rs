@@ -1,9 +1,12 @@
-use crate::component::ChartComponent;
-use crate::layout::LayoutOutput;
-use crate::model::{ChartModel, Title};
-use crate::text::create_text_layout;
-use crate::visual::{TextAlign, TextBaseline, VisualElement};
 use vello_cpu::kurbo::Point;
+
+use crate::{
+    component::ChartComponent,
+    layout::LayoutOutput,
+    model::{ChartModel, Title},
+    text::create_text_layout,
+    visual::{TextAlign, TextBaseline, VisualElement},
+};
 
 pub struct TitleComponent {
     title: Title,

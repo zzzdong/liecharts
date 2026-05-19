@@ -1,11 +1,12 @@
-use crate::error::Result;
-use crate::visual::Color;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// ECharts 6 设计令牌（Design Token）系统
-/// 使用设计令牌对颜色、间距等设计元素进行统一管理和重构
-/// 使得不同图表类型和组件之间更和谐一致
+use serde::{Deserialize, Serialize};
+
+use crate::{error::Result, visual::Color};
+
+/// Design tokens representing a complete chart color and typography palette.
+///
+/// Each field maps to a visual property used during layout and rendering.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DesignTokens {
     // 色彩系统
@@ -913,6 +914,8 @@ pub fn load_theme(name: &str) -> Result<Theme> {
     let theme_registry = ThemeRegistry::new();
     theme_registry
         .get(name)
-        .ok_or_else(|| crate::error::ChartError::InvalidTheme(format!("Theme not found: {}", name)))
+        .ok_or_else(|| {
+            crate::error::ChartError::ThemeNotFound(format!("Theme not found: {}", name))
+        })
         .cloned()
 }

@@ -1,6 +1,4 @@
-use crate::layout::LayoutOutput;
-use crate::model::ChartModel;
-use crate::visual::VisualElement;
+use crate::{layout::LayoutOutput, model::ChartModel, visual::VisualElement};
 
 // 基础模块
 pub mod base;
@@ -25,18 +23,13 @@ pub mod table;
 pub mod title;
 
 // 基础模块导出
-pub use base::{SeriesComponentBase, SeriesComponentExt};
-pub use context::{CartesianRenderer, PolarRenderer, SeriesContext, SeriesRenderer};
-pub use renderers::{
-    LabelConfig, LabelPosition, SeriesStyle, color_utils, create_label_config, grid_utils,
-    render_cartesian_pipeline, render_polar_pipeline,
-};
-
 // 组件导出
 pub use axis::AxisComponent;
 pub use bar::BarSeriesComponent;
+pub use base::{SeriesComponentBase, SeriesComponentExt};
 pub use bubble::BubbleSeriesComponent;
 pub use candlestick::CandlestickSeriesComponent;
+pub use context::{CartesianRenderer, PolarRenderer, SeriesContext, SeriesRenderer};
 pub use gauge::GaugeSeriesComponent;
 pub use label::{LabelComponent, PieLeaderLineLabel, PieLeaderLineLabelBuilder};
 pub use legend::LegendComponent;
@@ -45,6 +38,10 @@ pub use pie::PieSeriesComponent;
 pub use polar_bar::PolarBarSeriesComponent;
 pub use polar_scatter::PolarScatterSeriesComponent;
 pub use radar::RadarSeriesComponent;
+pub use renderers::{
+    LabelConfig, LabelPosition, SeriesStyle, color_utils, create_label_config, grid_utils,
+    render_cartesian_pipeline, render_polar_pipeline,
+};
 pub use scatter::ScatterSeriesComponent;
 pub use table::TableSeriesComponent;
 pub use title::TitleComponent;

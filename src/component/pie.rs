@@ -1,10 +1,14 @@
-use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
-use crate::layout::LayoutOutput;
-use crate::model::{ChartModel, PieSeries};
-use crate::pipeline::builder::VisualBuilder;
-use crate::pipeline::mapper::{CoordinateMapper, PolarPieMapper};
-use crate::pipeline::transform::{DataTransformer, IdentityTransformer};
-use crate::visual::{Color, VisualElement};
+use crate::{
+    component::{ChartComponent, SeriesComponent, SeriesContext},
+    layout::LayoutOutput,
+    model::{ChartModel, PieSeries},
+    pipeline::{
+        builder::VisualBuilder,
+        mapper::{CoordinateMapper, PolarPieMapper},
+        transform::{DataTransformer, IdentityTransformer},
+    },
+    visual::{Color, VisualElement},
+};
 
 pub struct PieSeriesComponent {
     series: PieSeries,

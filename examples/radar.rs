@@ -1,10 +1,9 @@
 use liecharts::{
-    ChartBuilder, LieChart, RadarDataOption, RadarIndicatorOption, RadarOption, RadarSeriesOption,
-    SeriesOption,
+    RadarDataOption, RadarIndicatorOption, RadarOption, RadarSeriesOption, prelude::*,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("产品能力雷达图".to_string()),
             subtext: Some("多维度对比分析".to_string()),
@@ -59,10 +58,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }],
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "radar.png")?;
+        .build(800, 600)?
+        .render_to_image("radar.png")?;
     println!("雷达图已保存到 radar.png");
 
     Ok(())

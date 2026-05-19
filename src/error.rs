@@ -1,36 +1,47 @@
 use thiserror::Error;
 
+/// Errors that can occur during chart building, layout, or rendering.
 #[derive(Error, Debug)]
 pub enum ChartError {
-    #[error("未设置图表配置选项")]
-    NoOption,
-
-    #[error("渲染错误: {0}")]
+    /// Rendering pipeline error (image creation, pixel processing, etc.).
+    #[error("Render error: {0}")]
     RenderError(String),
 
-    #[error("序列化错误: {0}")]
-    SerializationError(#[from] serde_json::Error),
+    /// Data parsing or validation error (invalid data points, missing fields, etc.).
+    #[error("Data error: {0}")]
+    DataError(String),
 
-    #[error("IO错误: {0}")]
-    IoError(#[from] std::io::Error),
-
-    #[error("图片错误: {0}")]
-    ImageError(#[from] image::ImageError),
-
-    #[error("不支持的图表类型: {0}")]
-    UnsupportedChartType(String),
-
-    #[error("无效的颜色值: {0}")]
+    /// Invalid color value encountered.
+    #[error("Invalid color: {0}")]
     InvalidColor(String),
 
-    #[error("布局错误: {0}")]
-    LayoutError(String),
+    /// Theme name not found in the registry.
+    #[error("Theme not found: {0}")]
+    ThemeNotFound(String),
 
-    #[error("字体加载错误: {0}")]
+    /// Font loading failure.
+    #[error("Font load error: {0}")]
     FontLoadError(String),
 
-    #[error("主题加载错误: {0}")]
-    InvalidTheme(String),
+    /// Unsupported chart or series type.
+    #[error("Unsupported chart type: {0}")]
+    UnsupportedChartType(String),
+
+    /// Layout computation error.
+    #[error("Layout error: {0}")]
+    LayoutError(String),
+
+    /// JSON serialization/deserialization error.
+    #[error("Serialization error: {0}")]
+    SerializationError(#[from] serde_json::Error),
+
+    /// File or stream IO error.
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    /// Image encoding/decoding error.
+    #[error("Image error: {0}")]
+    ImageError(#[from] image::ImageError),
 }
 
 pub type Result<T> = std::result::Result<T, ChartError>;

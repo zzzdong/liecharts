@@ -1,7 +1,7 @@
-use liecharts::{AxisType, ChartBuilder, DataPoint, LieChart, SeriesOption};
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("温度与降水量".to_string()),
             subtext: Some("双 Y 轴示例".to_string()),
@@ -60,10 +60,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             y_axis_index: Some(1),
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "dual_axis.png")?;
+        .build(800, 600)?
+        .render_to_image("dual_axis.png")?;
     println!("双轴图已保存到 dual_axis.png");
 
     Ok(())

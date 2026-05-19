@@ -1,8 +1,8 @@
 //! 坐标映射器 - 将变换后的数据映射到几何坐标
 
-use crate::layout::DataCoordinateSystem;
-use crate::pipeline::transform::TransformedSeries;
 use vello_cpu::kurbo::Point;
+
+use crate::{layout::DataCoordinateSystem, pipeline::transform::TransformedSeries};
 
 /// 映射后的几何描述
 #[derive(Debug, Clone)]

@@ -1,7 +1,7 @@
-use liecharts::{AxisPosition, AxisType, ChartBuilder, DataPoint, LieChart, SeriesOption};
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("混合图表示例".to_string()),
             subtext: Some("柱状图和折线图组合".to_string()),
@@ -59,10 +59,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             y_axis_index: Some(1),
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "mixed.png")?;
+        .build(800, 600)?
+        .render_to_image("mixed.png")?;
     println!("混合图表已保存到 mixed.png");
     Ok(())
 }

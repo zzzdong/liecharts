@@ -1,9 +1,10 @@
-use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
-use crate::layout::LayoutOutput;
-use crate::model::{ChartModel, LineSeries};
-use crate::pipeline::builder::VisualBuilder;
-use crate::pipeline::mapper::CoordinateMapper;
-use crate::visual::{Stroke, VisualElement};
+use crate::{
+    component::{ChartComponent, SeriesComponent, SeriesContext},
+    layout::LayoutOutput,
+    model::{ChartModel, LineSeries},
+    pipeline::{builder::VisualBuilder, mapper::CoordinateMapper},
+    visual::{Stroke, VisualElement},
+};
 
 pub struct LineSeriesComponent {
     series: LineSeries,

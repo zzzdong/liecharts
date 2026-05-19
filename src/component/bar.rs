@@ -1,10 +1,14 @@
-use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
-use crate::layout::LayoutOutput;
-use crate::model::{BarSeries, ChartModel};
-use crate::pipeline::builder::{BarVisualBuilder, VisualBuilder};
-use crate::pipeline::mapper::{CartesianBarMapper, CoordinateMapper};
-use crate::pipeline::transform::{DataTransformer, IdentityTransformer};
-use crate::visual::{Stroke, VisualElement};
+use crate::{
+    component::{ChartComponent, SeriesComponent, SeriesContext},
+    layout::LayoutOutput,
+    model::{BarSeries, ChartModel},
+    pipeline::{
+        builder::{BarVisualBuilder, VisualBuilder},
+        mapper::{CartesianBarMapper, CoordinateMapper},
+        transform::{DataTransformer, IdentityTransformer},
+    },
+    visual::{Stroke, VisualElement},
+};
 
 pub struct BarSeriesComponent {
     series: BarSeries,

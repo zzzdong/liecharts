@@ -1,9 +1,10 @@
-use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
-use crate::layout::LayoutOutput;
-use crate::model::{ChartModel, ScatterSeries};
-use crate::pipeline::builder::VisualBuilder;
-use crate::pipeline::mapper::MappedGeometry;
-use crate::visual::{Stroke, VisualElement};
+use crate::{
+    component::{ChartComponent, SeriesComponent, SeriesContext},
+    layout::LayoutOutput,
+    model::{ChartModel, ScatterSeries},
+    pipeline::{builder::VisualBuilder, mapper::MappedGeometry},
+    visual::{Stroke, VisualElement},
+};
 
 pub struct ScatterSeriesComponent {
     series: ScatterSeries,

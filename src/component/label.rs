@@ -1,8 +1,11 @@
-use crate::model;
-use crate::pipeline::LabelConfig;
-use crate::text::{compute_text_offset, create_text_layout};
-use crate::visual::{Color, StrokeStyle, TextAlign, TextBaseline, VisualElement};
 use vello_cpu::kurbo::Point;
+
+use crate::{
+    model,
+    pipeline::LabelConfig,
+    text::{compute_text_offset, create_text_layout},
+    visual::{Color, StrokeStyle, TextAlign, TextBaseline, VisualElement},
+};
 
 /// 通用标签组件，用于柱状图、折线图、散点图等
 ///

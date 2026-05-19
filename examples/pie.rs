@@ -1,5 +1,6 @@
-use liecharts::{ChartBuilder, DataPoint, LabelPosition, LieChart, SeriesOption};
 use std::collections::HashMap;
+
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut data1 = HashMap::new();
@@ -37,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     data5.insert("value".to_string(), serde_json::json!(1548.0));
 
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("访问来源分布".to_string()),
             subtext: Some("Pie Chart".to_string()),
@@ -72,10 +73,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }),
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "pie.png")?;
+        .build(800, 600)?
+        .render_to_image("pie.png")?;
     println!("饼图已保存到 pie.png");
 
     Ok(())

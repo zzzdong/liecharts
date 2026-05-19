@@ -1,9 +1,11 @@
-use crate::component::{ChartComponent, SeriesComponent, SeriesContext};
-use crate::layout::LayoutOutput;
-use crate::model::{BubbleSeries, ChartModel};
-use crate::visual::{FillStrokeStyle, VisualElement};
-use vello_cpu::kurbo::Shape as KurboShape;
-use vello_cpu::kurbo::{Circle, Point};
+use vello_cpu::kurbo::{Circle, Point, Shape as KurboShape};
+
+use crate::{
+    component::{ChartComponent, SeriesComponent, SeriesContext},
+    layout::LayoutOutput,
+    model::{BubbleSeries, ChartModel},
+    visual::{FillStrokeStyle, VisualElement},
+};
 
 pub struct BubbleSeriesComponent {
     series: BubbleSeries,

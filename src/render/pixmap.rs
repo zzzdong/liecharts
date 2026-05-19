@@ -1,20 +1,22 @@
-//! Pixmap 渲染器 - 使用 vello_cpu 渲染为位图
+//! Pixmap renderer — renders visual elements to bitmap via vello_cpu.
 
-use crate::error::Result;
-use crate::render::Renderer;
-use crate::text::TextLayout;
-use crate::visual::{
-    Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement,
+use vello_cpu::{
+    Pixmap, RenderContext, Resources,
+    kurbo::{BezPath, Circle, Point, Rect, Shape as KurboShape, Stroke as KurboStroke},
+    peniko::color::AlphaColor,
 };
-use vello_cpu::RenderContext;
-use vello_cpu::kurbo::Shape as KurboShape;
-use vello_cpu::kurbo::{BezPath, Circle, Point, Rect, Stroke as KurboStroke};
-use vello_cpu::peniko::color::AlphaColor;
-use vello_cpu::{Pixmap, Resources};
 
-/// Vello CPU 渲染器，输出 Pixmap
+use crate::{
+    error::Result,
+    render::Renderer,
+    text::TextLayout,
+    visual::{Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement},
+};
+
+/// Bitmap renderer backed by Vello CPU pipeline.
 ///
-/// 实现 Renderer trait，将 VisualElement 渲染为位图
+/// Produces PNG/JPEG images via the `image` crate.
+#[derive(Debug)]
 pub struct PixmapRenderer {
     ctx: RenderContext,
     resources: Resources,
@@ -136,12 +138,14 @@ impl Renderer for PixmapRenderer {
         gradient: &GradientDef,
         stroke: Option<&Stroke>,
     ) {
-        use vello_cpu::kurbo::Point as KurboPoint;
-        use vello_cpu::peniko::color::{ColorSpaceTag, DynamicColor, HueDirection};
-        use vello_cpu::peniko::{
-            ColorStop, ColorStops, GradientKind, InterpolationAlphaSpace, LinearGradientPosition,
+        use vello_cpu::{
+            kurbo::Point as KurboPoint,
+            peniko::{
+                ColorStop, ColorStops, Extend, Gradient, GradientKind, InterpolationAlphaSpace,
+                LinearGradientPosition,
+                color::{ColorSpaceTag, DynamicColor, HueDirection},
+            },
         };
-        use vello_cpu::peniko::{Extend, Gradient};
 
         let stops: Vec<ColorStop> = gradient
             .stops
@@ -226,7 +230,7 @@ impl Renderer for PixmapRenderer {
 
                         // 获取颜色
                         let brush = glyph_run.style().brush;
-                        self.ctx.set_paint(brush.0);
+                        self.ctx.set_paint(brush.as_vello_color());
 
                         // 使用 vello_cpu 渲染 glyph run
                         self.ctx

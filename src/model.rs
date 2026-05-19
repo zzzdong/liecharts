@@ -1,565 +1,49 @@
-use crate::error::ChartError;
-use crate::option::{
-    AxisOption, AxisPosition, ColorOption, DataPoint, FontStyle as FontStyleOption, FontWeight,
-    FontWeightNamed, GridOption, ItemStyleOption, LabelAlign, LabelPosition as OptionLabelPosition,
-    LabelVerticalAlign, LegendOption, LieChartOption, LineStyleOption, PositionOption, RadarOption,
-    SeriesOption, SymbolType as OptionSymbolType, TextAlignOption, TextStyleOption, TitleOption,
+use crate::{
+    error::ChartError,
+    option::{
+        AxisOption, AxisPosition, ChartOption, ColorOption, DataPoint,
+        FontStyle as FontStyleOption, FontWeight, FontWeightNamed, GridOption, ItemStyleOption,
+        LabelAlign, LabelPosition as OptionLabelPosition, LabelVerticalAlign, LegendOption,
+        LineStyleOption, PositionOption, RadarOption, SeriesOption, SymbolType as OptionSymbolType,
+        TextAlignOption, TextStyleOption, TitleOption,
+    },
+    theme::Theme,
+    visual::{Color, TextAlign, TextBaseline},
 };
-use crate::theme::Theme;
-use crate::visual::{Color, TextAlign, TextBaseline};
 
-impl From<ColorOption> for Color {
-    fn from(c: ColorOption) -> Self {
-        Color::with_alpha(c.r, c.g, c.b, c.a)
-    }
-}
-
+/// A resolved, ready-to-render chart data model.
+///
+/// Contains fully parsed axes, series, colors, and typography — all derived from
+/// [`ChartOption`](crate::ChartOption) + [`Theme`](crate::Theme). This type is layout-agnostic;
+/// pairing it with concrete dimensions via [`Chart::new`](crate::Chart::new) produces
+/// renderable output.
 #[derive(Debug, Clone)]
 pub struct ChartModel {
-    pub title: Option<Title>,
-    pub legend: Option<Legend>,
+    /// Grid regions for chart subplots.
     pub grids: Vec<Grid>,
+    /// Optional chart title block.
+    pub title: Option<Title>,
+    /// Optional legend configuration.
+    pub legend: Option<Legend>,
+    /// Optional radar configuration.
     pub radar: Option<RadarConfig>,
+    /// X-axes (one per grid).
     pub x_axes: Vec<Axis>,
+    /// Y-axes (one per grid).
     pub y_axes: Vec<Axis>,
+    /// Resolved data series.
     pub series: Vec<ResolvedSeries>,
+    /// Color palette derived from theme or option.
     pub colors: Vec<Color>,
+    /// Background color of the chart canvas.
     pub background: Color,
+    /// Default text style inherited by components.
     pub text_style: Option<TextStyle>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Title {
-    pub text: String,
-    pub subtext: Option<String>,
-    pub left: Position,
-    pub top: Position,
-    pub text_style: TextStyle,
-    pub subtext_style: Option<TextStyle>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Legend {
-    pub show: bool,
-    pub data: Vec<String>,
-    pub left: Position,
-    pub top: Position,
-    pub orient: Orient,
-    pub text_style: TextStyle,
-    pub item_width: f64,
-    pub item_height: f64,
-    pub symbol_size: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct Grid {
-    pub left: Position,
-    pub right: Position,
-    pub top: Position,
-    pub bottom: Position,
-    pub contain_label: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct Axis {
-    pub axis_type: AxisType,
-    pub data: Option<Vec<String>>,
-    pub name: Option<String>,
-    pub name_location: NameLocation,
-    pub name_text_style: TextStyle,
-    pub axis_label: AxisLabel,
-    pub axis_line: AxisLine,
-    pub axis_tick: AxisTick,
-    pub split_line: SplitLine,
-    pub min: Option<f64>,
-    pub max: Option<f64>,
-    pub boundary_gap: bool,
-    pub position: AxisPosition,
-    pub grid_index: usize,
-    /// 刻度线长度（默认 5px）
-    pub tick_length: f64,
-    /// 刻度末端到标签文本的间隙（默认 5px）
-    pub label_padding: f64,
-    /// 名称与标签区域之间的间隙（默认 5px）
-    pub name_gap: f64,
-    /// 名称相对于轴线的位置（外/内侧）
-    pub name_side: AxisNameSide,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum AxisType {
-    Category,
-    Value,
-    Time,
-    Log,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum NameLocation {
-    Start,
-    Middle,
-    End,
-}
-
-/// 轴名称相对于轴线的位置（内侧/外侧）
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum AxisNameSide {
-    Outside, // 轴线外侧（默认）
-    Inside,  // 轴线内侧（靠近绘图区）
-}
-
-#[derive(Debug, Clone)]
-pub struct AxisLabel {
-    pub show: bool,
-    pub rotate: f64,
-    pub formatter: Option<String>,
-    pub color: Color,
-    pub font_size: f64,
-    pub font_family: String,
-    pub font_weight: FontWeight,
-    pub align: LabelAlign,
-    pub vertical_align: LabelVerticalAlign,
-    pub margin: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct AxisLine {
-    pub show: bool,
-    pub line_style: LineStyle,
-}
-
-#[derive(Debug, Clone)]
-pub struct AxisTick {
-    pub show: bool,
-    pub align_with_label: bool,
-    pub line_style: LineStyle,
-}
-
-#[derive(Debug, Clone)]
-pub struct SplitLine {
-    pub show: bool,
-    pub line_style: LineStyle,
-}
-
-#[derive(Debug, Clone)]
-pub struct LineStyle {
-    pub color: Color,
-    pub width: f64,
-    pub line_type: LineType,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum FontStyle {
-    Normal,
-    Italic,
-    Oblique,
-}
-
-#[derive(Debug, Clone)]
-pub struct TextStyle {
-    pub color: Color,
-    pub font_size: f64,
-    pub font_family: String,
-    pub font_weight: FontWeight,
-    pub font_style: FontStyle,
-    pub align: TextAlign,
-    pub vertical_align: TextBaseline,
-}
-
-impl Default for TextStyle {
-    fn default() -> Self {
-        Self {
-            color: Color::new(0, 0, 0),
-            font_size: 12.0,
-            font_family: "sans-serif".to_string(),
-            font_weight: FontWeight::Named(FontWeightNamed::Normal),
-            font_style: FontStyle::Normal,
-            align: TextAlign::Left,
-            vertical_align: TextBaseline::Top,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum ResolvedSeries {
-    Line(LineSeries),
-    Bar(BarSeries),
-    Candlestick(CandlestickSeries),
-    Pie(PieSeries),
-    Scatter(ScatterSeries),
-    Radar(RadarSeries),
-    PolarBar(PolarBarSeries),
-    PolarScatter(PolarScatterSeries),
-    Bubble(BubbleSeries),
-    Gauge(GaugeSeries),
-    Table(TableSeries),
-}
-
-#[derive(Debug, Clone)]
-pub struct LineSeries {
-    pub name: String,
-    pub data: Vec<DataItem>,
-    pub stack: Option<String>,
-    pub y_axis_index: usize,
-    pub grid_index: usize,
-    pub smooth: bool,
-    pub symbol: Symbol,
-    pub symbol_size: f64,
-    pub line_style: LineStyle,
-    pub item_style: ItemStyle,
-    pub area_style: Option<AreaStyle>,
-    pub color: Color,
-}
-
-#[derive(Debug, Clone)]
-pub struct BarSeries {
-    pub name: String,
-    pub data: Vec<DataItem>,
-    pub stack: Option<String>,
-    pub y_axis_index: usize,
-    pub grid_index: usize,
-    pub bar_width: Option<f64>,
-    pub item_style: ItemStyle,
-    pub label: Option<Label>,
-    pub color: Color,
-}
-
-#[derive(Debug, Clone)]
-pub struct CandlestickSeries {
-    pub name: String,
-    pub data: Vec<CandlestickDataItem>,
-    pub x_axis_index: usize,
-    pub y_axis_index: usize,
-    pub grid_index: usize,
-    pub item_style: CandlestickItemStyle,
-    pub label: Option<Label>,
-    pub color_up: Color,
-    pub color_down: Color,
-}
-
-#[derive(Debug, Clone)]
-pub struct CandlestickDataItem {
-    pub open: f64,
-    pub close: f64,
-    pub low: f64,
-    pub high: f64,
-    pub name: Option<String>,
-}
-
-impl CandlestickDataItem {
-    pub fn is_up(&self) -> bool {
-        self.close >= self.open
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct CandlestickItemStyle {
-    pub color: Option<Color>,
-    pub color0: Option<Color>,
-    pub border_color: Option<Color>,
-    pub border_color0: Option<Color>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PieSeries {
-    pub name: String,
-    pub data: Vec<DataItem>,
-    pub radius: (f64, f64),
-    pub center: (f64, f64),
-    pub item_style: ItemStyle,
-    pub label: Option<Label>,
-    pub grid_index: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct ScatterDataItem {
-    pub x: f64,
-    pub y: f64,
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ScatterSeries {
-    pub name: String,
-    pub data: Vec<ScatterDataItem>,
-    pub y_axis_index: usize,
-    pub grid_index: usize,
-    pub symbol_size: f64,
-    pub item_style: ItemStyle,
-    pub color: Color,
-}
-
-// ============================================================
-// Radar 类型
-// ============================================================
-
-#[derive(Debug, Clone)]
-pub struct RadarIndicator {
-    pub name: String,
-    pub max: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct RadarNameConfig {
-    pub show: bool,
-    pub formatter: Option<String>,
-    pub text_style: TextStyle,
-}
-
-#[derive(Debug, Clone)]
-pub struct RadarConfig {
-    pub indicator: Vec<RadarIndicator>,
-    pub center: (f64, f64),
-    pub radius: (f64, f64),
-    pub split_number: usize,
-    pub name: RadarNameConfig,
-}
-
-#[derive(Debug, Clone)]
-pub struct RadarData {
-    pub value: Vec<f64>,
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct RadarSeries {
-    pub name: String,
-    pub data: Vec<RadarData>,
-    pub item_style: ItemStyle,
-    pub line_style: LineStyle,
-    pub area_style: Option<AreaStyle>,
-    pub symbol: Symbol,
-    pub symbol_size: f64,
-    pub color: Color,
-}
-
-#[derive(Debug, Clone)]
-pub struct DataItem {
-    pub name: Option<String>,
-    pub value: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct ItemStyle {
-    pub color: Option<Color>,
-    pub border_color: Option<Color>,
-    pub border_width: f64,
-    pub opacity: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct AreaStyle {
-    pub color: Option<Color>,
-    pub opacity: f64,
-}
-
-#[derive(Debug, Clone)]
-pub struct Label {
-    pub show: bool,
-    pub position: LabelPosition,
-    pub formatter: Option<String>,
-    pub color: Color,
-    pub font_size: f64,
-    pub font_family: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LabelPosition {
-    Top,
-    Left,
-    Right,
-    Bottom,
-    Inside,
-    Outside,
-    Center,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Symbol {
-    Circle,
-    Rect,
-    RoundRect,
-    Triangle,
-    Diamond,
-    Pin,
-    Arrow,
-    None,
-}
-
-#[derive(Debug, Clone)]
-pub enum Position {
-    Auto,
-    Left(f64),
-    Right(f64),
-    Top(f64),
-    Bottom(f64),
-    Center,
-    Value(f64),
-    Percent(f64),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LineType {
-    Solid,
-    Dashed,
-    Dotted,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Orient {
-    Horizontal,
-    Vertical,
-}
-
-// ============================================================
-// PolarBar 类型 - 极坐标柱状图
-// ============================================================
-
-#[derive(Debug, Clone)]
-pub struct PolarBarSeries {
-    pub name: String,
-    pub data: Vec<DataItem>,
-    pub item_style: ItemStyle,
-    /// 每个扇区的颜色
-    pub colors: Vec<Color>,
-    /// 扇区之间的间隔（角度，单位：弧度）
-    pub pad_angle: f64,
-    /// 起始角度（单位：弧度，-PI/2 表示12点钟方向）
-    pub start_angle: f64,
-}
-
-// ============================================================
-// PolarScatter 类型 - 极坐标散点图
-// ============================================================
-
-#[derive(Debug, Clone)]
-pub struct PolarScatterData {
-    /// 角度（单位：弧度，-PI/2 表示12点钟方向）
-    pub angle: f64,
-    /// 半径值（0-1 之间，相对于最大半径）
-    pub radius: f64,
-    /// 符号大小
-    pub symbol_size: f64,
-    /// 名称
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct PolarScatterSeries {
-    pub name: String,
-    pub data: Vec<PolarScatterData>,
-    pub item_style: ItemStyle,
-    pub symbol: Symbol,
-    pub default_symbol_size: f64,
-}
-
-// ============================================================
-// Bubble 类型 - 气泡图
-// ============================================================
-
-#[derive(Debug, Clone)]
-pub struct BubbleData {
-    pub x: f64,
-    pub y: f64,
-    pub size: f64,
-    pub name: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct BubbleSeries {
-    pub name: String,
-    pub data: Vec<BubbleData>,
-    pub y_axis_index: usize,
-    pub grid_index: usize,
-    pub symbol_size_scale: f64,
-    pub item_style: ItemStyle,
-    pub color: Color,
-}
-
-// ============================================================
-// Gauge 类型 - 仪表盘
-// ============================================================
-
-#[derive(Debug, Clone)]
-pub struct GaugeSeries {
-    pub name: String,
-    pub value: f64,
-    pub min: f64,
-    pub max: f64,
-    pub center: (f64, f64),
-    pub radius: f64,
-    pub start_angle: f64,
-    pub end_angle: f64,
-    pub split_number: usize,
-    pub axis_line_show: bool,
-    pub axis_line_style: LineStyle,
-    pub pointer_show: bool,
-    pub pointer_length: f64,
-    pub pointer_width: f64,
-    pub pointer_color: Color,
-    pub axis_tick_show: bool,
-    pub axis_tick_length: f64,
-    pub axis_tick_style: LineStyle,
-    pub axis_label_show: bool,
-    pub axis_label_distance: f64,
-    pub axis_label_color: Color,
-    pub axis_label_font_size: f64,
-    pub axis_label_font_family: String,
-    pub axis_label_font_weight: FontWeight,
-    pub split_line_show: bool,
-    pub split_line_length: f64,
-    pub split_line_style: LineStyle,
-    pub title_show: bool,
-    pub title_offset: (f64, f64),
-    pub title_color: Color,
-    pub title_font_size: f64,
-    pub title_font_family: String,
-    pub title_font_weight: FontWeight,
-    pub detail_show: bool,
-    pub detail_formatter: Option<String>,
-    pub detail_offset: (f64, f64),
-    pub detail_color: Color,
-    pub detail_font_size: f64,
-    pub detail_font_family: String,
-    pub detail_font_weight: FontWeight,
-    pub color: Color,
-    pub gradient_colors: Vec<(f64, Color)>,
-}
-
-#[derive(Debug, Clone)]
-pub struct TableSeries {
-    pub name: String,
-    pub data: Vec<Vec<serde_json::Value>>,
-    pub columns: Vec<String>,
-    pub header_config: TableHeaderConfig,
-    pub body_config: TableBodyConfig,
-    /// 表格所属的 grid 索引
-    pub grid_index: usize,
-    /// 是否自动调整 grid 大小以适应表格内容
-    pub auto_fit_grid: bool,
-}
-
-#[derive(Debug, Clone)]
-pub struct TableHeaderConfig {
-    pub show: bool,
-    pub height: f64,
-    pub style: TextStyle,
-    pub background_color: Color,
-    pub align: TextAlign,
-}
-
-#[derive(Debug, Clone)]
-pub struct TableBodyConfig {
-    pub show: bool,
-    pub row_height: f64,
-    pub style: TextStyle,
-    pub even_row_background_color: Color,
-    pub odd_row_background_color: Color,
-    pub align: TextAlign,
-}
-
 impl ChartModel {
-    pub fn new(option: LieChartOption, theme: Theme) -> crate::error::Result<Self> {
+    /// Creates a `ChartModel` by resolving a [`ChartOption`] with a [`Theme`].
+    pub fn new(option: ChartOption, theme: Theme) -> crate::error::Result<Self> {
         let colors: Vec<Color> = option
             .color
             .as_ref()
@@ -1576,7 +1060,7 @@ impl ChartModel {
                         })?;
                         Ok(DataItem { name, value })
                     } else {
-                        Err(ChartError::InvalidColor("Invalid data array".to_string()))
+                        Err(ChartError::DataError("Invalid data array".to_string()))
                     }
                 }
                 DataPoint::Object(obj) => {
@@ -1584,9 +1068,10 @@ impl ChartModel {
                         .get("name")
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
-                    let value = obj.get("value").and_then(|v| v.as_f64()).ok_or_else(|| {
-                        ChartError::InvalidColor("Invalid data value".to_string())
-                    })?;
+                    let value = obj
+                        .get("value")
+                        .and_then(|v| v.as_f64())
+                        .ok_or_else(|| ChartError::DataError("Invalid data value".to_string()))?;
                     Ok(DataItem { name, value })
                 }
             })
@@ -1597,31 +1082,33 @@ impl ChartModel {
     fn resolve_scatter_data(data: &[DataPoint]) -> crate::error::Result<Vec<ScatterDataItem>> {
         data.iter()
             .map(|dp| match dp {
-                DataPoint::Number(_) => Err(ChartError::InvalidColor(
+                DataPoint::Number(_) => Err(ChartError::DataError(
                     "Scatter chart data must be [x, y] arrays or {x, y} objects".to_string(),
                 )),
                 DataPoint::Array(arr) => {
                     if arr.len() >= 2 {
-                        let x = arr.first().and_then(|v| v.as_f64()).ok_or_else(|| {
-                            ChartError::InvalidColor("Invalid x value".to_string())
-                        })?;
-                        let y = arr.get(1).and_then(|v| v.as_f64()).ok_or_else(|| {
-                            ChartError::InvalidColor("Invalid y value".to_string())
-                        })?;
+                        let x = arr
+                            .first()
+                            .and_then(|v| v.as_f64())
+                            .ok_or_else(|| ChartError::DataError("Invalid x value".to_string()))?;
+                        let y = arr
+                            .get(1)
+                            .and_then(|v| v.as_f64())
+                            .ok_or_else(|| ChartError::DataError("Invalid y value".to_string()))?;
                         let name = arr.get(2).and_then(|v| v.as_str()).map(|s| s.to_string());
                         Ok(ScatterDataItem { x, y, name })
                     } else {
-                        Err(ChartError::InvalidColor(
+                        Err(ChartError::DataError(
                             "Scatter data array must have at least 2 elements [x, y]".to_string(),
                         ))
                     }
                 }
                 DataPoint::Object(obj) => {
                     let x = obj.get("x").and_then(|v| v.as_f64()).ok_or_else(|| {
-                        ChartError::InvalidColor("Missing or invalid x value".to_string())
+                        ChartError::DataError("Missing or invalid x value".to_string())
                     })?;
                     let y = obj.get("y").and_then(|v| v.as_f64()).ok_or_else(|| {
-                        ChartError::InvalidColor("Missing or invalid y value".to_string())
+                        ChartError::DataError("Missing or invalid y value".to_string())
                     })?;
                     let name = obj
                         .get("name")
@@ -1742,7 +1229,7 @@ impl ChartModel {
         }
     }
 
-    /// 根据系列名称查找其渲染颜色，用于图例等需要与系列颜色一致的地方
+    /// Returns the palette color for a series by name, used by legends and components.
     pub fn series_color_by_name(&self, name: &str) -> Option<Color> {
         self.series.iter().find_map(|s| match s {
             ResolvedSeries::Line(ls) if ls.name == name => Some(ls.color),
@@ -1759,6 +1246,16 @@ impl ChartModel {
     }
 }
 
+/// A grid region defining the plotting area position.
+#[derive(Debug, Clone)]
+pub struct Grid {
+    pub left: Position,
+    pub right: Position,
+    pub top: Position,
+    pub bottom: Position,
+    pub contain_label: bool,
+}
+
 impl Default for Grid {
     fn default() -> Self {
         Self {
@@ -1768,5 +1265,555 @@ impl Default for Grid {
             bottom: Position::Value(60.0),
             contain_label: false,
         }
+    }
+}
+
+/// Resolved chart title with text and styling.
+#[derive(Debug, Clone)]
+pub struct Title {
+    pub text: String,
+    pub subtext: Option<String>,
+    pub left: Position,
+    pub top: Position,
+    pub text_style: TextStyle,
+    pub subtext_style: Option<TextStyle>,
+}
+
+/// Resolved legend with data labels and positioning.
+#[derive(Debug, Clone)]
+pub struct Legend {
+    pub show: bool,
+    pub data: Vec<String>,
+    pub left: Position,
+    pub top: Position,
+    pub orient: Orient,
+    pub text_style: TextStyle,
+    pub item_width: f64,
+    pub item_height: f64,
+    pub symbol_size: f64,
+}
+
+/// Resolved axis with ticks, labels, and scale information.
+#[derive(Debug, Clone)]
+pub struct Axis {
+    pub axis_type: AxisType,
+    pub data: Option<Vec<String>>,
+    pub name: Option<String>,
+    pub name_location: NameLocation,
+    pub name_text_style: TextStyle,
+    pub axis_label: AxisLabel,
+    pub axis_line: AxisLine,
+    pub axis_tick: AxisTick,
+    pub split_line: SplitLine,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub boundary_gap: bool,
+    pub position: AxisPosition,
+    pub grid_index: usize,
+    /// 刻度线长度（默认 5px）
+    pub tick_length: f64,
+    /// 刻度末端到标签文本的间隙（默认 5px）
+    pub label_padding: f64,
+    /// 名称与标签区域之间的间隙（默认 5px）
+    pub name_gap: f64,
+    /// 名称相对于轴线的位置（外/内侧）
+    pub name_side: AxisNameSide,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AxisType {
+    Category,
+    Value,
+    Time,
+    Log,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum NameLocation {
+    Start,
+    Middle,
+    End,
+}
+
+/// 轴名称相对于轴线的位置（内侧/外侧）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AxisNameSide {
+    Outside, // 轴线外侧（默认）
+    Inside,  // 轴线内侧（靠近绘图区）
+}
+
+/// Resolved axis label formatting.
+#[derive(Debug, Clone)]
+pub struct AxisLabel {
+    pub show: bool,
+    pub rotate: f64,
+    pub formatter: Option<String>,
+    pub color: Color,
+    pub font_size: f64,
+    pub font_family: String,
+    pub font_weight: FontWeight,
+    pub align: LabelAlign,
+    pub vertical_align: LabelVerticalAlign,
+    pub margin: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AxisLine {
+    pub show: bool,
+    pub line_style: LineStyle,
+}
+
+/// Resolved axis tick configuration.
+#[derive(Debug, Clone)]
+pub struct AxisTick {
+    pub show: bool,
+    pub align_with_label: bool,
+    pub line_style: LineStyle,
+}
+
+/// Resolved split-line style for axis grid lines.
+#[derive(Debug, Clone)]
+pub struct SplitLine {
+    pub show: bool,
+    pub line_style: LineStyle,
+}
+
+/// Resolved line style (color, width, dash pattern).
+#[derive(Debug, Clone)]
+pub struct LineStyle {
+    pub color: Color,
+    pub width: f64,
+    pub line_type: LineType,
+}
+
+/// Resolved font style (normal, italic, oblique).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FontStyle {
+    Normal,
+    Italic,
+    Oblique,
+}
+
+/// Resolved text style with font family, size, weight, and alignment.
+#[derive(Debug, Clone)]
+pub struct TextStyle {
+    pub color: Color,
+    pub font_size: f64,
+    pub font_family: String,
+    pub font_weight: FontWeight,
+    pub font_style: FontStyle,
+    pub align: TextAlign,
+    pub vertical_align: TextBaseline,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self {
+            color: Color::new(0, 0, 0),
+            font_size: 12.0,
+            font_family: "sans-serif".to_string(),
+            font_weight: FontWeight::Named(FontWeightNamed::Normal),
+            font_style: FontStyle::Normal,
+            align: TextAlign::Left,
+            vertical_align: TextBaseline::Top,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ResolvedSeries {
+    Line(LineSeries),
+    Bar(BarSeries),
+    Candlestick(CandlestickSeries),
+    Pie(PieSeries),
+    Scatter(ScatterSeries),
+    Radar(RadarSeries),
+    PolarBar(PolarBarSeries),
+    PolarScatter(PolarScatterSeries),
+    Bubble(BubbleSeries),
+    Gauge(GaugeSeries),
+    Table(TableSeries),
+}
+
+/// Resolved line series data.
+#[derive(Debug, Clone)]
+pub struct LineSeries {
+    pub name: String,
+    pub data: Vec<DataItem>,
+    pub stack: Option<String>,
+    pub y_axis_index: usize,
+    pub grid_index: usize,
+    pub smooth: bool,
+    pub symbol: Symbol,
+    pub symbol_size: f64,
+    pub line_style: LineStyle,
+    pub item_style: ItemStyle,
+    pub area_style: Option<AreaStyle>,
+    pub color: Color,
+}
+
+/// Resolved bar/column series data.
+#[derive(Debug, Clone)]
+pub struct BarSeries {
+    pub name: String,
+    pub data: Vec<DataItem>,
+    pub stack: Option<String>,
+    pub y_axis_index: usize,
+    pub grid_index: usize,
+    pub bar_width: Option<f64>,
+    pub item_style: ItemStyle,
+    pub label: Option<Label>,
+    pub color: Color,
+}
+
+#[derive(Debug, Clone)]
+pub struct CandlestickSeries {
+    pub name: String,
+    pub data: Vec<CandlestickDataItem>,
+    pub x_axis_index: usize,
+    pub y_axis_index: usize,
+    pub grid_index: usize,
+    pub item_style: CandlestickItemStyle,
+    pub label: Option<Label>,
+    pub color_up: Color,
+    pub color_down: Color,
+}
+
+#[derive(Debug, Clone)]
+pub struct CandlestickDataItem {
+    pub open: f64,
+    pub close: f64,
+    pub low: f64,
+    pub high: f64,
+    pub name: Option<String>,
+}
+
+impl CandlestickDataItem {
+    pub fn is_up(&self) -> bool {
+        self.close >= self.open
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CandlestickItemStyle {
+    pub color: Option<Color>,
+    pub color0: Option<Color>,
+    pub border_color: Option<Color>,
+    pub border_color0: Option<Color>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PieSeries {
+    pub name: String,
+    pub data: Vec<DataItem>,
+    pub radius: (f64, f64),
+    pub center: (f64, f64),
+    pub item_style: ItemStyle,
+    pub label: Option<Label>,
+    pub grid_index: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScatterDataItem {
+    pub x: f64,
+    pub y: f64,
+    pub name: Option<String>,
+}
+
+/// Resolved scatter series data.
+#[derive(Debug, Clone)]
+pub struct ScatterSeries {
+    pub name: String,
+    pub data: Vec<ScatterDataItem>,
+    pub y_axis_index: usize,
+    pub grid_index: usize,
+    pub symbol_size: f64,
+    pub item_style: ItemStyle,
+    pub color: Color,
+}
+
+// ============================================================
+// Radar 类型
+// ============================================================
+
+#[derive(Debug, Clone)]
+pub struct RadarIndicator {
+    pub name: String,
+    pub max: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct RadarNameConfig {
+    pub show: bool,
+    pub formatter: Option<String>,
+    pub text_style: TextStyle,
+}
+
+/// Resolved radar chart configuration.
+#[derive(Debug, Clone)]
+pub struct RadarConfig {
+    pub indicator: Vec<RadarIndicator>,
+    pub center: (f64, f64),
+    pub radius: (f64, f64),
+    pub split_number: usize,
+    pub name: RadarNameConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct RadarData {
+    pub value: Vec<f64>,
+    pub name: Option<String>,
+}
+
+/// Resolved radar series data.
+#[derive(Debug, Clone)]
+pub struct RadarSeries {
+    pub name: String,
+    pub data: Vec<RadarData>,
+    pub item_style: ItemStyle,
+    pub line_style: LineStyle,
+    pub area_style: Option<AreaStyle>,
+    pub symbol: Symbol,
+    pub symbol_size: f64,
+    pub color: Color,
+}
+
+/// A single resolved data item with optional styling.
+#[derive(Debug, Clone)]
+pub struct DataItem {
+    pub name: Option<String>,
+    pub value: f64,
+}
+
+/// Resolved item style for a data point.
+#[derive(Debug, Clone)]
+pub struct ItemStyle {
+    pub color: Option<Color>,
+    pub border_color: Option<Color>,
+    pub border_width: f64,
+    pub opacity: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AreaStyle {
+    pub color: Option<Color>,
+    pub opacity: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Label {
+    pub show: bool,
+    pub position: LabelPosition,
+    pub formatter: Option<String>,
+    pub color: Color,
+    pub font_size: f64,
+    pub font_family: String,
+}
+
+/// Data label position relative to the data point.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LabelPosition {
+    Top,
+    Left,
+    Right,
+    Bottom,
+    Inside,
+    Outside,
+    Center,
+}
+
+/// Resolved symbol type for data markers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Symbol {
+    Circle,
+    Rect,
+    RoundRect,
+    Triangle,
+    Diamond,
+    Pin,
+    Arrow,
+    None,
+}
+
+/// Axis-relative or absolute position value.
+#[derive(Debug, Clone)]
+pub enum Position {
+    Auto,
+    Left(f64),
+    Right(f64),
+    Top(f64),
+    Bottom(f64),
+    Center,
+    Value(f64),
+    Percent(f64),
+}
+
+/// Line type: solid, dashed, or dotted.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LineType {
+    Solid,
+    Dashed,
+    Dotted,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Orient {
+    Horizontal,
+    Vertical,
+}
+
+// ============================================================
+// PolarBar 类型 - 极坐标柱状图
+// ============================================================
+
+/// Resolved polar bar series (bar chart in polar coordinates).
+#[derive(Debug, Clone)]
+pub struct PolarBarSeries {
+    pub name: String,
+    pub data: Vec<DataItem>,
+    pub item_style: ItemStyle,
+    /// 每个扇区的颜色
+    pub colors: Vec<Color>,
+    /// 扇区之间的间隔（角度，单位：弧度）
+    pub pad_angle: f64,
+    /// 起始角度（单位：弧度，-PI/2 表示12点钟方向）
+    pub start_angle: f64,
+}
+
+// ============================================================
+// PolarScatter 类型 - 极坐标散点图
+// ============================================================
+
+#[derive(Debug, Clone)]
+pub struct PolarScatterData {
+    /// 角度（单位：弧度，-PI/2 表示12点钟方向）
+    pub angle: f64,
+    /// 半径值（0-1 之间，相对于最大半径）
+    pub radius: f64,
+    /// 符号大小
+    pub symbol_size: f64,
+    /// 名称
+    pub name: Option<String>,
+}
+
+/// Resolved polar scatter series data.
+#[derive(Debug, Clone)]
+pub struct PolarScatterSeries {
+    pub name: String,
+    pub data: Vec<PolarScatterData>,
+    pub item_style: ItemStyle,
+    pub symbol: Symbol,
+    pub default_symbol_size: f64,
+}
+
+// ============================================================
+// Bubble 类型 - 气泡图
+// ============================================================
+
+#[derive(Debug, Clone)]
+pub struct BubbleData {
+    pub x: f64,
+    pub y: f64,
+    pub size: f64,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BubbleSeries {
+    pub name: String,
+    pub data: Vec<BubbleData>,
+    pub y_axis_index: usize,
+    pub grid_index: usize,
+    pub symbol_size_scale: f64,
+    pub item_style: ItemStyle,
+    pub color: Color,
+}
+
+// ============================================================
+// Gauge 类型 - 仪表盘
+// ============================================================
+
+/// Resolved gauge series data.
+#[derive(Debug, Clone)]
+pub struct GaugeSeries {
+    pub name: String,
+    pub value: f64,
+    pub min: f64,
+    pub max: f64,
+    pub center: (f64, f64),
+    pub radius: f64,
+    pub start_angle: f64,
+    pub end_angle: f64,
+    pub split_number: usize,
+    pub axis_line_show: bool,
+    pub axis_line_style: LineStyle,
+    pub pointer_show: bool,
+    pub pointer_length: f64,
+    pub pointer_width: f64,
+    pub pointer_color: Color,
+    pub axis_tick_show: bool,
+    pub axis_tick_length: f64,
+    pub axis_tick_style: LineStyle,
+    pub axis_label_show: bool,
+    pub axis_label_distance: f64,
+    pub axis_label_color: Color,
+    pub axis_label_font_size: f64,
+    pub axis_label_font_family: String,
+    pub axis_label_font_weight: FontWeight,
+    pub split_line_show: bool,
+    pub split_line_length: f64,
+    pub split_line_style: LineStyle,
+    pub title_show: bool,
+    pub title_offset: (f64, f64),
+    pub title_color: Color,
+    pub title_font_size: f64,
+    pub title_font_family: String,
+    pub title_font_weight: FontWeight,
+    pub detail_show: bool,
+    pub detail_formatter: Option<String>,
+    pub detail_offset: (f64, f64),
+    pub detail_color: Color,
+    pub detail_font_size: f64,
+    pub detail_font_family: String,
+    pub detail_font_weight: FontWeight,
+    pub color: Color,
+    pub gradient_colors: Vec<(f64, Color)>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableSeries {
+    pub name: String,
+    pub data: Vec<Vec<serde_json::Value>>,
+    pub columns: Vec<String>,
+    pub header_config: TableHeaderConfig,
+    pub body_config: TableBodyConfig,
+    /// 表格所属的 grid 索引
+    pub grid_index: usize,
+    /// 是否自动调整 grid 大小以适应表格内容
+    pub auto_fit_grid: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableHeaderConfig {
+    pub show: bool,
+    pub height: f64,
+    pub style: TextStyle,
+    pub background_color: Color,
+    pub align: TextAlign,
+}
+
+#[derive(Debug, Clone)]
+pub struct TableBodyConfig {
+    pub show: bool,
+    pub row_height: f64,
+    pub style: TextStyle,
+    pub even_row_background_color: Color,
+    pub odd_row_background_color: Color,
+    pub align: TextAlign,
+}
+
+impl From<ColorOption> for Color {
+    fn from(c: ColorOption) -> Self {
+        Color::with_alpha(c.r, c.g, c.b, c.a)
     }
 }

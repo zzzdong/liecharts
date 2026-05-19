@@ -5,9 +5,11 @@
 //! - 颜色管理
 //! - 上下文创建
 
-use crate::layout::{GridLayoutInfo, LayoutOutput};
-use crate::model::ChartModel;
-use crate::visual::Color;
+use crate::{
+    layout::{GridLayoutInfo, LayoutOutput},
+    model::ChartModel,
+    visual::Color,
+};
 
 /// 系列组件基类 - 提供通用功能
 #[derive(Debug, Clone)]

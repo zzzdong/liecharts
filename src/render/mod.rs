@@ -1,36 +1,35 @@
-//! 渲染模块 - 提供多种渲染后端
+//! Multiple rendering backends (bitmap, SVG, etc.).
+
+mod pixmap;
+mod svg;
 
 pub use pixmap::PixmapRenderer;
 pub use svg::SvgRenderer;
 use vello_cpu::kurbo::{BezPath, Point, Rect};
 
-use crate::VisualElement;
-use crate::text::TextLayout;
-use crate::visual::{FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform};
+use crate::{
+    text::TextLayout,
+    visual::{FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement},
+};
 
-mod pixmap;
-mod svg;
-
-/// 渲染器 trait - 通用渲染后端需要实现的基本操作
-///
-/// 这是渲染后端的核心接口，每个具体后端（Pixmap、SVG等）都需要实现这些原子操作
+/// Abstract renderer interface for drawing visual elements to an output format.
 pub trait Renderer {
-    /// 绘制矩形
+    /// Draws a filled or stroked rectangle.
     fn draw_rect(&mut self, rect: Rect, style: &FillStrokeStyle);
 
-    /// 绘制圆形
+    /// Draws a filled or stroked circle.
     fn draw_circle(&mut self, center: Point, radius: f64, style: &FillStrokeStyle);
 
-    /// 绘制线段
+    /// Draws a single line segment.
     fn draw_line(&mut self, start: Point, end: Point, style: &StrokeStyle);
 
-    /// 绘制折线
+    /// Draws a connected polyline.
     fn draw_polyline(&mut self, points: &[Point], style: &StrokeStyle);
 
-    /// 绘制路径
+    /// Draws a filled or stroked bezier path.
     fn draw_path(&mut self, path: &BezPath, style: &FillStrokeStyle);
 
-    /// 绘制渐变填充路径
+    /// Draws a gradient-filled bezier path with an optional stroke.
     fn draw_gradient_path(
         &mut self,
         path: &BezPath,
@@ -38,7 +37,7 @@ pub trait Renderer {
         stroke: Option<&Stroke>,
     );
 
-    /// 绘制文本
+    /// Draws text at the given position.
     fn draw_text(
         &mut self,
         text: &str,
@@ -50,15 +49,13 @@ pub trait Renderer {
         layout: Option<&TextLayout>,
     );
 
-    /// 开始一个变换组
+    /// Begins a transformed group.
     fn begin_group(&mut self, transform: Option<&Transform>);
 
-    /// 结束一个变换组
+    /// Ends the current transformed group.
     fn end_group(&mut self);
 
-    /// 渲染视觉元素序列的默认实现
-    ///
-    /// 遍历元素树并调用对应的原子操作
+    /// Default implementation that iterates over visual elements and dispatches to atomic methods.
     fn render_elements(&mut self, elements: &[VisualElement])
     where
         Self: Sized,

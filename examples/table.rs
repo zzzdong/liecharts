@@ -1,7 +1,7 @@
-use liecharts::{ChartBuilder, LieChart, SeriesOption};
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("产品销售数据表".to_string()),
             subtext: Some("Table Chart".to_string()),
@@ -48,10 +48,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ]),
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "table.png")?;
+        .build(800, 600)?
+        .render_to_image("table.png")?;
     println!("数据表已保存到 table.png");
 
     Ok(())

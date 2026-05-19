@@ -1,15 +1,10 @@
-//! 视觉元素模块 - 纯数据描述，与渲染后端解耦
+//! Pure-data visual primitives decoupled from any rendering backend.
 
-use crate::text::TextLayout;
 use vello_cpu::kurbo::{BezPath, Point, Rect, Vec2};
 
-/// 视觉元素枚举 - 纯数据描述，可被任何渲染后端解释
-///
-/// 设计原则：
-/// - 纯数据，不包含任何渲染逻辑
-/// - 使用标准几何类型（来自 kurbo）
-/// - 支持嵌套组合（Group）
-/// - 支持自定义扩展（Custom）
+use crate::text::TextLayout;
+
+/// A low-level visual drawing primitive used by the rendering pipeline.
 pub enum VisualElement {
     // ---- 基础图形 ----
     Rect {
@@ -230,7 +225,7 @@ impl Transform {
     }
 }
 
-/// 颜色
+/// A resolved RGBA color used throughout the rendering pipeline.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Color {
     pub r: u8,
@@ -277,6 +272,10 @@ impl Color {
             _ => None,
         }
     }
+
+    pub fn as_vello_color(&self) -> vello_cpu::color::AlphaColor<vello_cpu::color::Srgb> {
+        vello_cpu::color::AlphaColor::from_rgba8(self.r, self.g, self.b, self.a)
+    }
 }
 
 impl Default for Color {
@@ -285,10 +284,16 @@ impl Default for Color {
     }
 }
 
-/// 渐变定义
-#[derive(Clone, Debug)]
+impl From<Color> for vello_cpu::color::AlphaColor<vello_cpu::color::Srgb> {
+    fn from(c: Color) -> Self {
+        c.as_vello_color()
+    }
+}
+
+/// Gradient stops and direction definition.
+#[derive(Debug, Clone, PartialEq)]
 pub struct GradientDef {
-    /// 渐变停止点列表 (offset 0.0~1.0, color)
+    /// Gradient stop points (offset 0.0~1.0, color).
     pub stops: Vec<(f64, Color)>,
 }
 
@@ -298,8 +303,8 @@ impl GradientDef {
     }
 }
 
-/// 描边样式
-#[derive(Clone, Debug)]
+/// Full stroke style with color, width, dash, and cap/join.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Stroke {
     pub color: Color,
     pub width: f64,
@@ -342,8 +347,8 @@ impl Default for StrokeStyle {
     }
 }
 
-/// 填充和描边组合样式
-#[derive(Clone, Debug, Default)]
+/// Fill and stroke style used by visual elements.
+#[derive(Debug, Clone, Default)]
 pub struct FillStrokeStyle {
     pub fill: Option<Color>,
     pub stroke: Option<Stroke>,

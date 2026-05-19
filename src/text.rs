@@ -1,19 +1,24 @@
-use crate::visual::{Color, TextAlign, TextBaseline};
-use crate::{ChartError, model};
-use parley::style::{FontFamily, StyleProperty};
-use parley::{Alignment, AlignmentOptions, FontContext, LayoutContext};
-use std::cell::RefCell;
-use std::sync::Arc;
-use vello_cpu::color::{AlphaColor, Srgb};
+use std::{cell::RefCell, sync::Arc};
+
+use parley::{
+    Alignment, AlignmentOptions, FontContext, LayoutContext,
+    style::{FontFamily, StyleProperty},
+};
+
+use crate::{
+    error::ChartError,
+    model::TextStyle,
+    visual::{Color, TextAlign, TextBaseline},
+};
 
 /// 文本布局包装类型
-pub type TextLayout = parley::Layout<TextColor>;
+pub type TextLayout = parley::Layout<Color>;
 
 thread_local! {
     /// 全局字体上下文 - 线程本地存储
     pub static FONT_CONTEXT: RefCell<FontContext> = RefCell::new(FontContext::default());
     /// 全局布局上下文 - 线程本地存储
-    pub static LAYOUT_CONTEXT: RefCell<LayoutContext<TextColor>> = RefCell::new(LayoutContext::default());
+    pub static LAYOUT_CONTEXT: RefCell<LayoutContext<Color>> = RefCell::new(LayoutContext::default());
 }
 
 /// 访问字体上下文的便捷函数
@@ -22,48 +27,17 @@ pub fn with_font_context<R, F: FnOnce(&mut FontContext) -> R>(f: F) -> R {
 }
 
 /// 访问布局上下文的便捷函数
-pub fn with_layout_context<R, F: FnOnce(&mut LayoutContext<TextColor>) -> R>(f: F) -> R {
+pub fn with_layout_context<R, F: FnOnce(&mut LayoutContext<Color>) -> R>(f: F) -> R {
     LAYOUT_CONTEXT.with(|cx| f(&mut cx.borrow_mut()))
 }
 
 /// 同时访问两个上下文的便捷函数
-pub fn with_text_contexts<R, F: FnOnce(&mut FontContext, &mut LayoutContext<TextColor>) -> R>(
+pub fn with_text_contexts<R, F: FnOnce(&mut FontContext, &mut LayoutContext<Color>) -> R>(
     f: F,
 ) -> R {
     FONT_CONTEXT.with(|font_cx| {
         LAYOUT_CONTEXT.with(|layout_cx| f(&mut font_cx.borrow_mut(), &mut layout_cx.borrow_mut()))
     })
-}
-
-/// 文本颜色包装器
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct TextColor(pub AlphaColor<Srgb>);
-
-impl TextColor {
-    pub const BLACK: Self = Self(AlphaColor::BLACK);
-    pub const WHITE: Self = Self(AlphaColor::WHITE);
-    pub const RED: Self = Self(AlphaColor::from_rgb8(255, 0, 0));
-    pub const GREEN: Self = Self(AlphaColor::from_rgb8(0, 128, 0));
-    pub const BLUE: Self = Self(AlphaColor::from_rgb8(0, 0, 255));
-
-    pub fn from_rgba8(r: u8, g: u8, b: u8, a: u8) -> Self {
-        Self(AlphaColor::from_rgba8(r, g, b, a))
-    }
-
-    pub fn inner(&self) -> AlphaColor<Srgb> {
-        self.0
-    }
-}
-
-impl Default for TextColor {
-    fn default() -> Self {
-        Self(AlphaColor::BLACK)
-    }
-}
-
-/// 将 Shape 的 Color 转换为 TextColor
-fn color_to_text_color(color: &Color) -> TextColor {
-    TextColor::from_rgba8(color.r, color.g, color.b, color.a)
 }
 
 /// 字体来源
@@ -77,7 +51,7 @@ pub enum FontSource {
 
 /// 注册自定义字体到全局字体上下文。
 ///
-/// 适用于不需要创建 `LieChart` 实例即可加载字体的场景。
+/// 适用于不需要创建 `Chart` 实例即可加载字体的场景。
 /// 加载后的字体可以通过 `font_family` 名称在图表的文本样式中使用。
 ///
 /// # 示例
@@ -95,7 +69,7 @@ pub fn register_font(
     let data = match source {
         FontSource::Path(path) => {
             let bytes = std::fs::read(&path)
-                .map_err(|e| ChartError::FontLoadError(format!("读取字体文件失败: {e}")))?;
+                .map_err(|e| ChartError::FontLoadError(format!("Failed to read font file: {e}")))?;
             Blob::new(Arc::new(bytes))
         }
         FontSource::Memory(bytes) => Blob::new(Arc::new(bytes)),
@@ -119,7 +93,7 @@ pub fn register_font(
 /// 组件的对齐（居中、右对齐等）应在拿到 layout 尺寸后手动计算位置偏移。
 pub fn create_text_layout(
     text: &str,
-    font_config: &model::TextStyle,
+    font_config: &TextStyle,
     max_width: Option<f64>,
 ) -> TextLayout {
     with_text_contexts(|font_cx, layout_cx| {
@@ -130,10 +104,10 @@ pub fn create_text_layout(
 /// 使用指定的上下文创建文本布局
 pub fn create_text_layout_with_contexts(
     text: &str,
-    style: &model::TextStyle,
+    style: &TextStyle,
     max_width: Option<f64>,
     font_cx: &mut FontContext,
-    layout_cx: &mut LayoutContext<TextColor>,
+    layout_cx: &mut LayoutContext<Color>,
 ) -> TextLayout {
     // 创建布局构建器
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
@@ -142,7 +116,7 @@ pub fn create_text_layout_with_contexts(
     let font_stack = FontFamily::named(&style.font_family);
     builder.push_default(StyleProperty::FontFamily(font_stack));
     builder.push_default(StyleProperty::FontSize(style.font_size as f32));
-    builder.push_default(StyleProperty::Brush(color_to_text_color(&style.color)));
+    builder.push_default(StyleProperty::Brush(style.color));
 
     // 构建布局
     let mut layout = builder.build(text);
@@ -168,7 +142,7 @@ pub fn create_text_layout_with_contexts(
 /// - `max_width`: 最大行宽，`None` 表示不断行。
 /// - `align`: 多行对齐方式。`Left`、`Center` 或 `Right`。
 pub fn layout_text(
-    texts: &[(&str, &model::TextStyle)],
+    texts: &[(&str, &TextStyle)],
     max_width: Option<f64>,
     align: TextAlign,
 ) -> TextLayout {
@@ -183,15 +157,15 @@ pub fn layout_text(
 /// 直接拼接所有文本段（不带额外分隔符），以第一段的样式为默认样式，
 /// 其余各段通过 ranged_builder 的 `push` 方法覆盖特定范围的样式属性。
 pub fn layout_text_with_contexts(
-    texts: &[(&str, &model::TextStyle)],
+    texts: &[(&str, &TextStyle)],
     max_width: Option<f64>,
     align: TextAlign,
     font_cx: &mut FontContext,
-    layout_cx: &mut LayoutContext<TextColor>,
+    layout_cx: &mut LayoutContext<Color>,
 ) -> TextLayout {
     if texts.is_empty() {
         return layout_text_with_contexts(
-            &[("", &model::TextStyle::default())],
+            &[("", &TextStyle::default())],
             max_width,
             align,
             font_cx,
@@ -216,9 +190,7 @@ pub fn layout_text_with_contexts(
     let default_font_stack = FontFamily::named(&first_style.font_family);
     builder.push_default(StyleProperty::FontFamily(default_font_stack));
     builder.push_default(StyleProperty::FontSize(first_style.font_size as f32));
-    builder.push_default(StyleProperty::Brush(color_to_text_color(
-        &first_style.color,
-    )));
+    builder.push_default(StyleProperty::Brush(first_style.color));
 
     // 3. 后续各段覆盖样式
     for (i, (_, style)) in texts.iter().enumerate().skip(1) {
@@ -236,10 +208,7 @@ pub fn layout_text_with_contexts(
             builder.push(StyleProperty::FontSize(style.font_size as f32), start..end);
         }
         if style.color != first_style.color {
-            builder.push(
-                StyleProperty::Brush(color_to_text_color(&style.color)),
-                start..end,
-            );
+            builder.push(StyleProperty::Brush(style.color), start..end);
         }
     }
 
@@ -331,7 +300,7 @@ impl TextEngine {
         color: &Color,
         max_width: Option<f64>,
     ) -> (f64, f64) {
-        let style = model::TextStyle {
+        let style = TextStyle {
             font_size,
             font_family: font_family.to_string(),
             color: *color,

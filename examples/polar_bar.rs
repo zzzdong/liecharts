@@ -1,7 +1,7 @@
-use liecharts::{ChartBuilder, DataPoint, LieChart, SeriesOption};
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("极坐标柱状图".to_string()),
             subtext: Some("Polar Bar Chart".to_string()),
@@ -29,10 +29,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "polar_bar.png")?;
+        .build(800, 600)?
+        .render_to_image("polar_bar.png")?;
     println!("极坐标柱状图已保存到 polar_bar.png");
 
     Ok(())

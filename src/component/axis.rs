@@ -1,10 +1,13 @@
-use crate::component::ChartComponent;
-use crate::layout::{AxisPosition, LayoutOutput};
-use crate::model::{Axis, AxisNameSide, AxisType, ChartModel, NameLocation};
-use crate::option::{LabelAlign, LabelVerticalAlign};
-use crate::text::{compute_text_offset, create_text_layout};
-use crate::visual::{StrokeStyle, TextAlign, TextBaseline, VisualElement};
 use vello_cpu::kurbo::Point;
+
+use crate::{
+    component::ChartComponent,
+    layout::{AxisPosition, LayoutOutput},
+    model::{Axis, AxisNameSide, AxisType, ChartModel, NameLocation},
+    option::{LabelAlign, LabelVerticalAlign},
+    text::{compute_text_offset, create_text_layout},
+    visual::{StrokeStyle, TextAlign, TextBaseline, VisualElement},
+};
 
 pub struct AxisComponent {
     axis: Axis,

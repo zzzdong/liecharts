@@ -1,15 +1,14 @@
 //! 视觉构建器 - 将映射后的几何描述转换为 VisualElement 列表
 
-use crate::component::label::PieLeaderLineLabel;
-use crate::layout::DataCoordinateSystem;
-use crate::pipeline::mapper::MappedGeometry;
-use crate::pipeline::transform::TransformedSeries;
-use crate::text::{compute_text_offset, create_text_layout};
-use crate::visual::{
-    Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
+use vello_cpu::kurbo::{BezPath, Point, Rect, Shape as KurboShape};
+
+use crate::{
+    component::label::PieLeaderLineLabel,
+    layout::DataCoordinateSystem,
+    pipeline::{mapper::MappedGeometry, transform::TransformedSeries},
+    text::{compute_text_offset, create_text_layout},
+    visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement},
 };
-use vello_cpu::kurbo::Shape as KurboShape;
-use vello_cpu::kurbo::{BezPath, Point, Rect};
 
 /// ECharts 风格默认调色板
 const DEFAULT_PIE_COLORS: [Color; 10] = [

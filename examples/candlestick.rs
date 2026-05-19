@@ -1,7 +1,7 @@
-use liecharts::{AxisType, CandlestickDataPoint, ChartBuilder, LieChart, SeriesOption};
+use liecharts::{CandlestickDataPoint, prelude::*};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("K线图示例".to_string()),
             subtext: Some("股票价格走势".to_string()),
@@ -102,10 +102,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ..Default::default()
             },
         ))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "candlestick.png")?;
+        .build(800, 600)?
+        .render_to_image("candlestick.png")?;
     println!("K线图已保存到 candlestick.png");
 
     Ok(())

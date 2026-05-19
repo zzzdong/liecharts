@@ -1,17 +1,18 @@
-//! SVG 渲染器 - 将 VisualElement 渲染为 SVG 字符串
+//! SVG renderer — converts visual elements to SVG markup.
 
-use crate::error::Result;
-use crate::render::Renderer;
-use crate::text::TextLayout;
-use crate::visual::{
-    Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement,
-};
 use std::collections::HashMap;
+
 use vello_cpu::kurbo::{BezPath, PathSeg, Point, Rect};
 
-/// SVG 渲染器，输出 SVG 字符串
-///
-/// 实现 Renderer trait，将 VisualElement 渲染为 SVG
+use crate::{
+    error::Result,
+    render::Renderer,
+    text::TextLayout,
+    visual::{Color, FillStrokeStyle, GradientDef, Stroke, StrokeStyle, Transform, VisualElement},
+};
+
+/// SVG renderer that produces XML markup for vector output.
+#[derive(Debug)]
 pub struct SvgRenderer {
     svg_content: String,
     gradient_map: HashMap<*const GradientDef, usize>,

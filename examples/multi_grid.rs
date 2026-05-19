@@ -1,7 +1,7 @@
-use liecharts::{AxisType, ChartBuilder, DataPoint, GridOption, LieChart, SeriesOption};
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    let chart = ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("多子图展示".to_string()),
             subtext: Some("Multi Grid Example".to_string()),
@@ -121,11 +121,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             grid_index: Some(2),
             ..Default::default()
         }))
-        .build()?;
+        .build(1000, 800)?;
 
-    let chart = LieChart::new(1000, 800);
-    chart.render_to_image(&model, "multi_grid.png")?;
-    chart.render_to_svg(&model, "multi_grid.svg")?;
+    chart.render_to_image("multi_grid.png")?;
+    chart.render_to_svg("multi_grid.svg")?;
     println!("多子图已保存到 multi_grid.svg");
 
     Ok(())

@@ -6,9 +6,9 @@
 //! 3. 子元素报告自己的期望尺寸
 //! 4. 支持百分比和绝对定位
 
-use crate::model;
-use crate::text::create_text_layout;
 use vello_cpu::kurbo::{Point, Rect, Size};
+
+use crate::{model, text::create_text_layout};
 
 pub mod elements;
 pub mod engine;
@@ -16,13 +16,14 @@ pub mod grid_manager;
 pub mod table_layout;
 
 // 重新导出常用类型
-pub use crate::option::AxisPosition;
 pub use elements::{AxisLayout, GridLayout, LegendLayout, TitleLayout};
 pub use engine::{
     AxisArea, ChartLayout, GridLayoutInfo, LayoutEngine, LayoutOutput, SubplotLayout,
 };
 pub use grid_manager::{GridDefinition, GridManager, GridRect};
 pub use table_layout::{ColumnConfig, TableLayout, TableLayoutElement};
+
+pub use crate::option::AxisPosition;
 
 /// 数据坐标系 - 统一数据值与像素坐标的映射
 /// 确保坐标轴刻度和数据系列使用相同的坐标系

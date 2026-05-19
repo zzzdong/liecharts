@@ -1,9 +1,9 @@
-use liecharts::{AxisType, ChartBuilder, DataPoint, LieChart, SeriesOption, Theme};
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dark_theme = Theme::dark();
 
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_theme(dark_theme)
         .with_title(liecharts::TitleOption {
             text: Some("深色主题示例".to_string()),
@@ -68,10 +68,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "dark_theme.png")?;
+        .build(800, 600)?
+        .render_to_image("dark_theme.png")?;
     println!("深色主题图表已保存到 dark_theme.png");
 
     Ok(())

@@ -1,11 +1,12 @@
-use crate::component::ChartComponent;
-use crate::layout::{LayoutOutput, TableLayout};
-use crate::model::{ChartModel, TableSeries};
-use crate::text::create_text_layout;
-use crate::visual::{
-    Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
-};
 use vello_cpu::kurbo::{Point, Rect};
+
+use crate::{
+    component::ChartComponent,
+    layout::{LayoutOutput, TableLayout},
+    model::{ChartModel, TableSeries},
+    text::create_text_layout,
+    visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement},
+};
 
 pub struct TableSeriesComponent {
     series: TableSeries,

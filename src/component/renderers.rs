@@ -2,9 +2,12 @@
 //!
 //! 该模块提供了一系列辅助函数，用于简化系列组件的渲染逻辑。
 
-use crate::component::context::{CartesianRenderer, PolarRenderer, SeriesContext};
-use crate::visual::{Color, Stroke, VisualElement};
 use vello_cpu::kurbo::Point;
+
+use crate::{
+    component::context::{CartesianRenderer, PolarRenderer, SeriesContext},
+    visual::{Color, Stroke, VisualElement},
+};
 
 /// 标准笛卡尔坐标渲染流程
 ///

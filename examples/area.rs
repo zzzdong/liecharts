@@ -1,7 +1,7 @@
-use liecharts::{AxisType, ChartBuilder, DataPoint, LieChart, SeriesOption};
+use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("访问量趋势面积图".to_string()),
             subtext: Some("Area Chart".to_string()),
@@ -45,10 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }),
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "area.png")?;
+        .build(800, 600)?
+        .render_to_image("area.png")?;
     println!("面积图已保存到 area.png");
 
     Ok(())

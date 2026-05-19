@@ -1,9 +1,12 @@
-use crate::component::ChartComponent;
-use crate::layout::LayoutOutput;
-use crate::model::{ChartModel, Legend};
-use crate::text::{compute_text_offset, create_text_layout};
-use crate::visual::{Color, FillStrokeStyle, TextAlign, TextBaseline, VisualElement};
 use vello_cpu::kurbo::{Point, Rect};
+
+use crate::{
+    component::ChartComponent,
+    layout::LayoutOutput,
+    model::{ChartModel, Legend},
+    text::{compute_text_offset, create_text_layout},
+    visual::{Color, FillStrokeStyle, TextAlign, TextBaseline, VisualElement},
+};
 
 pub struct LegendComponent {
     legend: Legend,

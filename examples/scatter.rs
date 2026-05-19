@@ -1,8 +1,7 @@
-use liecharts::option::BubbleDataPoint;
-use liecharts::{AxisType, ChartBuilder, LieChart, SeriesOption};
+use liecharts::{BubbleDataPoint, prelude::*};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let model = ChartBuilder::new()
+    ChartBuilder::new()
         .with_title(liecharts::TitleOption {
             text: Some("编程语言生态分析".to_string()),
             subtext: Some("气泡大小 = 气泡大小表示就业岗位相对数量".to_string()),
@@ -84,10 +83,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ],
             ..Default::default()
         }))
-        .build()?;
-
-    let chart = LieChart::new(800, 600);
-    chart.render_to_image(&model, "scatter.png")?;
+        .build(800, 600)?
+        .render_to_image("scatter.png")?;
     println!("散点图已保存到 scatter.png");
 
     Ok(())
