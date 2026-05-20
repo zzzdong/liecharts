@@ -381,7 +381,14 @@ fn compute_data_coord_for_grid(
         let (values, stack, y_axis_index, x_values, needs_zero_base) = match series {
             ResolvedSeries::Bar(s) => {
                 let vals: Vec<f64> = s.data.iter().map(|item| item.value).collect();
-                (vals, s.stack.clone(), s.y_axis_index, None, true)
+                // BarSeries 的数据值也需要作为 X 轴数值（支持横向柱状图）
+                (
+                    vals.clone(),
+                    s.stack.clone(),
+                    s.y_axis_index,
+                    Some(vals.clone()),
+                    true,
+                )
             }
             ResolvedSeries::Line(s) => {
                 let vals: Vec<f64> = s.data.iter().map(|item| item.value).collect();
@@ -561,18 +568,32 @@ fn compute_data_coord_for_grid(
         }
     };
 
+    let is_category_x = x_axes
+        .first()
+        .map(|a| matches!(a.axis_type, AxisType::Category))
+        .unwrap_or(false);
+
+    let is_category_y = y_axes
+        .first()
+        .map(|a| matches!(a.axis_type, AxisType::Category))
+        .unwrap_or(false);
+
+    let category_count_y = y_axes
+        .first()
+        .and_then(|a| a.data.as_ref().map(|d| d.len()))
+        .unwrap_or(0);
+
     DataCoordinateSystem {
         x_range,
         y_ranges,
         plot_bounds: grid_info.grid_inner_bbox,
-        is_category_x: x_axes
-            .first()
-            .map(|a| matches!(a.axis_type, AxisType::Category))
-            .unwrap_or(false),
+        is_category_x,
+        is_category_y,
         category_count: x_axes
             .first()
             .and_then(|a| a.data.as_ref().map(|d| d.len()))
             .unwrap_or(0),
+        category_count_y,
     }
 }
 

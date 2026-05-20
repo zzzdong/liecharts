@@ -7,12 +7,19 @@ use crate::{layout::DataCoordinateSystem, pipeline::transform::TransformedSeries
 /// 映射后的几何描述
 #[derive(Debug, Clone)]
 pub enum MappedGeometry {
-    /// 笛卡尔坐标柱状图
+    /// 笛卡尔坐标柱状图（垂直）
     CartesianBar {
         center_x: f64,
         bottom_y: f64,
         top_y: f64,
         width: f64,
+    },
+    /// 笛卡尔坐标横向柱状图
+    HorizontalBar {
+        center_y: f64,
+        left_x: f64,
+        right_x: f64,
+        height: f64,
     },
     /// 笛卡尔坐标点
     CartesianPoint { x: f64, y: f64 },
@@ -46,12 +53,18 @@ pub trait CoordinateMapper {
 pub struct CartesianBarMapper {
     /// 柱子宽度（相对于类目宽度的比例）
     pub bar_width_ratio: f64,
+    /// 分组索引（0, 1, 2...）
+    pub group_index: usize,
+    /// 该 grid 中柱状图系列的总数（用于分组并排）
+    pub group_count: usize,
 }
 
 impl Default for CartesianBarMapper {
     fn default() -> Self {
         Self {
             bar_width_ratio: 0.6,
+            group_index: 0,
+            group_count: 1,
         }
     }
 }
@@ -65,6 +78,12 @@ impl CartesianBarMapper {
         self.bar_width_ratio = ratio;
         self
     }
+
+    pub fn with_group(mut self, index: usize, total: usize) -> Self {
+        self.group_index = index;
+        self.group_count = total.max(1);
+        self
+    }
 }
 
 impl CoordinateMapper for CartesianBarMapper {
@@ -74,33 +93,78 @@ impl CoordinateMapper for CartesianBarMapper {
         coord: &DataCoordinateSystem,
         y_axis_index: usize,
     ) -> Vec<MappedGeometry> {
-        let cat_width = coord.category_width();
-        let bar_width = cat_width * self.bar_width_ratio;
-        let y_range = coord.get_y_range(y_axis_index);
+        // 根据 Y 轴是否为类目轴来决定是垂直柱状图还是横向柱状图
+        if coord.is_category_y {
+            // ============ 横向柱状图 (Y轴为类目，X轴为数值) ============
+            let cat_height = coord.category_height();
+            let group_height = cat_height * self.bar_width_ratio;
+            let bar_height = group_height / self.group_count as f64;
+            let x_range = coord.x_range; // X 轴是数值轴，使用 x_range
 
-        transformed
-            .items
-            .iter()
-            .map(|item| {
-                let center_x = coord.x_to_pixel(item.data_index as f64 + 0.5);
-                let top_y = coord.y_to_pixel(item.display_value, y_axis_index);
-                // 基线应该是 y_range 的最小值（如果 baseline 为 0 且不在范围内）
-                // 或者是 baseline 本身（如果在范围内）
-                let baseline_value = if item.baseline < y_range.0 {
-                    y_range.0
-                } else {
-                    item.baseline
-                };
-                let bottom_y = coord.y_to_pixel(baseline_value, y_axis_index);
+            transformed
+                .items
+                .iter()
+                .map(|item| {
+                    // 当前类目的中心 Y 坐标
+                    let category_center =
+                        coord.plot_bounds.y0 + (item.data_index as f64 + 0.5) * cat_height;
+                    // 组内偏移
+                    let group_offset = (self.group_index as f64
+                        - (self.group_count as f64 - 1.0) / 2.0)
+                        * bar_height;
+                    let center_y = category_center + group_offset;
 
-                MappedGeometry::CartesianBar {
-                    center_x,
-                    bottom_y,
-                    top_y,
-                    width: bar_width,
-                }
-            })
-            .collect()
+                    let right_x = coord.x_to_pixel(item.display_value);
+                    // 基线处理
+                    let baseline_value = if item.baseline < x_range.0 {
+                        x_range.0
+                    } else {
+                        item.baseline
+                    };
+                    let left_x = coord.x_to_pixel(baseline_value);
+
+                    MappedGeometry::HorizontalBar {
+                        center_y,
+                        left_x,
+                        right_x,
+                        height: bar_height,
+                    }
+                })
+                .collect()
+        } else {
+            // ============ 垂直柱状图 (X轴为类目，Y轴为数值) ============
+            let cat_width = coord.category_width();
+            let group_width = cat_width * self.bar_width_ratio;
+            let bar_width = group_width / self.group_count as f64;
+            let y_range = coord.get_y_range(y_axis_index);
+
+            transformed
+                .items
+                .iter()
+                .map(|item| {
+                    let category_center = coord.x_to_pixel(item.data_index as f64 + 0.5);
+                    let group_offset = (self.group_index as f64
+                        - (self.group_count as f64 - 1.0) / 2.0)
+                        * bar_width;
+                    let center_x = category_center + group_offset;
+
+                    let top_y = coord.y_to_pixel(item.display_value, y_axis_index);
+                    let baseline_value = if item.baseline < y_range.0 {
+                        y_range.0
+                    } else {
+                        item.baseline
+                    };
+                    let bottom_y = coord.y_to_pixel(baseline_value, y_axis_index);
+
+                    MappedGeometry::CartesianBar {
+                        center_x,
+                        bottom_y,
+                        top_y,
+                        width: bar_width,
+                    }
+                })
+                .collect()
+        }
     }
 }
 

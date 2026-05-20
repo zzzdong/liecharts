@@ -35,6 +35,7 @@ impl PieSeriesComponent {
             false,
             false,
             0,
+            0,
         );
 
         let resolved_series = crate::model::ResolvedSeries::Pie(self.series.clone());

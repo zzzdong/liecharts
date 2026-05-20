@@ -5,7 +5,7 @@ use crate::{
     pipeline::{
         builder::{BarVisualBuilder, VisualBuilder},
         mapper::{CartesianBarMapper, CoordinateMapper},
-        transform::{DataTransformer, IdentityTransformer},
+        transform::IdentityTransformer,
     },
     visual::{Stroke, VisualElement},
 };
@@ -29,17 +29,70 @@ impl BarSeriesComponent {
         let coord = ctx.coord;
 
         // 1. Transform
-        let resolved_series = crate::model::ResolvedSeries::Bar(self.series.clone());
-        let transformer = IdentityTransformer;
-        let transformed_list = transformer.transform(&[resolved_series]);
-        let transformed = &transformed_list[0];
+        // 如果设置了 stack，使用 StackedTransformer 进行堆叠计算
+        let transformer: Box<dyn crate::pipeline::transform::DataTransformer> =
+            if self.series.stack.is_some() {
+                Box::new(crate::pipeline::transform::StackedTransformer::new(
+                    self.series.stack.clone(),
+                ))
+            } else {
+                Box::new(IdentityTransformer)
+            };
+
+        let all_series = &ctx.resolved.series;
+        let transformed_list = transformer.transform(all_series);
+        let transformed = match transformed_list
+            .iter()
+            .find(|t| t.series_index == self.series_index)
+        {
+            Some(t) => t,
+            None => return Vec::new(),
+        };
 
         // 2. Map
-        let cat_width = coord.category_width();
-        let bar_width = self.series.bar_width.unwrap_or(cat_width * 0.6);
-        let bar_width_ratio = bar_width / cat_width;
+        // 根据坐标轴类型选择类目尺寸（横向时用高度，纵向时用宽度）
+        let bar_size_ratio = if coord.is_category_y {
+            // 横向柱状图：Y轴为类目
+            let cat_height = coord.category_height();
+            let bar_height = self.series.bar_width.unwrap_or(cat_height * 0.6);
+            if cat_height > 0.0 {
+                bar_height / cat_height
+            } else {
+                0.6
+            }
+        } else {
+            // 垂直柱状图：X轴为类目
+            let cat_width = coord.category_width();
+            let bar_width = self.series.bar_width.unwrap_or(cat_width * 0.6);
+            if cat_width > 0.0 {
+                bar_width / cat_width
+            } else {
+                0.6
+            }
+        };
 
-        let mapper = CartesianBarMapper::new().with_bar_width_ratio(bar_width_ratio);
+        // 计算当前 grid 中柱状图系列的分组总数（用于分组并排）
+        let group_count = ctx
+            .resolved
+            .series
+            .iter()
+            .filter(|s| match s {
+                crate::model::ResolvedSeries::Bar(b) => b.grid_index == self.grid_index,
+                _ => false,
+            })
+            .map(|s| match s {
+                crate::model::ResolvedSeries::Bar(b) => b.group_index.unwrap_or(0),
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0)
+            + 1;
+
+        let group_index = self.series.group_index.unwrap_or(0);
+
+        let mapper = CartesianBarMapper::new()
+            .with_bar_width_ratio(bar_size_ratio)
+            .with_group(group_index, group_count);
         let mapped = mapper.map(transformed, coord, self.series.y_axis_index);
 
         // 3. Build

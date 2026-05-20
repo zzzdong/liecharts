@@ -34,7 +34,9 @@ pub struct DataCoordinateSystem {
     pub y_ranges: Vec<(f64, f64)>, // 支持多Y轴
     pub plot_bounds: Rect,
     pub is_category_x: bool,
+    pub is_category_y: bool,
     pub category_count: usize,
+    pub category_count_y: usize,
 }
 
 impl DataCoordinateSystem {
@@ -43,15 +45,18 @@ impl DataCoordinateSystem {
         x_range: (f64, f64),
         y_ranges: Vec<(f64, f64)>,
         is_category_x: bool,
-        _is_category_y: bool,
+        is_category_y: bool,
         category_count: usize,
+        category_count_y: usize,
     ) -> Self {
         Self {
             x_range,
             y_ranges,
             plot_bounds,
             is_category_x,
+            is_category_y,
             category_count,
+            category_count_y,
         }
     }
 
@@ -90,6 +95,22 @@ impl DataCoordinateSystem {
             - (data_y - y_range.0) / (y_range.1 - y_range.0) * self.plot_bounds.height()
     }
 
+    /// 将类目标签 Y 索引映射到类目中心坐标
+    /// 用于横向柱状图的 X 轴（数值轴）
+    pub fn x_to_pixel_for_horizontal(&self, data_y: f64) -> f64 {
+        self.plot_bounds.x0 + data_y
+    }
+
+    /// 将数值型 Y 值映射到像素坐标（用于横向柱状图，Y轴是类目轴）
+    pub fn y_index_to_pixel(&self, data_index: f64) -> f64 {
+        if self.category_count_y > 0 {
+            let category_height = self.plot_bounds.height() / self.category_count_y as f64;
+            self.plot_bounds.y0 + (data_index + 0.5) * category_height
+        } else {
+            self.plot_bounds.y0
+        }
+    }
+
     /// 兼容旧代码，默认使用第一个Y轴
     pub fn y_to_pixel_default(&self, data_y: f64) -> f64 {
         self.y_to_pixel(data_y, 0)
@@ -98,6 +119,14 @@ impl DataCoordinateSystem {
     pub fn category_width(&self) -> f64 {
         if self.category_count > 0 {
             self.plot_bounds.width() / self.category_count as f64
+        } else {
+            0.0
+        }
+    }
+
+    pub fn category_height(&self) -> f64 {
+        if self.category_count_y > 0 {
+            self.plot_bounds.height() / self.category_count_y as f64
         } else {
             0.0
         }
@@ -111,7 +140,9 @@ impl Default for DataCoordinateSystem {
             y_ranges: vec![(0.0, 100.0)],
             plot_bounds: Rect::new(0.0, 0.0, 1.0, 1.0),
             is_category_x: true,
+            is_category_y: false,
             category_count: 0,
+            category_count_y: 0,
         }
     }
 }

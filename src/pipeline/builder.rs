@@ -83,70 +83,142 @@ impl VisualBuilder for BarVisualBuilder {
         let mut elements = Vec::new();
 
         for (item, geom) in transformed.items.iter().zip(mapped.iter()) {
-            let MappedGeometry::CartesianBar {
-                center_x,
-                bottom_y,
-                top_y,
-                width,
-            } = geom
-            else {
-                continue;
-            };
+            match geom {
+                MappedGeometry::CartesianBar {
+                    center_x,
+                    bottom_y,
+                    top_y,
+                    width,
+                } => {
+                    let x = center_x - width / 2.0;
+                    let bar_top = top_y.min(*bottom_y);
+                    let bar_height = (top_y - bottom_y).abs();
 
-            let x = center_x - width / 2.0;
-            let bar_top = top_y.min(*bottom_y);
-            let bar_height = (top_y - bottom_y).abs();
+                    let fill_color = self.series_style.fill.unwrap_or(self.series_style.color);
 
-            let fill_color = self.series_style.fill.unwrap_or(self.series_style.color);
+                    elements.push(VisualElement::Rect {
+                        rect: Rect::new(x, bar_top, x + width, bar_top + bar_height),
+                        style: FillStrokeStyle {
+                            fill: Some(fill_color),
+                            stroke: self.series_style.stroke.clone(),
+                        },
+                    });
 
-            elements.push(VisualElement::Rect {
-                rect: Rect::new(x, bar_top, x + width, bar_top + bar_height),
-                style: FillStrokeStyle {
-                    fill: Some(fill_color),
-                    stroke: self.series_style.stroke.clone(),
-                },
-            });
+                    // 标签
+                    if self.label_config.show {
+                        let label_y = match self.label_config.position {
+                            super::LabelPosition::Top => bar_top - 5.0,
+                            super::LabelPosition::Inside => bar_top + bar_height / 2.0,
+                            _ => bar_top - 5.0,
+                        };
 
-            // 标签
-            if self.label_config.show {
-                let label_y = match self.label_config.position {
-                    super::LabelPosition::Top => bar_top - 5.0,
-                    super::LabelPosition::Inside => bar_top + bar_height / 2.0,
-                    _ => bar_top - 5.0,
-                };
+                        let label_text = format!("{:.0}", item.original.value);
+                        let label_font = crate::model::TextStyle {
+                            font_size: self.label_config.font_size,
+                            font_family: "sans-serif".to_string(),
+                            color: self.label_config.color,
+                            font_weight: crate::option::FontWeight::Named(
+                                crate::option::FontWeightNamed::Normal,
+                            ),
+                            ..Default::default()
+                        };
 
-                let label_text = format!("{:.0}", item.original.value);
-                let label_font = crate::model::TextStyle {
-                    font_size: self.label_config.font_size,
-                    font_family: "sans-serif".to_string(),
-                    color: self.label_config.color,
-                    font_weight: crate::option::FontWeight::Named(
-                        crate::option::FontWeightNamed::Normal,
-                    ),
-                    ..Default::default()
-                };
+                        let layout = create_text_layout(&label_text, &label_font, None);
+                        let (x_offset, y_offset) =
+                            compute_text_offset(&layout, TextAlign::Center, TextBaseline::Bottom);
+                        let final_position = Point::new(center_x + x_offset, label_y + y_offset);
 
-                let layout = create_text_layout(&label_text, &label_font, None);
-                let (x_offset, y_offset) =
-                    compute_text_offset(&layout, TextAlign::Center, TextBaseline::Bottom);
-                let final_position = Point::new(center_x + x_offset, label_y + y_offset);
+                        elements.push(VisualElement::TextRun {
+                            text: label_text,
+                            position: final_position,
+                            style: crate::model::TextStyle {
+                                color: label_font.color,
+                                font_size: label_font.font_size,
+                                font_family: label_font.font_family,
+                                font_weight: label_font.font_weight,
+                                font_style: label_font.font_style,
+                                align: TextAlign::Left,
+                                vertical_align: TextBaseline::Top,
+                            },
+                            rotation: 0.0,
+                            max_width: None,
+                            layout: Some(layout),
+                        });
+                    }
+                }
+                MappedGeometry::HorizontalBar {
+                    center_y,
+                    left_x,
+                    right_x,
+                    height,
+                } => {
+                    let y = center_y - height / 2.0;
+                    let bar_left = left_x.min(*right_x);
+                    let bar_width = (right_x - left_x).abs();
 
-                elements.push(VisualElement::TextRun {
-                    text: label_text,
-                    position: final_position,
-                    style: crate::model::TextStyle {
-                        color: label_font.color,
-                        font_size: label_font.font_size,
-                        font_family: label_font.font_family,
-                        font_weight: label_font.font_weight,
-                        font_style: label_font.font_style,
-                        align: TextAlign::Left,
-                        vertical_align: TextBaseline::Top,
-                    },
-                    rotation: 0.0,
-                    max_width: None,
-                    layout: Some(layout),
-                });
+                    let fill_color = self.series_style.fill.unwrap_or(self.series_style.color);
+
+                    elements.push(VisualElement::Rect {
+                        rect: Rect::new(bar_left, y, bar_left + bar_width, y + height),
+                        style: FillStrokeStyle {
+                            fill: Some(fill_color),
+                            stroke: self.series_style.stroke.clone(),
+                        },
+                    });
+
+                    // 标签
+                    if self.label_config.show {
+                        // 横向柱状图的标签位置映射：
+                        // Top/Right -> 柱子末端（右侧）
+                        // Bottom/Left -> 柱子起始（左侧）
+                        // Inside/Center -> 柱子中间
+                        let label_x = match self.label_config.position {
+                            super::LabelPosition::Top
+                            | super::LabelPosition::Right
+                            | super::LabelPosition::Outside => bar_left + bar_width + 5.0,
+                            super::LabelPosition::Bottom | super::LabelPosition::Left => {
+                                bar_left - 5.0
+                            }
+                            super::LabelPosition::Inside | super::LabelPosition::Center => {
+                                bar_left + bar_width / 2.0
+                            }
+                        };
+
+                        let label_text = format!("{:.0}", item.original.value);
+                        let label_font = crate::model::TextStyle {
+                            font_size: self.label_config.font_size,
+                            font_family: "sans-serif".to_string(),
+                            color: self.label_config.color,
+                            font_weight: crate::option::FontWeight::Named(
+                                crate::option::FontWeightNamed::Normal,
+                            ),
+                            ..Default::default()
+                        };
+
+                        let layout = create_text_layout(&label_text, &label_font, None);
+                        let (x_offset, y_offset) =
+                            compute_text_offset(&layout, TextAlign::Center, TextBaseline::Middle);
+                        let final_position = Point::new(label_x + x_offset, center_y + y_offset);
+
+                        elements.push(VisualElement::TextRun {
+                            text: label_text,
+                            position: final_position,
+                            style: crate::model::TextStyle {
+                                color: label_font.color,
+                                font_size: label_font.font_size,
+                                font_family: label_font.font_family,
+                                font_weight: label_font.font_weight,
+                                font_style: label_font.font_style,
+                                align: TextAlign::Left,
+                                vertical_align: TextBaseline::Middle,
+                            },
+                            rotation: 0.0,
+                            max_width: None,
+                            layout: Some(layout),
+                        });
+                    }
+                }
+                _ => continue,
             }
         }
 

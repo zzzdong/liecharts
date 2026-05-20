@@ -99,6 +99,9 @@ impl ChartModel {
             .map(|(idx, s)| Self::resolve_series(s, &theme, &colors, idx))
             .collect::<crate::error::Result<Vec<_>>>()?;
 
+        // 自动为柱状图分配分组索引
+        let series = Self::assign_bar_group_indices(series);
+
         let radar = option.radar.map(|r| Self::resolve_radar(r, &theme));
 
         let text_style = option
@@ -117,6 +120,84 @@ impl ChartModel {
             background,
             text_style,
         })
+    }
+
+    /// 为柱状图系列自动分配分组索引
+    ///
+    /// 分组逻辑：
+    /// - 按 grid_index 分组
+    /// - 在每个 grid 内，根据 stack 值进一步分组：
+    ///   * 相同 stack 值的系列属于同一组（共享 group_index），实现堆叠
+    ///   * 不同 stack 值或没有 stack 的系列分到不同组（group_index 不同），实现并排
+    /// - group_index 从 0 开始连续分配，顺序：无 stack 的按输入顺序，有 stack 的按 stack 名称排序
+    /// - 如果 series 已经设置了 group_index，则保持不变
+    fn assign_bar_group_indices(mut series: Vec<ResolvedSeries>) -> Vec<ResolvedSeries> {
+        // 按 grid_index 和 stack 双重分组
+        // 结构: grid_index -> (stack_value -> series_indices)
+        let mut grid_stack_groups: std::collections::HashMap<
+            usize,
+            std::collections::HashMap<Option<String>, Vec<usize>>,
+        > = std::collections::HashMap::new();
+
+        // 第一次遍历：收集每个 grid 中 BarSeries 的索引，按 stack 分组
+        for (idx, s) in series.iter().enumerate() {
+            if let ResolvedSeries::Bar(bar) = s {
+                let grid_index = bar.grid_index;
+                let stack_key = bar.stack.clone(); // Option<String>
+                grid_stack_groups
+                    .entry(grid_index)
+                    .or_default()
+                    .entry(stack_key)
+                    .or_default()
+                    .push(idx);
+            }
+        }
+
+        // 第二次遍历：为每个 grid 中的 stack 组分配 group_index
+        for (_grid_index, mut stack_groups) in grid_stack_groups {
+            // 收集 stack_key 并排序，确保分配顺序稳定
+            // None 排在前面，Some 按字符串升序
+            let mut keys: Vec<Option<String>> = stack_groups.keys().cloned().collect();
+            keys.sort_by(|a, b| match (a, b) {
+                (None, Some(_)) => std::cmp::Ordering::Less,
+                (Some(_), None) => std::cmp::Ordering::Greater,
+                (None, None) => std::cmp::Ordering::Equal,
+                (Some(a_str), Some(b_str)) => a_str.cmp(b_str),
+            });
+
+            // 按排序后的顺序分配 group_index
+            let mut group_idx = 0;
+            for key in keys {
+                if let Some(indices) = stack_groups.remove(&key) {
+                    match key {
+                        // 对于没有 stack 的系列，每个 series 单独分配一个 group_index（并排显示）
+                        None => {
+                            for series_idx in indices {
+                                if let ResolvedSeries::Bar(bar) = &mut series[series_idx]
+                                    && bar.group_index.is_none()
+                                {
+                                    bar.group_index = Some(group_idx);
+                                }
+                                group_idx += 1;
+                            }
+                        }
+                        // 对于有相同 stack 的系列，共享同一个 group_index（堆叠显示）
+                        Some(_) => {
+                            for series_idx in indices {
+                                if let ResolvedSeries::Bar(bar) = &mut series[series_idx]
+                                    && bar.group_index.is_none()
+                                {
+                                    bar.group_index = Some(group_idx);
+                                }
+                            }
+                            group_idx += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        series
     }
 
     fn resolve_title(option: TitleOption, theme: &Theme) -> Title {
@@ -503,6 +584,7 @@ impl ChartModel {
                         font_family: l.font_family.unwrap_or_else(|| "sans-serif".to_string()),
                     }),
                     color: bar_color,
+                    group_index: opt.group_index,
                 }))
             }
             SeriesOption::Candlestick(opt) => {
@@ -1443,6 +1525,8 @@ pub struct BarSeries {
     pub item_style: ItemStyle,
     pub label: Option<Label>,
     pub color: Color,
+    /// 分组索引（用于多系列柱状图分组显示）
+    pub group_index: Option<usize>,
 }
 
 #[derive(Debug, Clone)]

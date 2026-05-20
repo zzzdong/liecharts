@@ -689,6 +689,8 @@ pub struct BarSeriesOption {
     pub bar_width: Option<String>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
+    /// 分组索引，自动分组时无需设置
+    pub group_index: Option<usize>,
     /// Optional data sampling for large datasets.
     pub sampling: Option<SamplingOption>,
 }
