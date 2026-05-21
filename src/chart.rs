@@ -371,6 +371,9 @@ fn compute_data_coord_for_grid(
     let mut y_axis_needs_zero_base: Vec<bool> = vec![false; y_axes.len().max(1)];
 
     let mut x_axis_values: Vec<f64> = Vec::new();
+    // 用于收集横向柱状图的堆叠数据（X轴为数值时）
+    let mut x_axis_stack_groups: std::collections::HashMap<Option<String>, Vec<Vec<f64>>> =
+        std::collections::HashMap::new();
 
     for series in &resolved.series {
         let series_grid_index = series_grid_index(series);
@@ -435,6 +438,11 @@ fn compute_data_coord_for_grid(
 
         if let Some(ref stack_name) = stack {
             y_axis_stack_groups[local_y_axis_index]
+                .entry(Some(stack_name.clone()))
+                .or_default()
+                .push(values.clone());
+            // 同时收集X轴堆叠数据（用于横向堆叠柱状图）
+            x_axis_stack_groups
                 .entry(Some(stack_name.clone()))
                 .or_default()
                 .push(values.clone());
@@ -536,6 +544,19 @@ fn compute_data_coord_for_grid(
                 if x_axis_values.is_empty() {
                     (0.0, 100.0)
                 } else {
+                    // 计算堆叠后的最大值（用于横向堆叠柱状图）
+                    let mut max_stacked_x_value = 0.0f64;
+                    for group_values in x_axis_stack_groups.values() {
+                        let data_len = group_values.first().map(|v| v.len()).unwrap_or(0);
+                        for j in 0..data_len {
+                            let sum: f64 = group_values
+                                .iter()
+                                .map(|v| v.get(j).copied().unwrap_or(0.0))
+                                .sum();
+                            max_stacked_x_value = max_stacked_x_value.max(sum);
+                        }
+                    }
+
                     let min = axis.min.unwrap_or_else(|| {
                         let m = x_axis_values.iter().cloned().fold(f64::INFINITY, f64::min);
                         let range = x_axis_values
@@ -550,10 +571,12 @@ fn compute_data_coord_for_grid(
                         }
                     });
                     let max = axis.max.unwrap_or_else(|| {
-                        let m = x_axis_values
+                        // 使用堆叠后的最大值或原始最大值中的较大者
+                        let raw_max = x_axis_values
                             .iter()
                             .cloned()
                             .fold(f64::NEG_INFINITY, f64::max);
+                        let m = raw_max.max(max_stacked_x_value);
                         let range = m - x_axis_values.iter().cloned().fold(f64::INFINITY, f64::min);
                         if range > 0.0 {
                             m + range * 0.05
