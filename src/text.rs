@@ -7,8 +7,7 @@ use parley::{
 
 use crate::{
     error::ChartError,
-    model::TextStyle,
-    visual::{Color, TextAlign, TextBaseline},
+    visual::{Color, TextAlign, TextBaseline, TextStyle},
 };
 
 /// 文本布局包装类型

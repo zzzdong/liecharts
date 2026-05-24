@@ -20,8 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..Default::default()
         }))
         .build(800, 600)?
-        .render_to_image("gauge.png")?;
-    println!("仪表盘已保存到 gauge.png");
+        .render_to_svg("gauge.svg")?;
+    println!("仪表盘已保存到 gauge.svg");
 
     Ok(())
 }

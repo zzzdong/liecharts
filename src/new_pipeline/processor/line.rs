@@ -4,7 +4,7 @@ use crate::error::Result;
 use crate::new_pipeline::data_processor::DataProcessor;
 use crate::new_pipeline::types::{DataProcessorInput, SubplotVisualData};
 use crate::option::{DataPoint, SeriesOption};
-use crate::visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, VisualElement};
+use crate::visual::{Color, FillStrokeStyle, Stroke, StrokeStyle, VisualElement, Z_SERIES_FILL, Z_SERIES_LINE, Z_SERIES_POINT};
 
 pub struct LineProcessor {
     series_index: usize,
@@ -43,12 +43,12 @@ impl DataProcessor for LineProcessor {
         let bounds = spec.bounds;
 
         let x_axis_idx = spec.x_axis_indices.first().copied().unwrap_or(0);
-        let y_axis_idx = spec.y_axis_indices.first().copied().unwrap_or(0);
+        let y_axis_idx = line.y_axis_index
+            .or_else(|| spec.y_axis_indices.first().copied())
+            .unwrap_or(0);
 
-        let x_range = input.axis_ranges.ranges.iter()
-            .find(|r| r.axis_index == x_axis_idx);
-        let y_range = input.axis_ranges.ranges.iter()
-            .find(|r| r.axis_index == y_axis_idx);
+        let x_range = input.axis_ranges.get_x_range(x_axis_idx);
+        let y_range = input.axis_ranges.get_y_range(y_axis_idx);
 
         let (x_min, x_max) = x_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 1.0));
         let (y_min, y_max) = y_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 100.0));
@@ -124,6 +124,7 @@ impl DataProcessor for LineProcessor {
                         fill: Some(fill_color),
                         stroke: None,
                     },
+                    z_index: Z_SERIES_FILL,
                 });
             }
         }
@@ -131,15 +132,24 @@ impl DataProcessor for LineProcessor {
         // 折线
         if points.len() >= 2 {
             if smooth {
-                // 使用 Catmull-Rom 样条 — 简化版: 使用基础曲线
+                let n = points.len();
+                let tension = 0.3;
                 let mut path = vello_cpu::kurbo::BezPath::new();
                 path.move_to(points[0]);
-                for i in 1..points.len() {
-                    let prev = points[i - 1];
-                    let curr = points[i];
-                    let ctrl1 = Point::new((prev.x + curr.x) / 2.0, prev.y);
-                    let ctrl2 = Point::new((prev.x + curr.x) / 2.0, curr.y);
-                    path.curve_to(ctrl1, ctrl2, curr);
+                for i in 0..n - 1 {
+                    let p0 = if i == 0 { points[0] } else { points[i - 1] };
+                    let p1 = points[i];
+                    let p2 = points[i + 1];
+                    let p3 = if i + 2 < n { points[i + 2] } else { points[n - 1] };
+                    let ctrl1 = Point::new(
+                        p1.x + (p2.x - p0.x) * tension,
+                        p1.y + (p2.y - p0.y) * tension,
+                    );
+                    let ctrl2 = Point::new(
+                        p2.x - (p3.x - p1.x) * tension,
+                        p2.y - (p3.y - p1.y) * tension,
+                    );
+                    path.curve_to(ctrl1, ctrl2, p2);
                 }
                 elements.push(VisualElement::Path {
                     path,
@@ -150,6 +160,7 @@ impl DataProcessor for LineProcessor {
                             width: line_width,
                         }),
                     },
+                    z_index: Z_SERIES_LINE,
                 });
             } else {
                 elements.push(VisualElement::Polyline {
@@ -158,6 +169,7 @@ impl DataProcessor for LineProcessor {
                         color: series_color,
                         width: line_width,
                     },
+                    z_index: Z_SERIES_LINE,
                 });
             }
         }
@@ -180,6 +192,7 @@ impl DataProcessor for LineProcessor {
                             width: 2.0,
                         }),
                     },
+                    z_index: Z_SERIES_POINT,
                 });
             }
         }

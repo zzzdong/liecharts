@@ -27,8 +27,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             BarSeriesOption::new("产品B-2", vec![30.0, 30.0, 30.0, 30.0]).stack("B组"),
         ))
         .build(800, 600)?
-        .render_to_image("mixed_group_stack.png")?;
+        .render_to_svg("mixed_group_stack.svg")?;
 
-    println!("混合图表已保存到 mixed_group_stack.png");
+    println!("混合图表已保存到 mixed_group_stack.svg");
     Ok(())
 }

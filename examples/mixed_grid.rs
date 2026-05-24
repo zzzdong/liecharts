@@ -81,7 +81,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..liecharts::LineSeriesOption::new("折线图-子图4", vec![100.0, 150.0, 120.0, 180.0])
         }))
         .build(1000, 900)?
-        .render_to_image("mixed_grid.png")?;
-    println!("混合布局图表已保存到 mixed_grid.png");
+        .render_to_svg("mixed_grid.svg")?;
+    println!("混合布局图表已保存到 mixed_grid.svg");
     Ok(())
 }

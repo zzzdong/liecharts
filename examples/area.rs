@@ -17,8 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
         }))
         .build(800, 600)?
-        .render_to_image("area.png")?;
-    println!("面积图已保存到 area.png");
+        .render_to_svg("area.svg")?;
+    println!("面积图已保存到 area.svg");
 
     Ok(())
 }

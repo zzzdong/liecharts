@@ -49,8 +49,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..Default::default()
         }))
         .build(800, 600)?
-        .render_to_image("table.png")?;
-    println!("数据表已保存到 table.png");
+        .render_to_svg("table.svg")?;
+    println!("数据表已保存到 table.svg");
 
     Ok(())
 }

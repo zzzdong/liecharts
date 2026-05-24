@@ -1,4 +1,11 @@
 pub mod bar;
+pub mod bubble;
+pub mod candlestick;
+pub mod gauge;
 pub mod line;
 pub mod pie;
+pub mod polar_bar;
+pub mod polar_scatter;
+pub mod radar;
 pub mod scatter;
+pub mod table;

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use vello_cpu::kurbo::Rect;
 
-use crate::model::TextStyle;
-use crate::option::ChartOption;
+use crate::visual::TextStyle;
+use crate::option::{AxisPosition, ChartOption};
 use crate::visual::{Color, VisualElement};
 
 /// GridPlanner 的输出：一个 subplot 的完整分配信息
@@ -20,16 +20,33 @@ pub struct SubplotSpec {
 #[derive(Debug, Clone)]
 pub struct ResolvedAxisRange {
     pub axis_index: usize,
+    pub position: AxisPosition,
     pub min: f64,
     pub max: f64,
     pub is_user_defined: bool,
     pub tick_count_hint: Option<usize>,
 }
 
+impl ResolvedAxisRange {
+    pub fn is_y_axis(&self) -> bool {
+        matches!(self.position, AxisPosition::Left | AxisPosition::Right)
+    }
+}
+
 /// AxisBindingResolver 的输出：所有轴的解析结果集合
 #[derive(Debug, Clone)]
 pub struct ResolvedAxisRanges {
     pub ranges: Vec<ResolvedAxisRange>,
+}
+
+impl ResolvedAxisRanges {
+    pub fn get_x_range(&self, axis_index: usize) -> Option<&ResolvedAxisRange> {
+        self.ranges.iter().find(|r| !r.is_y_axis() && r.axis_index == axis_index)
+    }
+
+    pub fn get_y_range(&self, axis_index: usize) -> Option<&ResolvedAxisRange> {
+        self.ranges.iter().find(|r| r.is_y_axis() && r.axis_index == axis_index)
+    }
 }
 
 /// ColorAssigner 的输出：颜色上下文

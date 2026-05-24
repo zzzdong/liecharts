@@ -3,51 +3,31 @@ use vello_cpu::kurbo::Point;
 use crate::error::Result;
 use crate::new_pipeline::data_processor::DataProcessor;
 use crate::new_pipeline::types::{DataProcessorInput, SubplotVisualData};
-use crate::option::{DataPoint, SeriesOption};
+use crate::option::{BubbleDataPoint, SeriesOption};
 use crate::visual::{Color, FillStrokeStyle, Stroke, VisualElement, Z_LABEL, Z_SERIES_POINT};
 
-pub struct ScatterProcessor {
+pub struct BubbleProcessor {
     series_index: usize,
 }
 
-impl ScatterProcessor {
+impl BubbleProcessor {
     pub fn new(series_index: usize) -> Self {
         Self { series_index }
     }
-
-    fn extract_xy(dp: &DataPoint) -> Option<(f64, f64)> {
-        match dp {
-            DataPoint::XY(x, y) => Some((*x, *y)),
-            DataPoint::Named(_, v) => Some((0.0, *v)),
-            DataPoint::Value(v) => Some((0.0, *v)),
-        }
-    }
-
-    fn extract_name(dp: &DataPoint) -> Option<String> {
-        match dp {
-            DataPoint::Named(name, _) => Some(name.clone()),
-            _ => None,
-        }
-    }
 }
 
-impl DataProcessor for ScatterProcessor {
+impl DataProcessor for BubbleProcessor {
     fn process(&self, input: DataProcessorInput) -> Result<SubplotVisualData> {
         let spec = input.spec;
         let series = &input.option.series[self.series_index];
-        let scatter = match series {
-            SeriesOption::Scatter(s) => s,
-            _ => {
-                return Err(crate::error::ChartError::DataError(
-                    "Expected Scatter series".into(),
-                ))
-            }
+        let bubble = match series {
+            SeriesOption::Bubble(b) => b,
+            _ => return Err(crate::error::ChartError::DataError("Expected Bubble series".into())),
         };
 
         let bounds = spec.bounds;
-
         let x_axis_idx = spec.x_axis_indices.first().copied().unwrap_or(0);
-        let y_axis_idx = scatter.y_axis_index.unwrap_or(0);
+        let y_axis_idx = bubble.y_axis_index.unwrap_or(0);
 
         let x_range = input.axis_ranges.get_x_range(x_axis_idx);
         let y_range = input.axis_ranges.get_y_range(y_axis_idx);
@@ -62,24 +42,22 @@ impl DataProcessor for ScatterProcessor {
             .copied()
             .unwrap_or(Color::new(100, 149, 237));
 
-        let symbol_size = scatter.symbol_size.unwrap_or(10.0);
+        let scale = bubble.symbol_size_scale.unwrap_or(1.0);
 
         let mut elements = Vec::new();
 
-        for (_i, item) in scatter.data.iter().enumerate() {
-            let (xv, yv) = match Self::extract_xy(item) {
-                Some(xy) => xy,
-                None => continue,
-            };
+        for item in &bubble.data {
+            let BubbleDataPoint { x, y, size, name } = item;
 
-            let px = bounds.x0 + (xv - x_min) / (x_max - x_min) * bounds.width();
-            let py = bounds.y1 - (yv - y_min) / (y_max - y_min) * bounds.height();
+            let px = bounds.x0 + (x - x_min) / (x_max - x_min) * bounds.width();
+            let py = bounds.y1 - (y - y_min) / (y_max - y_min) * bounds.height();
+            let radius = size.unwrap_or(20.0).sqrt() * scale;
 
             elements.push(VisualElement::Circle {
                 center: Point::new(px, py),
-                radius: symbol_size / 2.0,
+                radius,
                 style: FillStrokeStyle {
-                    fill: Some(series_color),
+                    fill: Some(Color::new(series_color.r, series_color.g, series_color.b).set_alpha(0.7)),
                     stroke: Some(Stroke {
                         color: Color::new(255, 255, 255),
                         width: 1.0,
@@ -88,15 +66,14 @@ impl DataProcessor for ScatterProcessor {
                 z_index: Z_SERIES_POINT,
             });
 
-            // 标签
-            if let Some(name) = Self::extract_name(item) {
+            if let Some(n) = name {
                 elements.push(VisualElement::TextRun {
-                    text: name,
-                    position: Point::new(px + symbol_size / 2.0 + 3.0, py),
+                    text: n.clone(),
+                    position: Point::new(px, py),
                     style: crate::visual::TextStyle {
                         font_size: 10.0,
-                        color: series_color,
-                        align: crate::visual::TextAlign::Left,
+                        color: Color::new(51, 51, 51),
+                        align: crate::visual::TextAlign::Center,
                         vertical_align: crate::visual::TextBaseline::Middle,
                         ..Default::default()
                     },

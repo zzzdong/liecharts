@@ -21,8 +21,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )))
         .build(800, 600)?;
 
-    let output_path = "grouped_bar.png";
-    chart.render_to_image(output_path)?;
+    let output_path = "grouped_bar.svg";
+    chart.render_to_svg(output_path)?;
 
     let full_path = env::current_dir()?.join(output_path);
     println!("分组柱状图已保存到: {}", full_path.display());

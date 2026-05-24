@@ -3,9 +3,9 @@ use vello_cpu::kurbo::{Point, Rect};
 use crate::new_pipeline::types::{ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer};
 use crate::option::{AxisOption, AxisType, ChartOption};
 use crate::visual::{
-    Color, StrokeStyle, TextAlign, TextBaseline, VisualElement,
+    Color, StrokeStyle, TextAlign, TextBaseline, VisualElement, Z_AXIS, Z_GRID, Z_LABEL,
 };
-use crate::model::TextStyle;
+use crate::visual::TextStyle;
 
 /// 在新管线中为单个 subplot 生成坐标轴和网格线视觉元素
 pub struct AxisRenderer;
@@ -30,7 +30,7 @@ impl AxisRenderer {
         for &x_axis_idx in &spec.x_axis_indices {
             let axis_config = option.x_axis.get(x_axis_idx);
             if let Some(axis_cfg) = axis_config {
-                let x_range = axis_ranges.ranges.iter().find(|r| r.axis_index == x_axis_idx);
+                let x_range = axis_ranges.get_x_range(x_axis_idx);
                 let (x_min, x_max) = x_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 1.0));
 
                 // 轴线（底部）
@@ -69,11 +69,14 @@ impl AxisRenderer {
         for &y_axis_idx in &spec.y_axis_indices {
             let axis_config = option.y_axis.get(y_axis_idx);
             if let Some(axis_cfg) = axis_config {
-                let y_range = axis_ranges.ranges.iter().find(|r| r.axis_index == y_axis_idx);
+                let y_range = axis_ranges.get_y_range(y_axis_idx);
                 let (y_min, y_max) = y_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 100.0));
 
-                // 轴线（左侧）
-                let axis_x = bounds.x0;
+                let is_right = y_range
+                    .map(|r| r.position == crate::option::AxisPosition::Right)
+                    .unwrap_or(false);
+                let axis_x = if is_right { bounds.x1 } else { bounds.x0 };
+
                 Self::draw_axis_line(
                     &mut elements,
                     Point::new(axis_x, bounds.y0),
@@ -81,18 +84,18 @@ impl AxisRenderer {
                     colors.axis_line_color,
                 );
 
-                // Y 轴网格线 (水平方向)
-                Self::draw_y_grid_lines(
-                    &mut elements,
-                    bounds,
-                    axis_cfg,
-                    y_min,
-                    y_max,
-                    colors,
-                );
+                if !is_right {
+                    Self::draw_y_grid_lines(
+                        &mut elements,
+                        bounds,
+                        axis_cfg,
+                        y_min,
+                        y_max,
+                        colors,
+                    );
+                }
 
-                // Y 轴刻度标签
-                Self::draw_y_tick_labels(
+                Self::draw_y_tick_labels_side(
                     &mut elements,
                     bounds,
                     axis_cfg,
@@ -100,6 +103,7 @@ impl AxisRenderer {
                     y_max,
                     colors,
                     text_measurer,
+                    is_right,
                 );
             }
         }
@@ -112,6 +116,7 @@ impl AxisRenderer {
             start,
             end,
             style: StrokeStyle { color, width: 1.0 },
+            z_index: Z_AXIS,
         });
     }
 
@@ -138,6 +143,7 @@ impl AxisRenderer {
                                 color: colors.grid_line_color,
                                 width: 0.5,
                             },
+                            z_index: Z_GRID,
                         });
                     }
                 }
@@ -154,6 +160,7 @@ impl AxisRenderer {
                         color: colors.grid_line_color,
                         width: 0.5,
                     },
+                    z_index: Z_GRID,
                 });
             }
         }
@@ -182,6 +189,7 @@ impl AxisRenderer {
                     color: colors.grid_line_color,
                     width: 0.5,
                 },
+                z_index: Z_GRID,
             });
         }
     }
@@ -222,6 +230,7 @@ impl AxisRenderer {
                         rotation: 0.0,
                         max_width: None,
                         layout: None,
+                        z_index: Z_LABEL,
                     });
                 }
             }
@@ -252,20 +261,61 @@ impl AxisRenderer {
                     rotation: 0.0,
                     max_width: None,
                     layout: None,
+                    z_index: Z_LABEL,
                 });
             }
         }
     }
 
-    fn draw_y_tick_labels(
+    fn draw_y_tick_labels_side(
         elements: &mut Vec<VisualElement>,
         bounds: Rect,
-        _axis_cfg: &AxisOption,
+        axis_cfg: &AxisOption,
         y_min: f64,
         y_max: f64,
         colors: &ColorContext,
         _text_measurer: &mut TextMeasurer,
+        is_right: bool,
     ) {
+        let (x, align) = if is_right {
+            (bounds.x1 + 6.0, TextAlign::Left)
+        } else {
+            (bounds.x0 - 6.0, TextAlign::Right)
+        };
+
+        if axis_cfg.axis_type == Some(AxisType::Category) {
+            if let Some(data) = &axis_cfg.data {
+                let n = data.len();
+                if n == 0 {
+                    return;
+                }
+                for (i, label) in data.iter().enumerate() {
+                    let t = if n > 1 {
+                        (i as f64 + 0.5) / n as f64
+                    } else {
+                        0.5
+                    };
+                    let y = bounds.y0 + t * bounds.height();
+                    elements.push(VisualElement::TextRun {
+                        text: label.clone(),
+                        position: Point::new(x, y),
+                        style: TextStyle {
+                            font_size: 11.0,
+                            color: colors.axis_label_color,
+                            align,
+                            vertical_align: TextBaseline::Middle,
+                            ..Default::default()
+                        },
+                        rotation: 0.0,
+                        max_width: None,
+                        layout: None,
+                        z_index: Z_LABEL,
+                    });
+                }
+            }
+            return;
+        }
+
         let ticks = compute_nice_ticks(y_min, y_max, 5);
         let range = y_max - y_min;
         for &v in &ticks {
@@ -280,17 +330,18 @@ impl AxisRenderer {
             };
             elements.push(VisualElement::TextRun {
                 text: label,
-                position: Point::new(bounds.x0 - 6.0, y),
+                position: Point::new(x, y),
                 style: TextStyle {
                     font_size: 11.0,
                     color: colors.axis_label_color,
-                    align: TextAlign::Right,
+                    align,
                     vertical_align: TextBaseline::Middle,
                     ..Default::default()
                 },
                 rotation: 0.0,
                 max_width: None,
                 layout: None,
+                z_index: Z_LABEL,
             });
         }
     }

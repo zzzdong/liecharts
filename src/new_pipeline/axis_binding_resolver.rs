@@ -1,5 +1,5 @@
 use crate::new_pipeline::types::{ResolvedAxisRange, ResolvedAxisRanges, SubplotSpec};
-use crate::option::{AxisType, ChartOption};
+use crate::option::{AxisPosition, AxisType, ChartOption};
 
 /// 轴绑定解析器
 ///
@@ -40,6 +40,7 @@ impl<'a> AxisBindingResolver<'a> {
 
             ranges.push(ResolvedAxisRange {
                 axis_index: axis_idx,
+                position: axis.position.unwrap_or(AxisPosition::Bottom),
                 min: resolved_min,
                 max: resolved_max,
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
@@ -65,6 +66,7 @@ impl<'a> AxisBindingResolver<'a> {
 
             ranges.push(ResolvedAxisRange {
                 axis_index: axis_idx,
+                position: axis.position.unwrap_or(if axis_idx == 0 { AxisPosition::Left } else { AxisPosition::Right }),
                 min: resolved_min,
                 max: resolved_max,
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
@@ -204,7 +206,7 @@ impl<'a> AxisBindingResolver<'a> {
             data_max + 1.0
         };
 
-        let min = user_min.unwrap_or(if data_min >= 0.0 { 0.0_f64.max(default_min) } else { default_min });
+        let min = user_min.unwrap_or(if data_min >= 0.0 { 0.0_f64.min(default_min) } else { default_min });
         let max = user_max.unwrap_or(default_max);
 
         (min, max)
@@ -221,7 +223,7 @@ fn series_grid_index(series: &crate::option::SeriesOption) -> Option<usize> {
         crate::option::SeriesOption::Radar(_) => None,
         crate::option::SeriesOption::PolarBar(_) => None,
         crate::option::SeriesOption::PolarScatter(_) => None,
-        crate::option::SeriesOption::Bubble(_) => None,
+        crate::option::SeriesOption::Bubble(s) => s.grid_index,
         crate::option::SeriesOption::Gauge(_) => None,
         crate::option::SeriesOption::Table(_) => None,
     }
@@ -260,6 +262,11 @@ fn extract_series_values(series: &crate::option::SeriesOption) -> (Vec<f64>, Vec
                 crate::option::DataPoint::Value(_) => 0.0,
                 crate::option::DataPoint::Named(_, _) => 0.0,
             }).collect();
+            (y_vals, x_vals)
+        }
+        crate::option::SeriesOption::Bubble(s) => {
+            let y_vals: Vec<f64> = s.data.iter().map(|d| d.y).collect();
+            let x_vals: Vec<f64> = s.data.iter().map(|d| d.x).collect();
             (y_vals, x_vals)
         }
         crate::option::SeriesOption::Candlestick(s) => {

@@ -16,8 +16,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..liecharts::BarSeriesOption::new("降水量", vec![50.0, 60.0, 80.0, 120.0, 150.0, 200.0])
         }))
         .build(800, 600)?
-        .render_to_image("dual_axis.png")?;
-    println!("双轴图已保存到 dual_axis.png");
+        .render_to_svg("dual_axis.svg")?;
+    println!("双轴图已保存到 dual_axis.svg");
 
     Ok(())
 }

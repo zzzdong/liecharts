@@ -105,9 +105,9 @@ fn series_grid_index(series: &SeriesOption) -> Option<usize> {
         SeriesOption::Radar(_) => None,
         SeriesOption::PolarBar(_) => None,
         SeriesOption::PolarScatter(_) => None,
-        SeriesOption::Bubble(_) => None,
+        SeriesOption::Bubble(s) => s.grid_index,
         SeriesOption::Gauge(_) => None,
-        SeriesOption::Table(_) => None,
+        SeriesOption::Table(s) => s.grid_index,
     }
 }
 

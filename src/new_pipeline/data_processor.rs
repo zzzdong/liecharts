@@ -19,7 +19,12 @@ pub fn create_processor(
         SeriesOption::Bar(_) => Box::new(super::processor::bar::BarProcessor::new(series_index)),
         SeriesOption::Line(_) => Box::new(super::processor::line::LineProcessor::new(series_index)),
         SeriesOption::Scatter(_) => Box::new(super::processor::scatter::ScatterProcessor::new(series_index)),
-        // Phase 4: 添加其他系列类型的 Processor
-        _ => todo!("Processor for {:?} not yet implemented", series),
+        SeriesOption::Bubble(_) => Box::new(super::processor::bubble::BubbleProcessor::new(series_index)),
+        SeriesOption::Candlestick(_) => Box::new(super::processor::candlestick::CandlestickProcessor::new(series_index)),
+        SeriesOption::Radar(_) => Box::new(super::processor::radar::RadarProcessor::new(series_index)),
+        SeriesOption::PolarBar(_) => Box::new(super::processor::polar_bar::PolarBarProcessor::new(series_index)),
+        SeriesOption::PolarScatter(_) => Box::new(super::processor::polar_scatter::PolarScatterProcessor::new(series_index)),
+        SeriesOption::Gauge(_) => Box::new(super::processor::gauge::GaugeProcessor::new(series_index)),
+        SeriesOption::Table(_) => Box::new(super::processor::table::TableProcessor::new(series_index)),
     }
 }

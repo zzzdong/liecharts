@@ -64,8 +64,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
         }))
         .build(1000, 800)?;
-    chart.render_to_image("multi_grid.png")?;
-    println!("多子图已保存到 multi_grid.png");
+    chart.render_to_svg("multi_grid.svg")?;
+    println!("多子图已保存到 multi_grid.svg");
 
     Ok(())
 }

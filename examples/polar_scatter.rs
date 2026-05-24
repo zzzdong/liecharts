@@ -165,9 +165,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..Default::default()
         }))
         .build(800, 600)?
-        .render_to_image("polar_scatter.png")?;
+        .render_to_svg("polar_scatter.svg")?;
 
-    println!("极坐标散点图已保存到 polar_scatter.png");
+    println!("极坐标散点图已保存到 polar_scatter.svg");
 
     Ok(())
 }

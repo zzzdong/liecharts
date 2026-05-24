@@ -59,8 +59,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..Default::default()
         }))
         .build(800, 600)?
-        .render_to_image("radar.png")?;
-    println!("雷达图已保存到 radar.png");
+        .render_to_svg("radar.svg")?;
+    println!("雷达图已保存到 radar.svg");
 
     Ok(())
 }

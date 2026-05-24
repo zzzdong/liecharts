@@ -1,12 +1,8 @@
 pub mod builder;
 pub mod chart;
-pub mod component;
 pub mod error;
-pub mod layout;
-pub mod model;
 pub mod new_pipeline;
 pub mod option;
-pub mod pipeline;
 pub mod prelude;
 pub mod render;
 pub mod sampling;
@@ -17,11 +13,10 @@ pub mod visual;
 pub use builder::ChartBuilder;
 pub use chart::Chart;
 pub use error::ChartError;
-pub use model::ChartModel;
 pub use new_pipeline::{
     AxisBindingResolver, ColorAssigner, ColorContext, DataProcessor, DataProcessorInput,
     GridPlanner, ResolvedAxisRange, ResolvedAxisRanges, SubplotSpec, SubplotVisualData,
-    TextMeasurer, VisualElementBuilder, build_chart,
+    TextMeasurer, VisualElementBuilder, build_chart, build_chart_with_theme,
 };
 pub use option::{
     AreaStyleOption, AxisOption, AxisPosition, AxisType, BarSeriesOption, BubbleDataPoint,

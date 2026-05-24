@@ -28,8 +28,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
         }))
         .build(800, 600)?
-        .render_to_image("pie.png")?;
-    println!("饼图已保存到 pie.png");
+        .render_to_svg("pie.svg")?;
+    println!("饼图已保存到 pie.svg");
 
     Ok(())
 }

@@ -1,4 +1,5 @@
 use crate::new_pipeline::types::ColorContext;
+use crate::theme::Theme;
 use crate::visual::Color;
 
 /// 颜色分配器
@@ -39,6 +40,57 @@ impl ColorAssigner {
             axis_line_color: Color::new(200, 200, 200),
             axis_label_color: Color::new(50, 50, 50),
             grid_line_color: Color::new(230, 230, 230),
+        }
+    }
+
+    /// 使用主题执行颜色分配
+    pub fn assign_with_theme(&self, series_count: usize, theme: &Theme) -> ColorContext {
+        // 从主题读取调色板
+        let palette: Vec<Color> = theme.color.iter()
+            .filter_map(|hex| Color::from_hex(hex))
+            .collect();
+
+        // 如果主题调色板为空，使用默认调色板
+        let palette = if palette.is_empty() {
+            vec![
+                Color::new(99, 132, 255),   // #6384FF
+                Color::new(255, 159, 67),   // #FF9F43
+                Color::new(46, 203, 113),   // #2ECB71
+                Color::new(255, 99, 132),   // #FF6384
+                Color::new(153, 102, 255),  // #9966FF
+                Color::new(255, 205, 86),   // #FFCD56
+                Color::new(75, 192, 192),   // #4BC0C0
+                Color::new(255, 159, 127),  // #FF9F7F
+            ]
+        } else {
+            palette
+        };
+
+        // 为每个 series 分配颜色
+        let series_colors: Vec<Color> = (0..series_count)
+            .map(|i| palette[i % palette.len()])
+            .collect();
+
+        // 从主题读取背景色
+        let background = Color::from_hex(&theme.background_color).unwrap_or(Color::new(255, 255, 255));
+
+        // 从主题读取轴相关颜色
+        let axis_line_color = Color::from_hex(&theme.axis.axis_line.color)
+            .unwrap_or(Color::new(200, 200, 200));
+
+        let axis_label_color = Color::from_hex(&theme.axis.axis_label.color)
+            .unwrap_or(Color::new(50, 50, 50));
+
+        let grid_line_color = Color::from_hex(&theme.axis.split_line.color)
+            .unwrap_or(Color::new(230, 230, 230));
+
+        ColorContext {
+            palette,
+            background,
+            series_colors,
+            axis_line_color,
+            axis_label_color,
+            grid_line_color,
         }
     }
 }

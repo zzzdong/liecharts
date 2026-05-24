@@ -26,8 +26,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             vec![150.0, 232.0, 201.0, 154.0, 190.0],
         )))
         .build(800, 600)?
-        .render_to_image("dark_theme.png")?;
-    println!("深色主题图表已保存到 dark_theme.png");
+        .render_to_svg("dark_theme.svg")?;
+    println!("深色主题图表已保存到 dark_theme.svg");
 
     Ok(())
 }

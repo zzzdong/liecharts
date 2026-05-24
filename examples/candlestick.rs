@@ -103,8 +103,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         ))
         .build(800, 600)?
-        .render_to_image("candlestick.png")?;
-    println!("K线图已保存到 candlestick.png");
+        .render_to_svg("candlestick.svg")?;
+    println!("K线图已保存到 candlestick.svg");
 
     Ok(())
 }

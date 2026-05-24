@@ -84,8 +84,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..Default::default()
         }))
         .build(800, 600)?
-        .render_to_image("scatter.png")?;
-    println!("散点图已保存到 scatter.png");
+        .render_to_svg("scatter.svg")?;
+    println!("散点图已保存到 scatter.svg");
 
     Ok(())
 }

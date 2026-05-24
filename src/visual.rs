@@ -10,24 +10,29 @@ pub enum VisualElement {
     Rect {
         rect: Rect,
         style: FillStrokeStyle,
+        z_index: i32,
     },
     Circle {
         center: Point,
         radius: f64,
         style: FillStrokeStyle,
+        z_index: i32,
     },
     Line {
         start: Point,
         end: Point,
         style: StrokeStyle,
+        z_index: i32,
     },
     Polyline {
         points: Vec<Point>,
         style: StrokeStyle,
+        z_index: i32,
     },
     Path {
         path: BezPath,
         style: FillStrokeStyle,
+        z_index: i32,
     },
 
     // ---- 渐变路径 ----
@@ -35,62 +40,73 @@ pub enum VisualElement {
         path: BezPath,
         gradient: GradientDef,
         stroke: Option<Stroke>,
+        z_index: i32,
     },
 
     // ---- 文本 ----
     TextRun {
         text: String,
         position: Point, // 锚点位置（配合 align/baseline 确定文本块左上角）
-        style: crate::model::TextStyle, // 字体样式（包含 color, font_size, font_family, font_weight, font_style, align, vertical_align）
+        style: crate::visual::TextStyle,
         rotation: f64,                  // 弧度
         max_width: Option<f64>,
         layout: Option<TextLayout>, // 预排版结果
+        z_index: i32,
     },
 
     // ---- 变换组合 ----
     Group {
         children: Vec<VisualElement>,
         transform: Option<Transform>,
+        z_index: i32,
     },
 }
 
 impl Clone for VisualElement {
     fn clone(&self) -> Self {
         match self {
-            VisualElement::Rect { rect, style } => VisualElement::Rect {
+            VisualElement::Rect { rect, style, z_index } => VisualElement::Rect {
                 rect: *rect,
                 style: style.clone(),
+                z_index: *z_index,
             },
             VisualElement::Circle {
                 center,
                 radius,
                 style,
+                z_index,
             } => VisualElement::Circle {
                 center: *center,
                 radius: *radius,
                 style: style.clone(),
+                z_index: *z_index,
             },
-            VisualElement::Line { start, end, style } => VisualElement::Line {
+            VisualElement::Line { start, end, style, z_index } => VisualElement::Line {
                 start: *start,
                 end: *end,
                 style: style.clone(),
+                z_index: *z_index,
             },
-            VisualElement::Polyline { points, style } => VisualElement::Polyline {
+            VisualElement::Polyline { points, style, z_index } => VisualElement::Polyline {
                 points: points.clone(),
                 style: style.clone(),
+                z_index: *z_index,
             },
-            VisualElement::Path { path, style } => VisualElement::Path {
+            VisualElement::Path { path, style, z_index } => VisualElement::Path {
                 path: path.clone(),
                 style: style.clone(),
+                z_index: *z_index,
             },
             VisualElement::GradientPath {
                 path,
                 gradient,
                 stroke,
+                z_index,
             } => VisualElement::GradientPath {
                 path: path.clone(),
                 gradient: gradient.clone(),
                 stroke: stroke.clone(),
+                z_index: *z_index,
             },
             VisualElement::TextRun {
                 text,
@@ -99,6 +115,7 @@ impl Clone for VisualElement {
                 rotation,
                 max_width,
                 layout,
+                z_index,
             } => VisualElement::TextRun {
                 text: text.clone(),
                 position: *position,
@@ -106,13 +123,16 @@ impl Clone for VisualElement {
                 rotation: *rotation,
                 max_width: *max_width,
                 layout: layout.clone(),
+                z_index: *z_index,
             },
             VisualElement::Group {
                 children,
                 transform,
+                z_index,
             } => VisualElement::Group {
                 children: children.clone(),
                 transform: *transform,
+                z_index: *z_index,
             },
         }
     }
@@ -121,46 +141,54 @@ impl Clone for VisualElement {
 impl std::fmt::Debug for VisualElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VisualElement::Rect { rect, style } => f
+            VisualElement::Rect { rect, style, z_index } => f
                 .debug_struct("Rect")
                 .field("rect", rect)
                 .field("style", style)
+                .field("z_index", z_index)
                 .finish(),
             VisualElement::Circle {
                 center,
                 radius,
                 style,
+                z_index,
             } => f
                 .debug_struct("Circle")
                 .field("center", center)
                 .field("radius", radius)
                 .field("style", style)
+                .field("z_index", z_index)
                 .finish(),
-            VisualElement::Line { start, end, style } => f
+            VisualElement::Line { start, end, style, z_index } => f
                 .debug_struct("Line")
                 .field("start", start)
                 .field("end", end)
                 .field("style", style)
+                .field("z_index", z_index)
                 .finish(),
-            VisualElement::Polyline { points, style } => f
+            VisualElement::Polyline { points, style, z_index } => f
                 .debug_struct("Polyline")
                 .field("points", points)
                 .field("style", style)
+                .field("z_index", z_index)
                 .finish(),
-            VisualElement::Path { path: _, style } => f
+            VisualElement::Path { path: _, style, z_index } => f
                 .debug_struct("Path")
                 .field("path", &"<BezPath>")
                 .field("style", style)
+                .field("z_index", z_index)
                 .finish(),
             VisualElement::GradientPath {
                 path: _,
                 gradient,
                 stroke,
+                z_index,
             } => f
                 .debug_struct("GradientPath")
                 .field("path", &"<BezPath>")
                 .field("gradient", gradient)
                 .field("stroke", stroke)
+                .field("z_index", z_index)
                 .finish(),
             VisualElement::TextRun {
                 text,
@@ -169,6 +197,7 @@ impl std::fmt::Debug for VisualElement {
                 rotation,
                 max_width,
                 layout,
+                z_index,
             } => f
                 .debug_struct("TextRun")
                 .field("text", text)
@@ -177,18 +206,46 @@ impl std::fmt::Debug for VisualElement {
                 .field("rotation", rotation)
                 .field("max_width", max_width)
                 .field("layout", &layout.as_ref().map(|_| "<TextLayout>"))
+                .field("z_index", z_index)
                 .finish(),
             VisualElement::Group {
                 children,
                 transform,
+                z_index,
             } => f
                 .debug_struct("Group")
                 .field("children", children)
                 .field("transform", transform)
+                .field("z_index", z_index)
                 .finish(),
         }
     }
 }
+
+impl VisualElement {
+    pub fn z_index(&self) -> i32 {
+        match self {
+            VisualElement::Rect { z_index, .. } => *z_index,
+            VisualElement::Circle { z_index, .. } => *z_index,
+            VisualElement::Line { z_index, .. } => *z_index,
+            VisualElement::Polyline { z_index, .. } => *z_index,
+            VisualElement::Path { z_index, .. } => *z_index,
+            VisualElement::GradientPath { z_index, .. } => *z_index,
+            VisualElement::TextRun { z_index, .. } => *z_index,
+            VisualElement::Group { z_index, .. } => *z_index,
+        }
+    }
+}
+
+pub const Z_BACKGROUND: i32 = 0;
+pub const Z_GRID: i32 = 10;
+pub const Z_SERIES: i32 = 20;
+pub const Z_SERIES_FILL: i32 = 20;
+pub const Z_SERIES_LINE: i32 = 21;
+pub const Z_SERIES_POINT: i32 = 22;
+pub const Z_AXIS: i32 = 30;
+pub const Z_LABEL: i32 = 40;
+pub const Z_TITLE: i32 = 50;
 
 /// 2D 变换
 #[derive(Clone, Copy, Debug, Default)]
@@ -390,3 +447,38 @@ pub enum TextBaseline {
 }
 
 // 文本样式已移除：改用 model::TextStyle + TextRun 的 align/baseline/rotation 字段
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum FontStyle {
+    #[default]
+    Normal,
+    Italic,
+    Oblique,
+}
+
+use crate::option::{FontWeight, FontWeightNamed};
+
+#[derive(Debug, Clone)]
+pub struct TextStyle {
+    pub color: Color,
+    pub font_size: f64,
+    pub font_family: String,
+    pub font_weight: FontWeight,
+    pub font_style: FontStyle,
+    pub align: TextAlign,
+    pub vertical_align: TextBaseline,
+}
+
+impl Default for TextStyle {
+    fn default() -> Self {
+        Self {
+            color: Color::new(0, 0, 0),
+            font_size: 12.0,
+            font_family: "sans-serif".to_string(),
+            font_weight: FontWeight::Named(FontWeightNamed::Normal),
+            font_style: FontStyle::Normal,
+            align: TextAlign::Left,
+            vertical_align: TextBaseline::Top,
+        }
+    }
+}

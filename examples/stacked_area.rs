@@ -35,8 +35,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..liecharts::LineSeriesOption::new("产品C", vec![80.0, 120.0, 180.0, 60.0, 100.0])
         }))
         .build(800, 600)?
-        .render_to_image("stacked_area.png")?;
-    println!("堆叠面积图已保存到 stacked_area.png");
+        .render_to_svg("stacked_area.svg")?;
+    println!("堆叠面积图已保存到 stacked_area.svg");
 
     Ok(())
 }

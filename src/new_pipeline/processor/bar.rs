@@ -4,7 +4,7 @@ use crate::error::Result;
 use crate::new_pipeline::data_processor::DataProcessor;
 use crate::new_pipeline::types::{DataProcessorInput, SubplotVisualData};
 use crate::option::{AxisType, DataPoint, SeriesOption};
-use crate::visual::{Color, FillStrokeStyle, Stroke, TextAlign, TextBaseline, VisualElement};
+use crate::visual::{Color, FillStrokeStyle, Stroke, TextAlign, TextBaseline, VisualElement, Z_LABEL, Z_SERIES_FILL};
 
 pub struct BarProcessor {
     series_index: usize,
@@ -37,15 +37,15 @@ impl DataProcessor for BarProcessor {
 
         // 获取 X 轴和 Y 轴的配置与范围
         let x_axis_idx = spec.x_axis_indices.first().copied().unwrap_or(0);
-        let y_axis_idx = spec.y_axis_indices.first().copied().unwrap_or(0);
+        let y_axis_idx = bar.y_axis_index
+            .or_else(|| spec.y_axis_indices.first().copied())
+            .unwrap_or(0);
 
         let x_axis_config = input.option.x_axis.get(x_axis_idx);
         let y_axis_config = input.option.y_axis.get(y_axis_idx);
 
-        let x_range = input.axis_ranges.ranges.iter()
-            .find(|r| r.axis_index == x_axis_idx);
-        let y_range = input.axis_ranges.ranges.iter()
-            .find(|r| r.axis_index == y_axis_idx);
+        let x_range = input.axis_ranges.get_x_range(x_axis_idx);
+        let y_range = input.axis_ranges.get_y_range(y_axis_idx);
 
         let (x_min, x_max) = x_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 1.0));
         let (y_min, y_max) = y_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 100.0));
@@ -132,6 +132,7 @@ impl DataProcessor for BarProcessor {
                             width: 1.0,
                         }),
                     },
+                    z_index: Z_SERIES_FILL,
                 });
 
                 // 标签
@@ -140,7 +141,7 @@ impl DataProcessor for BarProcessor {
                 label_elements.push(VisualElement::TextRun {
                     text: label_text,
                     position: Point::new(label_x, center_y),
-                    style: crate::model::TextStyle {
+                    style: crate::visual::TextStyle {
                         font_size: 11.0,
                         color,
                         align: TextAlign::Left,
@@ -150,6 +151,7 @@ impl DataProcessor for BarProcessor {
                     rotation: 0.0,
                     max_width: None,
                     layout: None,
+                    z_index: Z_LABEL,
                 });
             } else {
                 // 垂直柱状图：X 为类目，Y 为数值
@@ -178,6 +180,7 @@ impl DataProcessor for BarProcessor {
                             width: 1.0,
                         }),
                     },
+                    z_index: Z_SERIES_FILL,
                 });
 
                 // 标签
@@ -186,7 +189,7 @@ impl DataProcessor for BarProcessor {
                 label_elements.push(VisualElement::TextRun {
                     text: label_text,
                     position: Point::new(center_x, label_y),
-                    style: crate::model::TextStyle {
+                    style: crate::visual::TextStyle {
                         font_size: 11.0,
                         color,
                         align: TextAlign::Center,
@@ -196,6 +199,7 @@ impl DataProcessor for BarProcessor {
                     rotation: 0.0,
                     max_width: None,
                     layout: None,
+                    z_index: Z_LABEL,
                 });
             }
         }

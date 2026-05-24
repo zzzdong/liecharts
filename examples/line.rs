@@ -11,10 +11,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_series(SeriesOption::Line(liecharts::LineSeriesOption::new(
             "销售额",
             vec![120.0, 200.0, 150.0, 80.0, 70.0, 110.0, 130.0],
-        )))
+        ).smooth(true)))
         .build(800, 600)?
-        .render_to_image("line.png")?;
-    println!("折线图已保存到 line.png");
+        .render_to_svg("line.svg")?;
+    println!("折线图已保存到 line.svg");
 
     Ok(())
 }

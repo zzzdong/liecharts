@@ -60,7 +60,9 @@ pub trait Renderer {
     where
         Self: Sized,
     {
-        for element in elements {
+        let mut sorted: Vec<&VisualElement> = elements.iter().collect();
+        sorted.sort_by_key(|e| e.z_index());
+        for element in sorted {
             self.render_element(element);
         }
     }
@@ -71,29 +73,31 @@ pub trait Renderer {
         Self: Sized,
     {
         match element {
-            VisualElement::Rect { rect, style } => {
+            VisualElement::Rect { rect, style, .. } => {
                 self.draw_rect(*rect, style);
             }
             VisualElement::Circle {
                 center,
                 radius,
                 style,
+                ..
             } => {
                 self.draw_circle(*center, *radius, style);
             }
-            VisualElement::Line { start, end, style } => {
+            VisualElement::Line { start, end, style, .. } => {
                 self.draw_line(*start, *end, style);
             }
-            VisualElement::Polyline { points, style } => {
+            VisualElement::Polyline { points, style, .. } => {
                 self.draw_polyline(points, style);
             }
-            VisualElement::Path { path, style } => {
+            VisualElement::Path { path, style, .. } => {
                 self.draw_path(path, style);
             }
             VisualElement::GradientPath {
                 path,
                 gradient,
                 stroke,
+                ..
             } => {
                 self.draw_gradient_path(path, gradient, stroke.as_ref());
             }
@@ -118,6 +122,7 @@ pub trait Renderer {
             VisualElement::Group {
                 children,
                 transform,
+                ..
             } => {
                 self.begin_group(transform.as_ref());
                 self.render_elements(children);

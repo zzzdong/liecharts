@@ -4,7 +4,7 @@ use crate::error::Result;
 use crate::new_pipeline::data_processor::DataProcessor;
 use crate::new_pipeline::types::{DataProcessorInput, SubplotVisualData};
 use crate::option::{DataPoint, PieSeriesOption, SeriesOption};
-use crate::visual::{Color, FillStrokeStyle, Stroke, TextAlign, TextBaseline, VisualElement};
+use crate::visual::{Color, FillStrokeStyle, Stroke, TextAlign, TextBaseline, VisualElement, Z_LABEL, Z_SERIES_FILL};
 
 pub struct PieProcessor {
     series_index: usize,
@@ -185,6 +185,7 @@ impl DataProcessor for PieProcessor {
                         width: 1.0,
                     }),
                 },
+                z_index: Z_SERIES_FILL,
             });
 
             // 标签（只在外半径 > 0 时添加）
@@ -199,7 +200,7 @@ impl DataProcessor for PieProcessor {
                 label_elements.push(VisualElement::TextRun {
                     text: label_text,
                     position: Point::new(lx, ly),
-                    style: crate::model::TextStyle {
+                    style: crate::visual::TextStyle {
                         font_size: 12.0,
                         color,
                         align: TextAlign::Center,
@@ -209,6 +210,7 @@ impl DataProcessor for PieProcessor {
                     rotation: 0.0,
                     max_width: None,
                     layout: None,
+                    z_index: Z_LABEL,
                 });
             }
 

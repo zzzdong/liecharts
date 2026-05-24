@@ -11,8 +11,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             vec![120.0, 200.0, 150.0, 80.0, 70.0, 110.0],
         )))
         .build(800, 600)?
-        .render_to_image("bar.png")?;
-    println!("柱状图已保存到 bar.png");
+        .render_to_svg("bar.svg")?;
+    println!("柱状图已保存到 bar.svg");
 
     Ok(())
 }

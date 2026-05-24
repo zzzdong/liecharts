@@ -20,8 +20,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             BarSeriesOption::new("线上销售", vec![60.0, 120.0, 90.0, 60.0]).stack("总量"),
         ))
         .build(800, 600)?
-        .render_to_image("stacked_bar.png")?;
+        .render_to_svg("stacked_bar.svg")?;
 
-    println!("堆叠柱状图已保存到 stacked_bar.png");
+    println!("堆叠柱状图已保存到 stacked_bar.svg");
     Ok(())
 }

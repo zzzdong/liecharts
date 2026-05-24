@@ -15,8 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ),
         ))
         .build(800, 600)?
-        .render_to_image("polar_bar.png")?;
-    println!("极坐标柱状图已保存到 polar_bar.png");
+        .render_to_svg("polar_bar.svg")?;
+    println!("极坐标柱状图已保存到 polar_bar.svg");
 
     Ok(())
 }

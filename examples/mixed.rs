@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             ..liecharts::LineSeriesOption::new("增长率", vec![10.0, 20.0, 15.0, 8.0, 7.0])
         }))
         .build(800, 600)?
-        .render_to_image("mixed.png")?;
-    println!("混合图表已保存到 mixed.png");
+        .render_to_svg("mixed.svg")?;
+    println!("混合图表已保存到 mixed.svg");
     Ok(())
 }
