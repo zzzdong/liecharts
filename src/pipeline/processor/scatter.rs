@@ -8,6 +8,7 @@ use crate::{
         data_processor::{DataProcessor, DataProcessorInput},
         dataframe::{DataFrame, DataValue, Series},
         mapper::{CartesianMapper, CoordinateMapper},
+        sampling::SamplingProcessor,
     },
     visual::{
         FillStrokeStyle, Stroke, TextAlign, TextBaseline, VisualElement, Z_LABEL, Z_SERIES_POINT,
@@ -78,6 +79,21 @@ impl DataProcessor for ScatterProcessor {
     }
 
     fn transform(&self, mut df: DataFrame, input: &DataProcessorInput) -> Result<DataFrame> {
+        let series = &input.option.series[input.series_idx];
+        let scatter = match series {
+            SeriesOption::Scatter(s) => s,
+            _ => {
+                return Err(crate::error::ChartError::DataError(
+                    "Expected Scatter series".into(),
+                ));
+            }
+        };
+
+        // 应用采样（如果配置了）
+        if let Some(sampling) = &scatter.sampling {
+            df = SamplingProcessor::sample(&df, sampling.threshold, sampling.ty);
+        }
+
         let series_color = input.colors.get_series_color(input.series_idx);
         df.add_column(Series::new_constant(
             "color",

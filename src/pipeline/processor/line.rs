@@ -8,6 +8,7 @@ use crate::{
         data_processor::{DataProcessor, DataProcessorInput},
         dataframe::{DataFrame, DataValue, Series},
         mapper::{CartesianMapper, CoordinateMapper},
+        sampling::SamplingProcessor,
     },
     visual::{
         Color, FillStrokeStyle, Stroke, StrokeStyle, VisualElement, Z_SERIES_FILL, Z_SERIES_LINE,
@@ -117,6 +118,21 @@ impl DataProcessor for LineProcessor {
     }
 
     fn transform(&self, mut df: DataFrame, input: &DataProcessorInput) -> Result<DataFrame> {
+        let series = &input.option.series[input.series_idx];
+        let line = match series {
+            SeriesOption::Line(l) => l,
+            _ => {
+                return Err(crate::error::ChartError::DataError(
+                    "Expected Line series".into(),
+                ));
+            }
+        };
+
+        // 应用采样（如果配置了）
+        if let Some(sampling) = &line.sampling {
+            df = SamplingProcessor::sample(&df, sampling.threshold, sampling.ty);
+        }
+
         let series_color = input.colors.get_series_color(input.series_idx);
 
         df.add_column(Series::new_constant(

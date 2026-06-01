@@ -9,6 +9,7 @@ pub mod group;
 pub mod mapper;
 pub mod pipeline;
 pub mod processor;
+pub mod sampling;
 pub mod types;
 pub mod visual_element_builder;
 

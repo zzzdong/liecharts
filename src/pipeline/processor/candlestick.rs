@@ -7,6 +7,7 @@ use crate::{
         data_processor::{DataProcessor, DataProcessorInput},
         dataframe::{DataFrame, DataValue, Series},
         mapper::{CartesianMapper, CoordinateMapper},
+        sampling::SamplingProcessor,
     },
     visual::{FillStrokeStyle, Stroke, VisualElement, Z_SERIES_FILL, Z_SERIES_LINE},
 };
@@ -81,6 +82,11 @@ impl DataProcessor for CandlestickProcessor {
             SeriesOption::Candlestick(c) => c,
             _ => return Ok(df),
         };
+
+        // 应用采样（如果配置了）
+        if let Some(sampling) = &candle.sampling {
+            df = SamplingProcessor::sample(&df, sampling.threshold, sampling.ty);
+        }
 
         let bounds = input.bounds;
         let x_axis_idx = input.spec.x_axis_indices.first().copied().unwrap_or(0);
