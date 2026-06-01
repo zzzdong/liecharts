@@ -11,6 +11,60 @@ pub enum DataValue {
     Color(crate::visual::Color),
 }
 
+impl From<f64> for DataValue {
+    fn from(v: f64) -> Self {
+        DataValue::Float(v)
+    }
+}
+
+impl From<f32> for DataValue {
+    fn from(v: f32) -> Self {
+        DataValue::Float(v as f64)
+    }
+}
+
+impl From<i32> for DataValue {
+    fn from(v: i32) -> Self {
+        DataValue::Float(v as f64)
+    }
+}
+
+impl From<i64> for DataValue {
+    fn from(v: i64) -> Self {
+        DataValue::Integer(v)
+    }
+}
+
+impl From<usize> for DataValue {
+    fn from(v: usize) -> Self {
+        DataValue::Float(v as f64)
+    }
+}
+
+impl From<bool> for DataValue {
+    fn from(v: bool) -> Self {
+        DataValue::Bool(v)
+    }
+}
+
+impl From<&str> for DataValue {
+    fn from(v: &str) -> Self {
+        DataValue::String(v.to_string())
+    }
+}
+
+impl From<String> for DataValue {
+    fn from(v: String) -> Self {
+        DataValue::String(v)
+    }
+}
+
+impl From<crate::visual::Color> for DataValue {
+    fn from(v: crate::visual::Color) -> Self {
+        DataValue::Color(v)
+    }
+}
+
 /// 数据列
 #[derive(Debug, Clone)]
 pub struct Series {
