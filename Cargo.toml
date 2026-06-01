@@ -1,6 +1,6 @@
 [package]
 name = "liecharts"
-version = "0.1.0-beta.1"
+version = "0.1.0-beta.2"
 authors = ["zzzdong <kuwater@163.com>"]
 edition = "2024"
 
