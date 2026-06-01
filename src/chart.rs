@@ -2,8 +2,8 @@ pub use vello_cpu::Pixmap;
 
 use crate::{
     error::Result,
-    new_pipeline::pipeline::build_chart_with_theme,
     option::ChartOption,
+    pipeline::pipeline::build_chart_with_theme,
     render::{PixmapRenderer, SvgRenderer},
     theme::Theme,
     visual::VisualElement,
@@ -75,8 +75,9 @@ fn write_pixmap(elements: &[VisualElement], width: u32, height: u32, path: &str)
         .iter()
         .flat_map(|p| vec![p.r, p.g, p.b, p.a])
         .collect();
-    let image = image::RgbaImage::from_raw(pw, ph, data)
-        .ok_or_else(|| crate::error::ChartError::RenderError("Failed to create image".to_string()))?;
+    let image = image::RgbaImage::from_raw(pw, ph, data).ok_or_else(|| {
+        crate::error::ChartError::RenderError("Failed to create image".to_string())
+    })?;
     image.save(path)?;
     Ok(())
 }
@@ -95,7 +96,9 @@ fn png_bytes(elements: &[VisualElement], width: u32, height: u32) -> Result<Vec<
         .flat_map(|p| vec![p.r, p.g, p.b, p.a])
         .collect();
     let image = image::RgbaImage::from_raw(pixmap.width() as u32, pixmap.height() as u32, data)
-        .ok_or_else(|| crate::error::ChartError::RenderError("Failed to create PNG image".to_string()))?;
+        .ok_or_else(|| {
+            crate::error::ChartError::RenderError("Failed to create PNG image".to_string())
+        })?;
     let mut buf = Vec::new();
     image.write_to(&mut std::io::Cursor::new(&mut buf), image::ImageFormat::Png)?;
     Ok(buf)

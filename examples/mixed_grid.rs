@@ -51,10 +51,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .grid_index(3)
                 .data(["Q1", "Q2", "Q3", "Q4"]),
         )
-        .with_y_axis(AxisOption::category().grid_index(0))
-        .with_y_axis(AxisOption::category().grid_index(1))
-        .with_y_axis(AxisOption::category().grid_index(2))
-        .with_y_axis(AxisOption::category().grid_index(3))
+        .with_y_axis(AxisOption::value().grid_index(0))
+        .with_y_axis(AxisOption::value().grid_index(1))
+        .with_y_axis(AxisOption::value().grid_index(2))
+        .with_y_axis(AxisOption::value().grid_index(3))
         .with_series(SeriesOption::Bar(liecharts::BarSeriesOption {
             grid_index: Some(0),
             ..liecharts::BarSeriesOption::new(

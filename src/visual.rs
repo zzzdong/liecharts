@@ -48,7 +48,7 @@ pub enum VisualElement {
         text: String,
         position: Point, // 锚点位置（配合 align/baseline 确定文本块左上角）
         style: crate::visual::TextStyle,
-        rotation: f64,                  // 弧度
+        rotation: f64, // 弧度
         max_width: Option<f64>,
         layout: Option<TextLayout>, // 预排版结果
         z_index: i32,
@@ -65,7 +65,11 @@ pub enum VisualElement {
 impl Clone for VisualElement {
     fn clone(&self) -> Self {
         match self {
-            VisualElement::Rect { rect, style, z_index } => VisualElement::Rect {
+            VisualElement::Rect {
+                rect,
+                style,
+                z_index,
+            } => VisualElement::Rect {
                 rect: *rect,
                 style: style.clone(),
                 z_index: *z_index,
@@ -81,18 +85,31 @@ impl Clone for VisualElement {
                 style: style.clone(),
                 z_index: *z_index,
             },
-            VisualElement::Line { start, end, style, z_index } => VisualElement::Line {
+            VisualElement::Line {
+                start,
+                end,
+                style,
+                z_index,
+            } => VisualElement::Line {
                 start: *start,
                 end: *end,
                 style: style.clone(),
                 z_index: *z_index,
             },
-            VisualElement::Polyline { points, style, z_index } => VisualElement::Polyline {
+            VisualElement::Polyline {
+                points,
+                style,
+                z_index,
+            } => VisualElement::Polyline {
                 points: points.clone(),
                 style: style.clone(),
                 z_index: *z_index,
             },
-            VisualElement::Path { path, style, z_index } => VisualElement::Path {
+            VisualElement::Path {
+                path,
+                style,
+                z_index,
+            } => VisualElement::Path {
                 path: path.clone(),
                 style: style.clone(),
                 z_index: *z_index,
@@ -141,7 +158,11 @@ impl Clone for VisualElement {
 impl std::fmt::Debug for VisualElement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VisualElement::Rect { rect, style, z_index } => f
+            VisualElement::Rect {
+                rect,
+                style,
+                z_index,
+            } => f
                 .debug_struct("Rect")
                 .field("rect", rect)
                 .field("style", style)
@@ -159,20 +180,33 @@ impl std::fmt::Debug for VisualElement {
                 .field("style", style)
                 .field("z_index", z_index)
                 .finish(),
-            VisualElement::Line { start, end, style, z_index } => f
+            VisualElement::Line {
+                start,
+                end,
+                style,
+                z_index,
+            } => f
                 .debug_struct("Line")
                 .field("start", start)
                 .field("end", end)
                 .field("style", style)
                 .field("z_index", z_index)
                 .finish(),
-            VisualElement::Polyline { points, style, z_index } => f
+            VisualElement::Polyline {
+                points,
+                style,
+                z_index,
+            } => f
                 .debug_struct("Polyline")
                 .field("points", points)
                 .field("style", style)
                 .field("z_index", z_index)
                 .finish(),
-            VisualElement::Path { path: _, style, z_index } => f
+            VisualElement::Path {
+                path: _,
+                style,
+                z_index,
+            } => f
                 .debug_struct("Path")
                 .field("path", &"<BezPath>")
                 .field("style", style)

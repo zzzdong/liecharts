@@ -1,8 +1,8 @@
 pub mod builder;
 pub mod chart;
 pub mod error;
-pub mod new_pipeline;
 pub mod option;
+pub mod pipeline;
 pub mod prelude;
 pub mod render;
 pub mod sampling;
@@ -13,11 +13,6 @@ pub mod visual;
 pub use builder::ChartBuilder;
 pub use chart::Chart;
 pub use error::ChartError;
-pub use new_pipeline::{
-    AxisBindingResolver, ColorAssigner, ColorContext, DataProcessor, DataProcessorInput,
-    GridPlanner, ResolvedAxisRange, ResolvedAxisRanges, SubplotSpec, SubplotVisualData,
-    TextMeasurer, VisualElementBuilder, build_chart, build_chart_with_theme,
-};
 pub use option::{
     AreaStyleOption, AxisOption, AxisPosition, AxisType, BarSeriesOption, BubbleDataPoint,
     BubbleSeriesOption, CandlestickDataPoint, CandlestickItemStyleOption, CandlestickSeriesOption,
@@ -31,6 +26,12 @@ pub use option::{
     RadarSeriesOption, ScatterSeriesOption, SeriesOption, SplitLineOption, SymbolType,
     TableBodyOption, TableCellStyleOption, TableHeaderOption, TableRowStyleOption,
     TableSeriesOption, TextAlignOption, TextStyleOption, TitleOption,
+};
+pub use pipeline::{
+    AxisBindingResolver, CartesianMapper, ColorAssigner, ColorContext, CoordinateMapper,
+    DataProcessor, DataProcessorInput, GridPlanner, NoopMapper, PolarMapper, ResolvedAxisRange,
+    ResolvedAxisRanges, SubplotSpec, SubplotVisualData, TextMeasurer, VisualElementBuilder,
+    build_chart, build_chart_with_theme,
 };
 pub use sampling::{SamplingOption, SamplingType};
 pub use theme::{Theme, ThemeRegistry};

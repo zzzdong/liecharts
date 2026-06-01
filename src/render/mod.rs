@@ -84,7 +84,9 @@ pub trait Renderer {
             } => {
                 self.draw_circle(*center, *radius, style);
             }
-            VisualElement::Line { start, end, style, .. } => {
+            VisualElement::Line {
+                start, end, style, ..
+            } => {
                 self.draw_line(*start, *end, style);
             }
             VisualElement::Polyline { points, style, .. } => {

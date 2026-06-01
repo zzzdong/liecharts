@@ -158,12 +158,13 @@ impl ChartBuilder {
     }
 
     pub fn build(self, width: u32, height: u32) -> Result<Chart> {
-        let theme = match self.option.theme.as_deref() {
-            Some(name) => self.theme_registry.get(name).cloned().ok_or_else(|| {
-                ChartError::ThemeNotFound(format!("Theme not found: {}", name))
-            })?,
-            None => Theme::echarts(),
-        };
+        let theme =
+            match self.option.theme.as_deref() {
+                Some(name) => self.theme_registry.get(name).cloned().ok_or_else(|| {
+                    ChartError::ThemeNotFound(format!("Theme not found: {}", name))
+                })?,
+                None => Theme::echarts(),
+            };
         Ok(Chart::new(self.option, theme, width, height))
     }
 

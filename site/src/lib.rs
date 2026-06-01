@@ -4,10 +4,9 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub fn render_chart(json: &str, width: u32, height: u32) -> Result<String, String> {
     let option = serde_json::from_str(json).map_err(|e| e.to_string())?;
-    let model = ChartBuilder::from_option(option)
-        .build_model()
+    let chart = ChartBuilder::from_option(option)
+        .build(width, height)
         .map_err(|e| e.to_string())?;
-    let chart = liecharts::Chart::new(model, width, height);
 
     chart.render_svg().map_err(|e| e.to_string())
 }
@@ -15,10 +14,9 @@ pub fn render_chart(json: &str, width: u32, height: u32) -> Result<String, Strin
 #[wasm_bindgen]
 pub fn render_chart_png(json: &str, width: u32, height: u32) -> Result<Vec<u8>, String> {
     let option = serde_json::from_str(json).map_err(|e| e.to_string())?;
-    let model = ChartBuilder::from_option(option)
-        .build_model()
+    let chart = ChartBuilder::from_option(option)
+        .build(width, height)
         .map_err(|e| e.to_string())?;
-    let chart = liecharts::Chart::new(model, width, height);
 
     chart.render_png().map_err(|e| e.to_string())
 }

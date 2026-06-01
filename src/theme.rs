@@ -364,7 +364,7 @@ impl DesignTokens {
             },
             text: TextTokens {
                 title_size: 18.0,
-                subtitle_size: 12.0,
+                subtitle_size: 14.0,
                 body_size: 12.0,
                 caption_size: 10.0,
                 font_family: "sans-serif".to_string(),
