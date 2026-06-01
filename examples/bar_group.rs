@@ -1,4 +1,4 @@
-use liecharts::prelude::*;
+use liecharts::api::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     vertical_grouped()?;
@@ -9,95 +9,145 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn vertical_grouped() -> Result<(), Box<dyn std::error::Error>> {
-    ChartBuilder::new()
-        .with_title(TitleOption::new("分组柱状图（纵向并列）"))
-        .with_legend(
-            LegendOption::default()
-                .data(["产品A", "产品B", "产品C"])
-                .show(true),
+    Chart::new(800, 600)
+        .title(Title::new("分组柱状图（纵向并列）"))
+        .legend(Legend::new().data(["产品A", "产品B", "产品C"]))
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "quarter" => ["Q1", "Q2", "Q3", "Q4"],
+                    "value" => [120.0, 200.0, 150.0, 80.0],
+                ))
+                .x("quarter")
+                .y("value")
+                .name("产品A"),
         )
-        .with_x_axis(AxisOption::category().data(["Q1", "Q2", "Q3", "Q4"]))
-        .with_y_axis(AxisOption::value().name("销售额"))
-        .with_series(SeriesOption::Bar(BarSeriesOption::new(
-            "产品A",
-            vec![120.0, 200.0, 150.0, 80.0],
-        )))
-        .with_series(SeriesOption::Bar(BarSeriesOption::new(
-            "产品B",
-            vec![80.0, 160.0, 120.0, 70.0],
-        )))
-        .with_series(SeriesOption::Bar(BarSeriesOption::new(
-            "产品C",
-            vec![60.0, 120.0, 90.0, 60.0],
-        )))
-        .build(800, 600)?
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "quarter" => ["Q1", "Q2", "Q3", "Q4"],
+                    "value" => [80.0, 160.0, 120.0, 70.0],
+                ))
+                .x("quarter")
+                .y("value")
+                .name("产品B"),
+        )
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "quarter" => ["Q1", "Q2", "Q3", "Q4"],
+                    "value" => [60.0, 120.0, 90.0, 60.0],
+                ))
+                .x("quarter")
+                .y("value")
+                .name("产品C"),
+        )
         .render_to_svg("bar_group_v_side.svg")?;
     println!("纵向并列分组 → bar_group_v_side.svg");
     Ok(())
 }
 
 fn vertical_stacked() -> Result<(), Box<dyn std::error::Error>> {
-    ChartBuilder::new()
-        .with_title(TitleOption::new("分组柱状图（纵向堆叠）"))
-        .with_legend(
-            LegendOption::default()
-                .data(["直接销售", "代理销售", "线上销售"])
-                .show(true),
+    Chart::new(800, 600)
+        .title(Title::new("分组柱状图（纵向堆叠）"))
+        .legend(Legend::new().data(["直接销售", "代理销售", "线上销售"]))
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "quarter" => ["Q1", "Q2", "Q3", "Q4"],
+                    "value" => [120.0, 200.0, 150.0, 80.0],
+                ))
+                .x("quarter")
+                .y("value")
+                .name("直接销售")
+                .stack("总量"),
         )
-        .with_x_axis(AxisOption::category().data(["Q1", "Q2", "Q3", "Q4"]))
-        .with_y_axis(AxisOption::value().name("销售额（万元）"))
-        .with_series(SeriesOption::Bar(
-            BarSeriesOption::new("直接销售", vec![120.0, 200.0, 150.0, 80.0]).stack("总量"),
-        ))
-        .with_series(SeriesOption::Bar(
-            BarSeriesOption::new("代理销售", vec![80.0, 160.0, 120.0, 70.0]).stack("总量"),
-        ))
-        .with_series(SeriesOption::Bar(
-            BarSeriesOption::new("线上销售", vec![60.0, 120.0, 90.0, 60.0]).stack("总量"),
-        ))
-        .build(800, 600)?
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "quarter" => ["Q1", "Q2", "Q3", "Q4"],
+                    "value" => [80.0, 160.0, 120.0, 70.0],
+                ))
+                .x("quarter")
+                .y("value")
+                .name("代理销售")
+                .stack("总量"),
+        )
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "quarter" => ["Q1", "Q2", "Q3", "Q4"],
+                    "value" => [60.0, 120.0, 90.0, 60.0],
+                ))
+                .x("quarter")
+                .y("value")
+                .name("线上销售")
+                .stack("总量"),
+        )
         .render_to_svg("bar_group_v_stack.svg")?;
     println!("纵向堆叠分组 → bar_group_v_stack.svg");
     Ok(())
 }
 
 fn horizontal_grouped() -> Result<(), Box<dyn std::error::Error>> {
-    ChartBuilder::new()
-        .with_title(TitleOption::new("分组柱状图（横向并列）"))
-        .with_legend(
-            LegendOption::default()
-                .data(["直接渠道", "代理渠道"])
-                .show(true),
+    Chart::new(800, 600)
+        .title(Title::new("分组柱状图（横向并列）"))
+        .legend(Legend::new().data(["直接渠道", "代理渠道"]))
+        .x_axis(Axis::value().name("销售额（万元）"))
+        .y_axis(Axis::category().data(["华北", "华东", "华南", "华西"]))
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "region" => ["华北", "华东", "华南", "华西"],
+                    "value" => [40.0, 80.0, 60.0, 30.0],
+                ))
+                .x("region")
+                .y("value")
+                .name("直接渠道"),
         )
-        .with_x_axis(AxisOption::value().name("销售额（万元）"))
-        .with_y_axis(AxisOption::category().data(["华北", "华东", "华南", "华西"]))
-        .with_series(SeriesOption::Bar(BarSeriesOption::new(
-            "直接渠道",
-            vec![40.0, 80.0, 60.0, 30.0],
-        )))
-        .with_series(SeriesOption::Bar(BarSeriesOption::new(
-            "代理渠道",
-            vec![30.0, 60.0, 50.0, 20.0],
-        )))
-        .build(800, 600)?
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "region" => ["华北", "华东", "华南", "华西"],
+                    "value" => [30.0, 60.0, 50.0, 20.0],
+                ))
+                .x("region")
+                .y("value")
+                .name("代理渠道"),
+        )
         .render_to_svg("bar_group_h_side.svg")?;
     println!("横向并列分组 → bar_group_h_side.svg");
     Ok(())
 }
 
 fn horizontal_stacked() -> Result<(), Box<dyn std::error::Error>> {
-    ChartBuilder::new()
-        .with_title(TitleOption::new("分组柱状图（横向堆叠）"))
-        .with_legend(LegendOption::default().data(["线上", "线下"]).show(true))
-        .with_x_axis(AxisOption::value().name("销售额（万元）"))
-        .with_y_axis(AxisOption::category().data(["华北", "华东", "华南", "华西"]))
-        .with_series(SeriesOption::Bar(
-            BarSeriesOption::new("线上", vec![20.0, 40.0, 30.0, 15.0]).stack("ch"),
-        ))
-        .with_series(SeriesOption::Bar(
-            BarSeriesOption::new("线下", vec![30.0, 50.0, 40.0, 25.0]).stack("ch"),
-        ))
-        .build(800, 600)?
+    Chart::new(800, 600)
+        .title(Title::new("分组柱状图（横向堆叠）"))
+        .legend(Legend::new().data(["线上", "线下"]))
+        .x_axis(Axis::value().name("销售额（万元）"))
+        .y_axis(Axis::category().data(["华北", "华东", "华南", "华西"]))
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "region" => ["华北", "华东", "华南", "华西"],
+                    "value" => [20.0, 40.0, 30.0, 15.0],
+                ))
+                .x("region")
+                .y("value")
+                .name("线上")
+                .stack("ch"),
+        )
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "region" => ["华北", "华东", "华南", "华西"],
+                    "value" => [30.0, 50.0, 40.0, 25.0],
+                ))
+                .x("region")
+                .y("value")
+                .name("线下")
+                .stack("ch"),
+        )
         .render_to_svg("bar_group_h_stack.svg")?;
     println!("横向堆叠分组 → bar_group_h_stack.svg");
     Ok(())

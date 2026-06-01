@@ -36,11 +36,9 @@
 //! ```
 
 mod chart;
-mod config;
 mod layer;
 
-pub use chart::Chart;
-pub use config::*;
+pub use chart::{Axis, AxisPosition, AxisType, Chart, Grid, Legend, Orient, Position, Title};
 pub use layer::*;
 
 /// Macro to create a [`DataFrame`](crate::pipeline::dataframe::DataFrame) with a concise syntax.

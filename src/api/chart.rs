@@ -1,13 +1,17 @@
+use super::layer::{
+    Bar, Bubble, Candlestick, Gauge, LayerSpec, Line, Pie,
+    PolarBar, PolarScatter, Radar, Scatter, Table,
+};
 use crate::{
     error::Result,
     option::{
-        self, AxisOption, AxisType as InternalAxisType,
-        BarSeriesOption, BubbleDataPoint, BubbleSeriesOption, CandlestickDataPoint,
-        CandlestickSeriesOption, ChartOption, ColorOption, DataPoint, GaugeDataPoint,
-        GaugeSeriesOption, GridOption, ItemStyleOption, LegendOption, LineSeriesOption,
-        PieSeriesOption, PolarBarSeriesOption, PolarScatterDataPoint, PolarScatterSeriesOption,
-        PositionOption, PositionPreset, RadarDataOption, RadarIndicatorOption, RadarOption,
-        RadarSeriesOption, ScatterSeriesOption, SeriesOption, TableSeriesOption,
+        self, AxisOption, AxisType as InternalAxisType, BarSeriesOption, BubbleDataPoint,
+        BubbleSeriesOption, CandlestickDataPoint, CandlestickSeriesOption, ChartOption,
+        ColorOption, DataPoint, GaugeDataPoint, GaugeSeriesOption, GridOption, ItemStyleOption,
+        LegendOption, LineSeriesOption, PieSeriesOption, PolarBarSeriesOption,
+        PolarScatterDataPoint, PolarScatterSeriesOption, PositionOption, PositionPreset,
+        RadarDataOption, RadarIndicatorOption, RadarOption, RadarSeriesOption, ScatterSeriesOption,
+        SeriesOption, TableSeriesOption,
     },
     pipeline::{
         dataframe::{DataFrame, DataValue},
@@ -17,13 +21,268 @@ use crate::{
     visual::{Color, VisualElement},
 };
 
-use super::{
-    config::{Axis, AxisPosition, AxisType, Grid, Legend, Orient, Position, Title},
-    layer::{
-        BarLayer, BubbleLayer, CandlestickLayer, GaugeLayer, LayerSpec, LineLayer, PieLayer,
-        PolarBarLayer, PolarScatterLayer, RadarLayer, ScatterLayer, TableLayer,
-    },
-};
+// ── Macros ──
+
+macro_rules! add_layer_method {
+    ($method:ident, $layer:ty, $variant:ident) => {
+        pub fn $method(mut self, layer: $layer) -> Self {
+            self.layers.push(LayerSpec::$variant(layer));
+            self
+        }
+    };
+}
+
+macro_rules! impl_from_layer {
+    ($layer:ty, $variant:ident) => {
+        impl From<$layer> for LayerSpec {
+            fn from(l: $layer) -> Self {
+                LayerSpec::$variant(l)
+            }
+        }
+    };
+}
+
+// ── Position / Orient / Axis enums ──
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Position {
+    Auto,
+    Center,
+    Left,
+    Right,
+    Top,
+    Bottom,
+    Pixel(f64),
+    Percent(f64),
+}
+
+impl Position {
+    pub fn px(v: f64) -> Self {
+        Position::Pixel(v)
+    }
+    pub fn pct(v: f64) -> Self {
+        Position::Percent(v)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Orient {
+    Horizontal,
+    Vertical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AxisType {
+    Category,
+    Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum AxisPosition {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+// ── Title ──
+
+#[derive(Debug, Clone)]
+pub struct Title {
+    pub text: String,
+    pub subtext: Option<String>,
+    pub left: Position,
+    pub top: Position,
+}
+
+impl Title {
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            subtext: None,
+            left: Position::Center,
+            top: Position::Auto,
+        }
+    }
+    pub fn subtext(mut self, text: impl Into<String>) -> Self {
+        self.subtext = Some(text.into());
+        self
+    }
+    pub fn left(mut self, pos: Position) -> Self {
+        self.left = pos;
+        self
+    }
+    pub fn top(mut self, pos: Position) -> Self {
+        self.top = pos;
+        self
+    }
+}
+
+// ── Legend ──
+
+#[derive(Debug, Clone)]
+pub struct Legend {
+    pub show: bool,
+    pub data: Vec<String>,
+    pub left: Position,
+    pub top: Position,
+    pub orient: Orient,
+}
+
+impl Default for Legend {
+    fn default() -> Self {
+        Self {
+            show: true,
+            data: Vec::new(),
+            left: Position::Center,
+            top: Position::Auto,
+            orient: Orient::Horizontal,
+        }
+    }
+}
+
+impl Legend {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn data(mut self, data: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.data = data.into_iter().map(Into::into).collect();
+        self
+    }
+    pub fn left(mut self, pos: Position) -> Self {
+        self.left = pos;
+        self
+    }
+    pub fn top(mut self, pos: Position) -> Self {
+        self.top = pos;
+        self
+    }
+    pub fn orient(mut self, orient: Orient) -> Self {
+        self.orient = orient;
+        self
+    }
+}
+
+// ── Grid ──
+
+#[derive(Debug, Clone)]
+pub struct Grid {
+    pub left: Position,
+    pub right: Position,
+    pub top: Position,
+    pub bottom: Position,
+    pub contain_label: bool,
+}
+
+impl Default for Grid {
+    fn default() -> Self {
+        Self {
+            left: Position::Percent(10.0),
+            right: Position::Percent(10.0),
+            top: Position::Percent(15.0),
+            bottom: Position::Percent(15.0),
+            contain_label: true,
+        }
+    }
+}
+
+impl Grid {
+    pub fn new() -> Self {
+        Self::default()
+    }
+    pub fn left(mut self, pos: Position) -> Self {
+        self.left = pos;
+        self
+    }
+    pub fn right(mut self, pos: Position) -> Self {
+        self.right = pos;
+        self
+    }
+    pub fn top(mut self, pos: Position) -> Self {
+        self.top = pos;
+        self
+    }
+    pub fn bottom(mut self, pos: Position) -> Self {
+        self.bottom = pos;
+        self
+    }
+    pub fn contain_label(mut self, val: bool) -> Self {
+        self.contain_label = val;
+        self
+    }
+}
+
+// ── Axis ──
+
+#[derive(Debug, Clone)]
+pub struct Axis {
+    pub position: AxisPosition,
+    pub axis_type: AxisType,
+    pub data: Vec<String>,
+    pub name: Option<String>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub boundary_gap: bool,
+    pub grid_index: usize,
+}
+
+impl Default for Axis {
+    fn default() -> Self {
+        Self {
+            position: AxisPosition::Bottom,
+            axis_type: AxisType::Category,
+            data: Vec::new(),
+            name: None,
+            min: None,
+            max: None,
+            boundary_gap: true,
+            grid_index: 0,
+        }
+    }
+}
+
+impl Axis {
+    pub fn category() -> Self {
+        Self {
+            axis_type: AxisType::Category,
+            ..Default::default()
+        }
+    }
+    pub fn value() -> Self {
+        Self {
+            axis_type: AxisType::Value,
+            ..Default::default()
+        }
+    }
+    pub fn data(mut self, data: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        self.data = data.into_iter().map(Into::into).collect();
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+    pub fn min(mut self, min: f64) -> Self {
+        self.min = Some(min);
+        self
+    }
+    pub fn max(mut self, max: f64) -> Self {
+        self.max = Some(max);
+        self
+    }
+    pub fn position(mut self, pos: AxisPosition) -> Self {
+        self.position = pos;
+        self
+    }
+    pub fn boundary_gap(mut self, gap: bool) -> Self {
+        self.boundary_gap = gap;
+        self
+    }
+    pub fn grid_index(mut self, idx: usize) -> Self {
+        self.grid_index = idx;
+        self
+    }
+}
 
 /// A DataFrame-centric chart builder.
 ///
@@ -42,8 +301,11 @@ use super::{
 /// );
 ///
 /// let svg = Chart::new(800, 600)
-///     .title("My Chart")
-///     .add_bar(BarLayer::new(df).x("category").y("value"))
+///     .data(dataframe!(
+///         "category" => ["A", "B", "C"],
+///         "value" => [10.0, 20.0, 30.0],
+///     ))
+///     .add_bar(Bar::new().name("My Bar").x("category").y("value"))
 ///     .render_svg()
 ///     .unwrap();
 /// ```
@@ -57,6 +319,7 @@ pub struct Chart {
     x_axes: Vec<Axis>,
     y_axes: Vec<Axis>,
     layers: Vec<LayerSpec>,
+    data: Option<DataFrame>,
     background_color: Option<Color>,
     theme_name: Option<String>,
 }
@@ -73,12 +336,19 @@ impl Chart {
             x_axes: Vec::new(),
             y_axes: Vec::new(),
             layers: Vec::new(),
+            data: None,
             background_color: None,
             theme_name: None,
         }
     }
 
     // ── Configuration ──
+
+    /// Set shared data for all layers. Layers without their own data will use this.
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
 
     pub fn title(mut self, title: impl Into<Title>) -> Self {
         self.title = Some(title.into());
@@ -117,63 +387,31 @@ impl Chart {
 
     // ── Layers ──
 
-    pub fn add_line(mut self, layer: LineLayer) -> Self {
-        self.layers.push(LayerSpec::Line(layer));
-        self
-    }
-
-    pub fn add_bar(mut self, layer: BarLayer) -> Self {
-        self.layers.push(LayerSpec::Bar(layer));
-        self
-    }
-
-    pub fn add_pie(mut self, layer: PieLayer) -> Self {
-        self.layers.push(LayerSpec::Pie(layer));
-        self
-    }
-
-    pub fn add_scatter(mut self, layer: ScatterLayer) -> Self {
-        self.layers.push(LayerSpec::Scatter(layer));
-        self
-    }
-
-    pub fn add_bubble(mut self, layer: BubbleLayer) -> Self {
-        self.layers.push(LayerSpec::Bubble(layer));
-        self
-    }
-
-    pub fn add_candlestick(mut self, layer: CandlestickLayer) -> Self {
-        self.layers.push(LayerSpec::Candlestick(layer));
-        self
-    }
-
-    pub fn add_radar(mut self, layer: RadarLayer) -> Self {
-        self.layers.push(LayerSpec::Radar(layer));
-        self
-    }
-
-    pub fn add_polar_bar(mut self, layer: PolarBarLayer) -> Self {
-        self.layers.push(LayerSpec::PolarBar(layer));
-        self
-    }
-
-    pub fn add_polar_scatter(mut self, layer: PolarScatterLayer) -> Self {
-        self.layers.push(LayerSpec::PolarScatter(layer));
-        self
-    }
-
-    pub fn add_gauge(mut self, layer: GaugeLayer) -> Self {
-        self.layers.push(LayerSpec::Gauge(layer));
-        self
-    }
-
-    pub fn add_table(mut self, layer: TableLayer) -> Self {
-        self.layers.push(LayerSpec::Table(layer));
-        self
-    }
+    add_layer_method!(add_line, Line, Line);
+    add_layer_method!(add_bar, Bar, Bar);
+    add_layer_method!(add_pie, Pie, Pie);
+    add_layer_method!(add_scatter, Scatter, Scatter);
+    add_layer_method!(add_bubble, Bubble, Bubble);
+    add_layer_method!(add_candlestick, Candlestick, Candlestick);
+    add_layer_method!(add_radar, Radar, Radar);
+    add_layer_method!(add_polar_bar, PolarBar, PolarBar);
+    add_layer_method!(add_polar_scatter, PolarScatter, PolarScatter);
+    add_layer_method!(add_gauge, Gauge, Gauge);
+    add_layer_method!(add_table, Table, Table);
 
     pub fn add_layer(mut self, layer: impl Into<LayerSpec>) -> Self {
         self.layers.push(layer.into());
+        self
+    }
+
+    /// Add a grid with a single layer. Shortcut for multi-grid layouts.
+    /// Creates a default grid and assigns the layer to it.
+    pub fn with_grid(mut self, layer: impl Into<LayerSpec>) -> Self {
+        let idx = self.grids.len();
+        self.grids.push(Grid::default());
+        let mut spec = layer.into();
+        spec.set_grid_index(idx);
+        self.layers.push(spec);
         self
     }
 
@@ -182,7 +420,10 @@ impl Chart {
     /// Build the chart and collect visual elements.
     pub fn build(&self) -> Result<Vec<VisualElement>> {
         let option = self.to_chart_option();
-        let theme = Theme::echarts();
+        let theme = match self.theme_name.as_deref() {
+            Some("dark") => Theme::dark(),
+            _ => Theme::echarts(),
+        };
         build_chart_with_theme(&option, self.width, self.height, &theme)
     }
 
@@ -223,14 +464,10 @@ impl Chart {
             .iter()
             .flat_map(|p| vec![p.r, p.g, p.b, p.a])
             .collect();
-        let image = image::RgbaImage::from_raw(
-            pixmap.width() as u32,
-            pixmap.height() as u32,
-            data,
-        )
-        .ok_or_else(|| {
-            crate::error::ChartError::RenderError("Failed to create image".to_string())
-        })?;
+        let image = image::RgbaImage::from_raw(pixmap.width() as u32, pixmap.height() as u32, data)
+            .ok_or_else(|| {
+                crate::error::ChartError::RenderError("Failed to create image".to_string())
+            })?;
         image.save(path)?;
         Ok(())
     }
@@ -315,7 +552,7 @@ impl Chart {
 
         // Series / Layers
         for layer in &self.layers {
-            let series = convert_layer(layer);
+            let series = convert_layer(layer, self.data.as_ref());
             option.series.push(series);
         }
 
@@ -324,7 +561,9 @@ impl Chart {
             let cat_data = extract_category_names(&option, series);
             if let Some(cat_names) = cat_data {
                 if let Some(x_axis) = option.x_axis.first_mut() {
-                    if x_axis.data.is_none() || x_axis.data.as_ref().map(|d| d.is_empty()).unwrap_or(true) {
+                    if x_axis.data.is_none()
+                        || x_axis.data.as_ref().map(|d| d.is_empty()).unwrap_or(true)
+                    {
                         x_axis.data = Some(cat_names);
                     }
                 }
@@ -354,7 +593,16 @@ impl Chart {
     }
 
     fn has_cartesian_layers(&self) -> bool {
-        self.layers.iter().any(|l| matches!(l, LayerSpec::Line(_) | LayerSpec::Bar(_) | LayerSpec::Scatter(_) | LayerSpec::Bubble(_) | LayerSpec::Candlestick(_)))
+        self.layers.iter().any(|l| {
+            matches!(
+                l,
+                LayerSpec::Line(_)
+                    | LayerSpec::Bar(_)
+                    | LayerSpec::Scatter(_)
+                    | LayerSpec::Bubble(_)
+                    | LayerSpec::Candlestick(_)
+            )
+        })
     }
 }
 
@@ -405,28 +653,34 @@ fn convert_axis(axis: &Axis) -> AxisOption {
         max: axis.max,
         boundary_gap: Some(axis.boundary_gap),
         position: Some(pos),
+        grid_index: Some(axis.grid_index),
         ..Default::default()
     }
 }
 
-fn convert_layer(layer: &LayerSpec) -> SeriesOption {
+fn convert_layer(layer: &LayerSpec, chart_data: Option<&DataFrame>) -> SeriesOption {
     match layer {
-        LayerSpec::Line(l) => convert_line_layer(l),
-        LayerSpec::Bar(b) => convert_bar_layer(b),
-        LayerSpec::Pie(p) => convert_pie_layer(p),
-        LayerSpec::Scatter(s) => convert_scatter_layer(s),
-        LayerSpec::Bubble(b) => convert_bubble_layer(b),
-        LayerSpec::Candlestick(c) => convert_candlestick_layer(c),
-        LayerSpec::Radar(r) => convert_radar_layer(r),
-        LayerSpec::PolarBar(p) => convert_polar_bar_layer(p),
-        LayerSpec::PolarScatter(p) => convert_polar_scatter_layer(p),
-        LayerSpec::Gauge(g) => convert_gauge_layer(g),
-        LayerSpec::Table(t) => convert_table_layer(t),
+        LayerSpec::Line(l) => convert_line_layer(l, chart_data),
+        LayerSpec::Bar(b) => convert_bar_layer(b, chart_data),
+        LayerSpec::Pie(p) => convert_pie_layer(p, chart_data),
+        LayerSpec::Scatter(s) => convert_scatter_layer(s, chart_data),
+        LayerSpec::Bubble(b) => convert_bubble_layer(b, chart_data),
+        LayerSpec::Candlestick(c) => convert_candlestick_layer(c, chart_data),
+        LayerSpec::Radar(r) => convert_radar_layer(r, chart_data),
+        LayerSpec::PolarBar(p) => convert_polar_bar_layer(p, chart_data),
+        LayerSpec::PolarScatter(p) => convert_polar_scatter_layer(p, chart_data),
+        LayerSpec::Gauge(g) => convert_gauge_layer(g, chart_data),
+        LayerSpec::Table(t) => convert_table_layer(t, chart_data),
     }
 }
 
-fn convert_line_layer(l: &LineLayer) -> SeriesOption {
-    let data = extract_xy_data(&l.data, &l.x, &l.y);
+fn resolve_data<'a>(layer_data: &'a Option<DataFrame>, chart_data: Option<&'a DataFrame>) -> &'a DataFrame {
+    layer_data.as_ref().or(chart_data).expect("Layer must have data either from layer.data() or Chart.data()")
+}
+
+fn convert_line_layer(l: &Line, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&l.data, chart_data);
+    let data = extract_xy_data(df, &l.x, &l.y);
     let mut item_style = l.color.map(|c| ItemStyleOption {
         color: Some(ColorOption::new(c.r, c.g, c.b)),
         ..Default::default()
@@ -464,8 +718,9 @@ fn convert_line_layer(l: &LineLayer) -> SeriesOption {
     SeriesOption::Line(opt)
 }
 
-fn convert_bar_layer(b: &BarLayer) -> SeriesOption {
-    let data = extract_xy_data(&b.data, &b.x, &b.y);
+fn convert_bar_layer(b: &Bar, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&b.data, chart_data);
+    let data = extract_xy_data(df, &b.x, &b.y);
     let item_style = b.color.map(|c| ItemStyleOption {
         color: Some(ColorOption::new(c.r, c.g, c.b)),
         ..Default::default()
@@ -481,16 +736,15 @@ fn convert_bar_layer(b: &BarLayer) -> SeriesOption {
     SeriesOption::Bar(opt)
 }
 
-fn convert_pie_layer(p: &PieLayer) -> SeriesOption {
-    let data: Vec<DataPoint> = (0..p.data.row_count())
+fn convert_pie_layer(p: &Pie, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&p.data, chart_data);
+    let data: Vec<DataPoint> = (0..df.row_count())
         .map(|i| {
-            let name = p
-                .data
+            let name = df
                 .get_column(&p.category)
                 .and_then(|c| c.as_string(i))
                 .unwrap_or_default();
-            let value = p
-                .data
+            let value = df
                 .get_column(&p.value)
                 .and_then(|c| c.as_f64(i))
                 .unwrap_or(0.0);
@@ -505,8 +759,9 @@ fn convert_pie_layer(p: &PieLayer) -> SeriesOption {
     SeriesOption::Pie(opt)
 }
 
-fn convert_scatter_layer(s: &ScatterLayer) -> SeriesOption {
-    let data = extract_xy_data(&s.data, &s.x, &s.y);
+fn convert_scatter_layer(s: &Scatter, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&s.data, chart_data);
+    let data = extract_xy_data(df, &s.x, &s.y);
     let item_style = s.color.map(|c| ItemStyleOption {
         color: Some(ColorOption::new(c.r, c.g, c.b)),
         ..Default::default()
@@ -521,21 +776,24 @@ fn convert_scatter_layer(s: &ScatterLayer) -> SeriesOption {
     SeriesOption::Scatter(opt)
 }
 
-fn convert_bubble_layer(b: &BubbleLayer) -> SeriesOption {
-    let data: Vec<BubbleDataPoint> = (0..b.data.row_count())
+fn convert_bubble_layer(b: &Bubble, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&b.data, chart_data);
+    let data: Vec<BubbleDataPoint> = (0..df.row_count())
         .map(|i| {
-            let x = b.data.get_column("x").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let y = b.data.get_column("y").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let size = b.data.get_column("size").and_then(|c| c.as_f64(i));
-            let name = b.name_col.as_ref().and_then(|col| {
-                b.data.get_column(col).and_then(|c| c.as_string(i))
-            });
-            BubbleDataPoint {
-                x,
-                y,
-                size,
-                name,
-            }
+            let x = df
+                .get_column("x")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            let y = df
+                .get_column("y")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            let size = df.get_column("size").and_then(|c| c.as_f64(i));
+            let name = b
+                .name_col
+                .as_ref()
+                .and_then(|col| df.get_column(col).and_then(|c| c.as_string(i)));
+            BubbleDataPoint { x, y, size, name }
         })
         .collect();
 
@@ -554,14 +812,29 @@ fn convert_bubble_layer(b: &BubbleLayer) -> SeriesOption {
     SeriesOption::Bubble(opt)
 }
 
-fn convert_candlestick_layer(c: &CandlestickLayer) -> SeriesOption {
-    let data: Vec<CandlestickDataPoint> = (0..c.data.row_count())
+fn convert_candlestick_layer(c: &Candlestick, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&c.data, chart_data);
+    let data: Vec<CandlestickDataPoint> = (0..df.row_count())
         .map(|i| {
-            let open = c.data.get_column(&c.open).and_then(|col| col.as_f64(i)).unwrap_or(0.0);
-            let close = c.data.get_column(&c.close).and_then(|col| col.as_f64(i)).unwrap_or(0.0);
-            let low = c.data.get_column(&c.low).and_then(|col| col.as_f64(i)).unwrap_or(0.0);
-            let high = c.data.get_column(&c.high).and_then(|col| col.as_f64(i)).unwrap_or(0.0);
-            let name = c.data.get_column(&c.category).and_then(|col| col.as_string(i));
+            let open = df
+                .get_column(&c.open)
+                .and_then(|col| col.as_f64(i))
+                .unwrap_or(0.0);
+            let close = df
+                .get_column(&c.close)
+                .and_then(|col| col.as_f64(i))
+                .unwrap_or(0.0);
+            let low = df
+                .get_column(&c.low)
+                .and_then(|col| col.as_f64(i))
+                .unwrap_or(0.0);
+            let high = df
+                .get_column(&c.high)
+                .and_then(|col| col.as_f64(i))
+                .unwrap_or(0.0);
+            let name = df
+                .get_column(&c.category)
+                .and_then(|col| col.as_string(i));
             CandlestickDataPoint {
                 open,
                 close,
@@ -581,12 +854,11 @@ fn convert_candlestick_layer(c: &CandlestickLayer) -> SeriesOption {
     SeriesOption::Candlestick(opt)
 }
 
-fn convert_radar_layer(r: &RadarLayer) -> SeriesOption {
-    // The data values come from the `values` column, parsed as comma-separated or as a Vec<f64>
-    let data: Vec<RadarDataOption> = (0..r.data.row_count())
+fn convert_radar_layer(r: &Radar, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&r.data, chart_data);
+    let data: Vec<RadarDataOption> = (0..df.row_count())
         .map(|i| {
-            let value_str = r
-                .data
+            let value_str = df
                 .get_column(&r.values)
                 .and_then(|c| c.as_string(i))
                 .unwrap_or_default();
@@ -594,8 +866,11 @@ fn convert_radar_layer(r: &RadarLayer) -> SeriesOption {
                 .split(',')
                 .filter_map(|s| s.trim().parse::<f64>().ok())
                 .collect();
-            let name = r.data.get_column("name").and_then(|c| c.as_string(i));
-            RadarDataOption { value: values, name }
+            let name = df.get_column("name").and_then(|c| c.as_string(i));
+            RadarDataOption {
+                value: values,
+                name,
+            }
         })
         .collect();
 
@@ -606,11 +881,18 @@ fn convert_radar_layer(r: &RadarLayer) -> SeriesOption {
     SeriesOption::Radar(opt)
 }
 
-fn convert_polar_bar_layer(p: &PolarBarLayer) -> SeriesOption {
-    let data: Vec<DataPoint> = (0..p.data.row_count())
+fn convert_polar_bar_layer(p: &PolarBar, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&p.data, chart_data);
+    let data: Vec<DataPoint> = (0..df.row_count())
         .map(|i| {
-            let angle = p.data.get_column(&p.angle).and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let radius = p.data.get_column(&p.radius).and_then(|c| c.as_f64(i)).unwrap_or(0.0);
+            let angle = df
+                .get_column(&p.angle)
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            let radius = df
+                .get_column(&p.radius)
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
             DataPoint::XY(angle, radius)
         })
         .collect();
@@ -622,11 +904,18 @@ fn convert_polar_bar_layer(p: &PolarBarLayer) -> SeriesOption {
     SeriesOption::PolarBar(opt)
 }
 
-fn convert_polar_scatter_layer(p: &PolarScatterLayer) -> SeriesOption {
-    let data: Vec<PolarScatterDataPoint> = (0..p.data.row_count())
+fn convert_polar_scatter_layer(p: &PolarScatter, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&p.data, chart_data);
+    let data: Vec<PolarScatterDataPoint> = (0..df.row_count())
         .map(|i| {
-            let angle = p.data.get_column(&p.angle).and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let radius = p.data.get_column(&p.radius).and_then(|c| c.as_f64(i)).unwrap_or(0.0);
+            let angle = df
+                .get_column(&p.angle)
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            let radius = df
+                .get_column(&p.radius)
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
             PolarScatterDataPoint {
                 angle,
                 radius,
@@ -643,11 +932,15 @@ fn convert_polar_scatter_layer(p: &PolarScatterLayer) -> SeriesOption {
     SeriesOption::PolarScatter(opt)
 }
 
-fn convert_gauge_layer(g: &GaugeLayer) -> SeriesOption {
-    let data: Vec<GaugeDataPoint> = (0..g.data.row_count())
+fn convert_gauge_layer(g: &Gauge, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&g.data, chart_data);
+    let data: Vec<GaugeDataPoint> = (0..df.row_count())
         .map(|i| {
-            let value = g.data.get_column(&g.value).and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let name = g.data.get_column("name").and_then(|c| c.as_string(i));
+            let value = df
+                .get_column(&g.value)
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            let name = df.get_column("name").and_then(|c| c.as_string(i));
             GaugeDataPoint { value, name }
         })
         .collect();
@@ -666,17 +959,18 @@ fn convert_gauge_layer(g: &GaugeLayer) -> SeriesOption {
     SeriesOption::Gauge(opt)
 }
 
-fn convert_table_layer(t: &TableLayer) -> SeriesOption {
+fn convert_table_layer(t: &Table, chart_data: Option<&DataFrame>) -> SeriesOption {
+    let df = resolve_data(&t.data, chart_data);
     // Convert DataFrame to a grid of strings for the table renderer
-    let col_names: Vec<String> = t.data.column_names().to_vec();
-    let row_count = t.data.row_count();
+    let col_names: Vec<String> = df.column_names().to_vec();
+    let row_count = df.row_count();
 
     let mut grid_data: Vec<Vec<serde_json::Value>> = Vec::new();
 
     for i in 0..row_count {
         let mut row = Vec::new();
         for col_name in &col_names {
-            let val = t.data.get_column(col_name).and_then(|c| c.as_string(i));
+            let val = df.get_column(col_name).and_then(|c| c.as_string(i));
             let json_val: serde_json::Value = val
                 .map(|s| {
                     // Try to parse as number first
@@ -747,38 +1041,22 @@ fn extract_category_names(_option: &ChartOption, series: &SeriesOption) -> Optio
         })
         .collect();
 
-    if names.is_empty() {
-        None
-    } else {
-        Some(names)
-    }
+    if names.is_empty() { None } else { Some(names) }
 }
 
 // ── From impls for Into<LayerSpec> ──
 
-impl From<LineLayer> for LayerSpec {
-    fn from(l: LineLayer) -> Self {
-        LayerSpec::Line(l)
-    }
-}
-
-impl From<BarLayer> for LayerSpec {
-    fn from(b: BarLayer) -> Self {
-        LayerSpec::Bar(b)
-    }
-}
-
-impl From<PieLayer> for LayerSpec {
-    fn from(p: PieLayer) -> Self {
-        LayerSpec::Pie(p)
-    }
-}
-
-impl From<ScatterLayer> for LayerSpec {
-    fn from(s: ScatterLayer) -> Self {
-        LayerSpec::Scatter(s)
-    }
-}
+impl_from_layer!(Line, Line);
+impl_from_layer!(Bar, Bar);
+impl_from_layer!(Pie, Pie);
+impl_from_layer!(Scatter, Scatter);
+impl_from_layer!(Bubble, Bubble);
+impl_from_layer!(Candlestick, Candlestick);
+impl_from_layer!(Radar, Radar);
+impl_from_layer!(PolarBar, PolarBar);
+impl_from_layer!(PolarScatter, PolarScatter);
+impl_from_layer!(Gauge, Gauge);
+impl_from_layer!(Table, Table);
 
 // ── Into<Title> for &str ──
 

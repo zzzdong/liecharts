@@ -1,64 +1,24 @@
-use liecharts::{
-    RadarDataOption, RadarIndicatorOption, RadarOption, RadarSeriesOption, prelude::*,
-};
+use liecharts::api::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ChartBuilder::new()
-        .with_title(liecharts::TitleOption {
-            text: Some("产品能力雷达图".to_string()),
-            subtext: Some("多维度对比分析".to_string()),
-            ..Default::default()
-        })
-        .with_legend(liecharts::LegendOption {
-            show: Some(true),
-            data: Some(vec!["产品A".to_string(), "产品B".to_string()]),
-            ..Default::default()
-        })
-        .with_radar(RadarOption {
-            indicator: Some(vec![
-                RadarIndicatorOption {
-                    name: Some("销量".to_string()),
-                    max: Some(100.0),
-                },
-                RadarIndicatorOption {
-                    name: Some("品牌".to_string()),
-                    max: Some(100.0),
-                },
-                RadarIndicatorOption {
-                    name: Some("增长".to_string()),
-                    max: Some(100.0),
-                },
-                RadarIndicatorOption {
-                    name: Some("满意度".to_string()),
-                    max: Some(100.0),
-                },
-                RadarIndicatorOption {
-                    name: Some("市占".to_string()),
-                    max: Some(100.0),
-                },
-            ]),
-            center: Some(vec!["50%".to_string(), "55%".to_string()]),
-            radius: Some(vec!["0%".to_string(), "65%".to_string()]),
-            split_number: Some(5),
-            ..Default::default()
-        })
-        .with_series(SeriesOption::Radar(RadarSeriesOption {
-            name: Some("产品A".to_string()),
-            data: vec![RadarDataOption {
-                value: vec![95.0, 80.0, 75.0, 90.0, 85.0],
-                name: Some("产品A".to_string()),
-            }],
-            ..Default::default()
-        }))
-        .with_series(SeriesOption::Radar(RadarSeriesOption {
-            name: Some("产品B".to_string()),
-            data: vec![RadarDataOption {
-                value: vec![70.0, 95.0, 90.0, 75.0, 60.0],
-                name: Some("产品B".to_string()),
-            }],
-            ..Default::default()
-        }))
-        .build(800, 600)?
+    Chart::new(800, 600)
+        .title(Title::new("产品能力雷达图").subtext("多维度对比分析"))
+        .legend(Legend::new().data(["产品A", "产品B"]))
+        .add_radar(
+            Radar::new(vec![
+                "销量".into(),
+                "品牌".into(),
+                "增长".into(),
+                "满意度".into(),
+                "市占".into(),
+            ])
+            .data(dataframe!(
+                "name" => ["产品A", "产品B"],
+                "value" => ["95,80,75,90,85", "70,95,90,75,60"],
+            ))
+            .name("产品A")
+            .values("value"),
+        )
         .render_to_svg("radar.svg")?;
     println!("雷达图已保存到 radar.svg");
 

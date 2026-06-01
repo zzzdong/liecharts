@@ -1,70 +1,81 @@
-use liecharts::prelude::*;
+use liecharts::api::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let chart = ChartBuilder::new()
-        .with_title(TitleOption::new("多子图展示").subtext("Multi Grid Example"))
-        .with_grid(
-            GridOption::default()
-                .left(PositionOption::percent(3.0))
-                .top(PositionOption::percent(15.0))
-                .right(PositionOption::percent(52.0))
-                .bottom(PositionOption::percent(52.0)),
+    Chart::new(1000, 800)
+        .title(Title::new("多子图展示").subtext("Multi Grid Example"))
+        .grid(
+            Grid::new()
+                .left(Position::pct(3.0))
+                .top(Position::pct(15.0))
+                .right(Position::pct(52.0))
+                .bottom(Position::pct(52.0)),
         )
-        .with_grid(
-            GridOption::default()
-                .left(PositionOption::percent(52.0))
-                .top(PositionOption::percent(15.0))
-                .right(PositionOption::percent(3.0))
-                .bottom(PositionOption::percent(52.0)),
+        .grid(
+            Grid::new()
+                .left(Position::pct(52.0))
+                .top(Position::pct(15.0))
+                .right(Position::pct(3.0))
+                .bottom(Position::pct(52.0)),
         )
-        .with_grid(
-            GridOption::default()
-                .left(PositionOption::percent(3.0))
-                .top(PositionOption::percent(52.0))
-                .right(PositionOption::percent(3.0))
-                .bottom(PositionOption::percent(3.0)),
+        .grid(
+            Grid::new()
+                .left(Position::pct(3.0))
+                .top(Position::pct(52.0))
+                .right(Position::pct(3.0))
+                .bottom(Position::pct(3.0)),
         )
-        .with_x_axis(
-            AxisOption::category()
-                .grid_index(0)
-                .data(["1月", "2月", "3月", "4月", "5月", "6月"]),
+        .x_axis(
+            Axis::category()
+                .data(["1月", "2月", "3月", "4月", "5月", "6月"])
+                .grid_index(0),
         )
-        .with_x_axis(
-            AxisOption::category()
-                .grid_index(1)
-                .data(["1月", "2月", "3月", "4月", "5月", "6月"]),
+        .x_axis(
+            Axis::category()
+                .data(["1月", "2月", "3月", "4月", "5月", "6月"])
+                .grid_index(1),
         )
-        .with_x_axis(
-            AxisOption::category()
-                .grid_index(2)
-                .data(["1月", "2月", "3月", "4月", "5月", "6月"]),
+        .x_axis(
+            Axis::category()
+                .data(["1月", "2月", "3月", "4月", "5月", "6月"])
+                .grid_index(2),
         )
-        .with_y_axis(AxisOption::value().grid_index(0))
-        .with_y_axis(AxisOption::value().grid_index(1))
-        .with_y_axis(AxisOption::value().grid_index(2))
-        .with_series(SeriesOption::Bar(liecharts::BarSeriesOption {
-            grid_index: Some(0),
-            ..liecharts::BarSeriesOption::new(
-                "子图1-柱状图",
-                vec![120.0, 200.0, 150.0, 80.0, 70.0, 110.0],
-            )
-        }))
-        .with_series(SeriesOption::Line(liecharts::LineSeriesOption {
-            grid_index: Some(1),
-            ..liecharts::LineSeriesOption::new(
-                "子图2-折线图",
-                vec![30.0, 50.0, 80.0, 120.0, 90.0, 60.0],
-            )
-        }))
-        .with_series(SeriesOption::Bar(liecharts::BarSeriesOption {
-            grid_index: Some(2),
-            ..liecharts::BarSeriesOption::new(
-                "子图3",
-                vec![200.0, 300.0, 250.0, 180.0, 220.0, 280.0],
-            )
-        }))
-        .build(1000, 800)?;
-    chart.render_to_svg("multi_grid.svg")?;
+        .y_axis(Axis::value().grid_index(0))
+        .y_axis(Axis::value().grid_index(1))
+        .y_axis(Axis::value().grid_index(2))
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "cat" => ["1月", "2月", "3月", "4月", "5月", "6月"],
+                    "val" => [120.0, 200.0, 150.0, 80.0, 70.0, 110.0],
+                ))
+                .x("cat")
+                .y("val")
+                .name("子图1-柱状图")
+                .grid_index(0),
+        )
+        .add_line(
+            Line::new()
+                .data(dataframe!(
+                    "cat" => ["1月", "2月", "3月", "4月", "5月", "6月"],
+                    "val" => [30.0, 50.0, 80.0, 120.0, 90.0, 60.0],
+                ))
+                .x("cat")
+                .y("val")
+                .name("子图2-折线图")
+                .grid_index(1),
+        )
+        .add_bar(
+            Bar::new()
+                .data(dataframe!(
+                    "cat" => ["1月", "2月", "3月", "4月", "5月", "6月"],
+                    "val" => [200.0, 300.0, 250.0, 180.0, 220.0, 280.0],
+                ))
+                .x("cat")
+                .y("val")
+                .name("子图3")
+                .grid_index(2),
+        )
+        .render_to_svg("multi_grid.svg")?;
     println!("多子图已保存到 multi_grid.svg");
 
     Ok(())

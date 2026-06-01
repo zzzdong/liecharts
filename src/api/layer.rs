@@ -1,36 +1,40 @@
-use crate::{
-    pipeline::dataframe::DataFrame,
-    visual::Color,
-};
+use crate::{pipeline::dataframe::DataFrame, visual::Color};
 
 /// A chart layer that maps a DataFrame to visual elements.
-///
-/// Each layer represents one visual series (line, bar, pie, etc.)
-/// with a DataFrame and column name mappings.
 #[derive(Debug, Clone)]
 pub enum LayerSpec {
-    Line(LineLayer),
-    Bar(BarLayer),
-    Pie(PieLayer),
-    Scatter(ScatterLayer),
-    Bubble(BubbleLayer),
-    Candlestick(CandlestickLayer),
-    Radar(RadarLayer),
-    PolarBar(PolarBarLayer),
-    PolarScatter(PolarScatterLayer),
-    Gauge(GaugeLayer),
-    Table(TableLayer),
+    Line(Line),
+    Bar(Bar),
+    Pie(Pie),
+    Scatter(Scatter),
+    Bubble(Bubble),
+    Candlestick(Candlestick),
+    Radar(Radar),
+    PolarBar(PolarBar),
+    PolarScatter(PolarScatter),
+    Gauge(Gauge),
+    Table(Table),
 }
 
-// ──────────────────────────────────────────────
-// LineLayer
-// ──────────────────────────────────────────────
+impl LayerSpec {
+    pub fn set_grid_index(&mut self, idx: usize) {
+        match self {
+            LayerSpec::Line(l) => l.grid_index = idx,
+            LayerSpec::Bar(l) => l.grid_index = idx,
+            LayerSpec::Scatter(l) => l.grid_index = idx,
+            LayerSpec::Bubble(l) => l.grid_index = idx,
+            LayerSpec::Candlestick(l) => l.grid_index = idx,
+            _ => {}
+        }
+    }
+}
 
-/// A line chart layer.
+// ── Line ──
+
 #[derive(Debug, Clone)]
-pub struct LineLayer {
+pub struct Line {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub x: String,
     pub y: String,
     pub smooth: bool,
@@ -43,89 +47,36 @@ pub struct LineLayer {
     pub grid_index: usize,
 }
 
-impl LineLayer {
-    pub fn new(data: DataFrame) -> Self {
+impl Line {
+    pub fn new() -> Self {
         Self {
-            name: String::new(),
-            data,
-            x: "x".into(),
-            y: "y".into(),
-            smooth: false,
-            stack: None,
-            symbol: SymbolType::Circle,
-            symbol_size: 4.0,
-            area: false,
-            color: None,
-            y_axis_index: 0,
-            grid_index: 0,
+            name: String::new(), data: None, x: "x".into(), y: "y".into(),
+            smooth: false, stack: None, symbol: SymbolType::Circle, symbol_size: 4.0,
+            area: false, color: None, y_axis_index: 0, grid_index: 0,
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn x(mut self, col: impl Into<String>) -> Self {
-        self.x = col.into();
-        self
-    }
-
-    pub fn y(mut self, col: impl Into<String>) -> Self {
-        self.y = col.into();
-        self
-    }
-
-    pub fn smooth(mut self, val: bool) -> Self {
-        self.smooth = val;
-        self
-    }
-
-    pub fn stack(mut self, name: impl Into<String>) -> Self {
-        self.stack = Some(name.into());
-        self
-    }
-
-    pub fn symbol(mut self, symbol: SymbolType) -> Self {
-        self.symbol = symbol;
-        self
-    }
-
-    pub fn symbol_size(mut self, size: f64) -> Self {
-        self.symbol_size = size;
-        self
-    }
-
-    pub fn area(mut self, val: bool) -> Self {
-        self.area = val;
-        self
-    }
-
-    pub fn color(mut self, color: Color) -> Self {
-        self.color = Some(color);
-        self
-    }
-
-    pub fn y_axis_index(mut self, idx: usize) -> Self {
-        self.y_axis_index = idx;
-        self
-    }
-
-    pub fn grid_index(mut self, idx: usize) -> Self {
-        self.grid_index = idx;
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn x(mut self, col: impl Into<String>) -> Self { self.x = col.into(); self }
+    pub fn y(mut self, col: impl Into<String>) -> Self { self.y = col.into(); self }
+    pub fn smooth(mut self, val: bool) -> Self { self.smooth = val; self }
+    pub fn stack(mut self, name: impl Into<String>) -> Self { self.stack = Some(name.into()); self }
+    pub fn symbol(mut self, symbol: SymbolType) -> Self { self.symbol = symbol; self }
+    pub fn symbol_size(mut self, size: f64) -> Self { self.symbol_size = size; self }
+    pub fn area(mut self, val: bool) -> Self { self.area = val; self }
+    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
+    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
+    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
 }
 
-// ──────────────────────────────────────────────
-// BarLayer
-// ──────────────────────────────────────────────
+impl Default for Line { fn default() -> Self { Self::new() } }
 
-/// A bar/column chart layer.
+// ── Bar ──
+
 #[derive(Debug, Clone)]
-pub struct BarLayer {
+pub struct Bar {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub x: String,
     pub y: String,
     pub stack: Option<String>,
@@ -135,124 +86,62 @@ pub struct BarLayer {
     pub grid_index: usize,
 }
 
-impl BarLayer {
-    pub fn new(data: DataFrame) -> Self {
+impl Bar {
+    pub fn new() -> Self {
         Self {
-            name: String::new(),
-            data,
-            x: "x".into(),
-            y: "y".into(),
-            stack: None,
-            group_index: None,
-            color: None,
-            y_axis_index: 0,
-            grid_index: 0,
+            name: String::new(), data: None, x: "x".into(), y: "y".into(),
+            stack: None, group_index: None, color: None, y_axis_index: 0, grid_index: 0,
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn x(mut self, col: impl Into<String>) -> Self {
-        self.x = col.into();
-        self
-    }
-
-    pub fn y(mut self, col: impl Into<String>) -> Self {
-        self.y = col.into();
-        self
-    }
-
-    pub fn stack(mut self, name: impl Into<String>) -> Self {
-        self.stack = Some(name.into());
-        self
-    }
-
-    pub fn group_index(mut self, idx: usize) -> Self {
-        self.group_index = Some(idx);
-        self
-    }
-
-    pub fn color(mut self, color: Color) -> Self {
-        self.color = Some(color);
-        self
-    }
-
-    pub fn y_axis_index(mut self, idx: usize) -> Self {
-        self.y_axis_index = idx;
-        self
-    }
-
-    pub fn grid_index(mut self, idx: usize) -> Self {
-        self.grid_index = idx;
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn x(mut self, col: impl Into<String>) -> Self { self.x = col.into(); self }
+    pub fn y(mut self, col: impl Into<String>) -> Self { self.y = col.into(); self }
+    pub fn stack(mut self, name: impl Into<String>) -> Self { self.stack = Some(name.into()); self }
+    pub fn group_index(mut self, idx: usize) -> Self { self.group_index = Some(idx); self }
+    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
+    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
+    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
 }
 
-// ──────────────────────────────────────────────
-// PieLayer
-// ──────────────────────────────────────────────
+impl Default for Bar { fn default() -> Self { Self::new() } }
 
-/// A pie/doughnut chart layer.
+// ── Pie ──
+
 #[derive(Debug, Clone)]
-pub struct PieLayer {
+pub struct Pie {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub category: String,
     pub value: String,
     pub radius: (f64, f64),
     pub center: (f64, f64),
 }
 
-impl PieLayer {
-    pub fn new(data: DataFrame) -> Self {
+impl Pie {
+    pub fn new() -> Self {
         Self {
-            name: String::new(),
-            data,
-            category: "category".into(),
-            value: "value".into(),
-            radius: (0.0, 75.0),
-            center: (50.0, 50.0),
+            name: String::new(), data: None,
+            category: "category".into(), value: "value".into(),
+            radius: (0.0, 75.0), center: (50.0, 50.0),
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn category(mut self, col: impl Into<String>) -> Self {
-        self.category = col.into();
-        self
-    }
-
-    pub fn value(mut self, col: impl Into<String>) -> Self {
-        self.value = col.into();
-        self
-    }
-
-    pub fn radius(mut self, inner: f64, outer: f64) -> Self {
-        self.radius = (inner, outer);
-        self
-    }
-
-    pub fn center(mut self, x: f64, y: f64) -> Self {
-        self.center = (x, y);
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn category(mut self, col: impl Into<String>) -> Self { self.category = col.into(); self }
+    pub fn value(mut self, col: impl Into<String>) -> Self { self.value = col.into(); self }
+    pub fn radius(mut self, inner: f64, outer: f64) -> Self { self.radius = (inner, outer); self }
+    pub fn center(mut self, x: f64, y: f64) -> Self { self.center = (x, y); self }
 }
 
-// ──────────────────────────────────────────────
-// ScatterLayer
-// ──────────────────────────────────────────────
+impl Default for Pie { fn default() -> Self { Self::new() } }
 
-/// A scatter chart layer.
+// ── Scatter ──
+
 #[derive(Debug, Clone)]
-pub struct ScatterLayer {
+pub struct Scatter {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub x: String,
     pub y: String,
     pub symbol_size: f64,
@@ -261,65 +150,31 @@ pub struct ScatterLayer {
     pub grid_index: usize,
 }
 
-impl ScatterLayer {
-    pub fn new(data: DataFrame) -> Self {
+impl Scatter {
+    pub fn new() -> Self {
         Self {
-            name: String::new(),
-            data,
-            x: "x".into(),
-            y: "y".into(),
-            symbol_size: 10.0,
-            color: None,
-            y_axis_index: 0,
-            grid_index: 0,
+            name: String::new(), data: None, x: "x".into(), y: "y".into(),
+            symbol_size: 10.0, color: None, y_axis_index: 0, grid_index: 0,
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn x(mut self, col: impl Into<String>) -> Self {
-        self.x = col.into();
-        self
-    }
-
-    pub fn y(mut self, col: impl Into<String>) -> Self {
-        self.y = col.into();
-        self
-    }
-
-    pub fn symbol_size(mut self, size: f64) -> Self {
-        self.symbol_size = size;
-        self
-    }
-
-    pub fn color(mut self, color: Color) -> Self {
-        self.color = Some(color);
-        self
-    }
-
-    pub fn y_axis_index(mut self, idx: usize) -> Self {
-        self.y_axis_index = idx;
-        self
-    }
-
-    pub fn grid_index(mut self, idx: usize) -> Self {
-        self.grid_index = idx;
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn x(mut self, col: impl Into<String>) -> Self { self.x = col.into(); self }
+    pub fn y(mut self, col: impl Into<String>) -> Self { self.y = col.into(); self }
+    pub fn symbol_size(mut self, size: f64) -> Self { self.symbol_size = size; self }
+    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
+    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
+    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
 }
 
-// ──────────────────────────────────────────────
-// BubbleLayer
-// ──────────────────────────────────────────────
+impl Default for Scatter { fn default() -> Self { Self::new() } }
 
-/// A bubble chart layer.
+// ── Bubble ──
+
 #[derive(Debug, Clone)]
-pub struct BubbleLayer {
+pub struct Bubble {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub name_col: Option<String>,
     pub color: Option<Color>,
     pub symbol_size_scale: f64,
@@ -327,62 +182,30 @@ pub struct BubbleLayer {
     pub grid_index: usize,
 }
 
-impl BubbleLayer {
-    pub fn new(data: DataFrame) -> Self {
+impl Bubble {
+    pub fn new() -> Self {
         Self {
-            name: String::new(),
-            data,
-            name_col: None,
-            color: None,
-            symbol_size_scale: 1.0,
-            y_axis_index: 0,
-            grid_index: 0,
+            name: String::new(), data: None, name_col: None,
+            color: None, symbol_size_scale: 1.0, y_axis_index: 0, grid_index: 0,
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn name_col(mut self, col: impl Into<String>) -> Self {
-        self.name_col = Some(col.into());
-        self
-    }
-
-    pub fn color(mut self, color: Color) -> Self {
-        self.color = Some(color);
-        self
-    }
-
-    pub fn symbol_size_scale(mut self, scale: f64) -> Self {
-        self.symbol_size_scale = scale;
-        self
-    }
-
-    pub fn y_axis_index(mut self, idx: usize) -> Self {
-        self.y_axis_index = idx;
-        self
-    }
-
-    pub fn grid_index(mut self, idx: usize) -> Self {
-        self.grid_index = idx;
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn name_col(mut self, col: impl Into<String>) -> Self { self.name_col = Some(col.into()); self }
+    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
+    pub fn symbol_size_scale(mut self, scale: f64) -> Self { self.symbol_size_scale = scale; self }
+    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
+    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
 }
 
-// ──────────────────────────────────────────────
-// CandlestickLayer
-// ──────────────────────────────────────────────
+impl Default for Bubble { fn default() -> Self { Self::new() } }
 
-/// A candlestick (K-line) chart layer.
-///
-/// The DataFrame must have columns for open, close, low, high values,
-/// and optionally a name/category column.
+// ── Candlestick ──
+
 #[derive(Debug, Clone)]
-pub struct CandlestickLayer {
+pub struct Candlestick {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub category: String,
     pub open: String,
     pub close: String,
@@ -392,115 +215,57 @@ pub struct CandlestickLayer {
     pub grid_index: usize,
 }
 
-impl CandlestickLayer {
-    pub fn new(data: DataFrame) -> Self {
+impl Candlestick {
+    pub fn new() -> Self {
         Self {
-            name: String::new(),
-            data,
-            category: "category".into(),
-            open: "open".into(),
-            close: "close".into(),
-            low: "low".into(),
-            high: "high".into(),
-            y_axis_index: 0,
-            grid_index: 0,
+            name: String::new(), data: None,
+            category: "category".into(), open: "open".into(), close: "close".into(),
+            low: "low".into(), high: "high".into(), y_axis_index: 0, grid_index: 0,
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn category(mut self, col: impl Into<String>) -> Self {
-        self.category = col.into();
-        self
-    }
-
-    pub fn open(mut self, col: impl Into<String>) -> Self {
-        self.open = col.into();
-        self
-    }
-
-    pub fn close(mut self, col: impl Into<String>) -> Self {
-        self.close = col.into();
-        self
-    }
-
-    pub fn low(mut self, col: impl Into<String>) -> Self {
-        self.low = col.into();
-        self
-    }
-
-    pub fn high(mut self, col: impl Into<String>) -> Self {
-        self.high = col.into();
-        self
-    }
-
-    pub fn y_axis_index(mut self, idx: usize) -> Self {
-        self.y_axis_index = idx;
-        self
-    }
-
-    pub fn grid_index(mut self, idx: usize) -> Self {
-        self.grid_index = idx;
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn category(mut self, col: impl Into<String>) -> Self { self.category = col.into(); self }
+    pub fn open(mut self, col: impl Into<String>) -> Self { self.open = col.into(); self }
+    pub fn close(mut self, col: impl Into<String>) -> Self { self.close = col.into(); self }
+    pub fn low(mut self, col: impl Into<String>) -> Self { self.low = col.into(); self }
+    pub fn high(mut self, col: impl Into<String>) -> Self { self.high = col.into(); self }
+    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
+    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
 }
 
-// ──────────────────────────────────────────────
-// RadarLayer
-// ──────────────────────────────────────────────
+impl Default for Candlestick { fn default() -> Self { Self::new() } }
 
-/// A radar chart layer.
-///
-/// The DataFrame must contain a column with comma-separated values (one per indicator),
-/// or a `values` column of type `Vec<f64>`.
+// ── Radar ──
+
 #[derive(Debug, Clone)]
-pub struct RadarLayer {
+pub struct Radar {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub values: String,
     pub indicators: Vec<String>,
     pub color: Option<Color>,
 }
 
-impl RadarLayer {
-    pub fn new(data: DataFrame, indicators: Vec<String>) -> Self {
+impl Radar {
+    pub fn new(indicators: Vec<String>) -> Self {
         Self {
-            name: String::new(),
-            data,
-            values: "value".into(),
-            indicators,
-            color: None,
+            name: String::new(), data: None,
+            values: "value".into(), indicators, color: None,
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn values(mut self, col: impl Into<String>) -> Self {
-        self.values = col.into();
-        self
-    }
-
-    pub fn color(mut self, color: Color) -> Self {
-        self.color = Some(color);
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn values(mut self, col: impl Into<String>) -> Self { self.values = col.into(); self }
+    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
 }
 
-// ──────────────────────────────────────────────
-// PolarBarLayer
-// ──────────────────────────────────────────────
+// ── PolarBar ──
 
-/// A polar bar chart layer.
 #[derive(Debug, Clone)]
-pub struct PolarBarLayer {
+pub struct PolarBar {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub angle: String,
     pub radius: String,
     pub color: Option<Vec<Color>>,
@@ -508,100 +273,57 @@ pub struct PolarBarLayer {
     pub start_angle: f64,
 }
 
-impl PolarBarLayer {
-    pub fn new(data: DataFrame) -> Self {
+impl PolarBar {
+    pub fn new() -> Self {
         Self {
-            name: String::new(),
-            data,
-            angle: "angle".into(),
-            radius: "radius".into(),
-            color: None,
-            pad_angle: 2.0,
-            start_angle: 0.0,
+            name: String::new(), data: None,
+            angle: "angle".into(), radius: "radius".into(),
+            color: None, pad_angle: 2.0, start_angle: 0.0,
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn angle(mut self, col: impl Into<String>) -> Self {
-        self.angle = col.into();
-        self
-    }
-
-    pub fn radius(mut self, col: impl Into<String>) -> Self {
-        self.radius = col.into();
-        self
-    }
-
-    pub fn pad_angle(mut self, angle: f64) -> Self {
-        self.pad_angle = angle;
-        self
-    }
-
-    pub fn start_angle(mut self, angle: f64) -> Self {
-        self.start_angle = angle;
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn angle(mut self, col: impl Into<String>) -> Self { self.angle = col.into(); self }
+    pub fn radius(mut self, col: impl Into<String>) -> Self { self.radius = col.into(); self }
+    pub fn pad_angle(mut self, angle: f64) -> Self { self.pad_angle = angle; self }
+    pub fn start_angle(mut self, angle: f64) -> Self { self.start_angle = angle; self }
 }
 
-// ──────────────────────────────────────────────
-// PolarScatterLayer
-// ──────────────────────────────────────────────
+impl Default for PolarBar { fn default() -> Self { Self::new() } }
 
-/// A polar scatter chart layer.
+// ── PolarScatter ──
+
 #[derive(Debug, Clone)]
-pub struct PolarScatterLayer {
+pub struct PolarScatter {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub angle: String,
     pub radius: String,
     pub symbol_size: Option<f64>,
 }
 
-impl PolarScatterLayer {
-    pub fn new(data: DataFrame) -> Self {
+impl PolarScatter {
+    pub fn new() -> Self {
         Self {
-            name: String::new(),
-            data,
-            angle: "angle".into(),
-            radius: "radius".into(),
-            symbol_size: None,
+            name: String::new(), data: None,
+            angle: "angle".into(), radius: "radius".into(), symbol_size: None,
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn angle(mut self, col: impl Into<String>) -> Self {
-        self.angle = col.into();
-        self
-    }
-
-    pub fn radius(mut self, col: impl Into<String>) -> Self {
-        self.radius = col.into();
-        self
-    }
-
-    pub fn symbol_size(mut self, size: f64) -> Self {
-        self.symbol_size = Some(size);
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn angle(mut self, col: impl Into<String>) -> Self { self.angle = col.into(); self }
+    pub fn radius(mut self, col: impl Into<String>) -> Self { self.radius = col.into(); self }
+    pub fn symbol_size(mut self, size: f64) -> Self { self.symbol_size = Some(size); self }
 }
 
-// ──────────────────────────────────────────────
-// GaugeLayer
-// ──────────────────────────────────────────────
+impl Default for PolarScatter { fn default() -> Self { Self::new() } }
 
-/// A gauge chart layer.
+// ── Gauge ──
+
 #[derive(Debug, Clone)]
-pub struct GaugeLayer {
+pub struct Gauge {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
     pub value: String,
     pub min: f64,
     pub max: f64,
@@ -612,99 +334,47 @@ pub struct GaugeLayer {
     pub split_number: usize,
 }
 
-impl GaugeLayer {
-    pub fn new(data: DataFrame) -> Self {
+impl Gauge {
+    pub fn new() -> Self {
         Self {
-            name: String::new(),
-            data,
-            value: "value".into(),
-            min: 0.0,
-            max: 100.0,
-            center: (50.0, 50.0),
-            radius: 75.0,
-            start_angle: -225.0,
-            end_angle: 45.0,
-            split_number: 10,
+            name: String::new(), data: None, value: "value".into(),
+            min: 0.0, max: 100.0, center: (50.0, 75.0), radius: 75.0,
+            start_angle: -225.0, end_angle: 45.0, split_number: 10,
         }
     }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
-
-    pub fn value(mut self, col: impl Into<String>) -> Self {
-        self.value = col.into();
-        self
-    }
-
-    pub fn min(mut self, val: f64) -> Self {
-        self.min = val;
-        self
-    }
-
-    pub fn max(mut self, val: f64) -> Self {
-        self.max = val;
-        self
-    }
-
-    pub fn range(mut self, min: f64, max: f64) -> Self {
-        self.min = min;
-        self.max = max;
-        self
-    }
-
-    pub fn center(mut self, x: f64, y: f64) -> Self {
-        self.center = (x, y);
-        self
-    }
-
-    pub fn radius(mut self, r: f64) -> Self {
-        self.radius = r;
-        self
-    }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn value(mut self, col: impl Into<String>) -> Self { self.value = col.into(); self }
+    pub fn min(mut self, val: f64) -> Self { self.min = val; self }
+    pub fn max(mut self, val: f64) -> Self { self.max = val; self }
+    pub fn range(mut self, min: f64, max: f64) -> Self { self.min = min; self.max = max; self }
+    pub fn center(mut self, x: f64, y: f64) -> Self { self.center = (x, y); self }
+    pub fn radius(mut self, r: f64) -> Self { self.radius = r; self }
 }
 
-// ──────────────────────────────────────────────
-// TableLayer
-// ──────────────────────────────────────────────
+impl Default for Gauge { fn default() -> Self { Self::new() } }
 
-/// A table layer.
+// ── Table ──
+
 #[derive(Debug, Clone)]
-pub struct TableLayer {
+pub struct Table {
     pub name: String,
-    pub data: DataFrame,
+    pub data: Option<DataFrame>,
 }
 
-impl TableLayer {
-    pub fn new(data: DataFrame) -> Self {
-        Self {
-            name: String::new(),
-            data,
-        }
-    }
-
-    pub fn name(mut self, name: impl Into<String>) -> Self {
-        self.name = name.into();
-        self
-    }
+impl Table {
+    pub fn new() -> Self { Self { name: String::new(), data: None } }
+    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
+    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
 }
 
-// ──────────────────────────────────────────────
-// Shared enums
-// ──────────────────────────────────────────────
+impl Default for Table { fn default() -> Self { Self::new() } }
 
-/// Symbol/marker type for data points.
+// ── SymbolType ──
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SymbolType {
-    Circle,
-    Rect,
-    RoundRect,
-    Triangle,
-    Diamond,
-    Pin,
-    Arrow,
-    None,
+    Circle, Rect, RoundRect, Triangle, Diamond, Pin, Arrow, None,
 }
 
 impl From<SymbolType> for crate::option::SymbolType {
@@ -721,3 +391,16 @@ impl From<SymbolType> for crate::option::SymbolType {
         }
     }
 }
+
+// ── Backward-compatible aliases ──
+pub type LineLayer = Line;
+pub type BarLayer = Bar;
+pub type PieLayer = Pie;
+pub type ScatterLayer = Scatter;
+pub type BubbleLayer = Bubble;
+pub type CandlestickLayer = Candlestick;
+pub type RadarLayer = Radar;
+pub type PolarBarLayer = PolarBar;
+pub type PolarScatterLayer = PolarScatter;
+pub type GaugeLayer = Gauge;
+pub type TableLayer = Table;

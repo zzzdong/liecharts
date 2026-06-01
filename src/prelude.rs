@@ -46,15 +46,3 @@ pub use crate::{
     Theme,
     TitleOption,
 };
-
-/// Prelude for the DataFrame-centric API.
-///
-/// Use `use liecharts::prelude::api::*;` for the new API types.
-pub mod api {
-    pub use crate::api::{
-        Axis, AxisPosition, AxisType, BarLayer, BubbleLayer, CandlestickLayer, Chart, GaugeLayer,
-        Grid, LayerSpec, Legend, LineLayer, Orient, PieLayer, PolarBarLayer, PolarScatterLayer,
-        Position, RadarLayer, ScatterLayer, SymbolType, TableLayer, Title,
-    };
-    pub use crate::dataframe;
-}

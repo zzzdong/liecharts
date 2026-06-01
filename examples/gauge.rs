@@ -1,25 +1,20 @@
-use liecharts::{GaugeDataPoint, prelude::*};
+use liecharts::api::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ChartBuilder::new()
-        .with_title(liecharts::TitleOption {
-            text: Some("任务完成率".to_string()),
-            subtext: Some("Gauge Chart".to_string()),
-            ..Default::default()
-        })
-        .with_series(SeriesOption::Gauge(liecharts::GaugeSeriesOption {
-            name: Some("完成率".to_string()),
-            data: vec![GaugeDataPoint {
-                value: 75.5,
-                name: Some("完成率".to_string()),
-            }],
-            min: Some(0.0),
-            max: Some(100.0),
-            radius: Some("75%".to_string()),
-            center: Some(vec!["50%".to_string(), "55%".to_string()]),
-            ..Default::default()
-        }))
-        .build(800, 600)?
+    Chart::new(800, 600)
+        .title(Title::new("任务完成率").subtext("Gauge Chart"))
+        .add_gauge(
+            Gauge::new()
+                .data(dataframe!(
+                    "name" => ["完成率"],
+                    "value" => [75.5],
+                ))
+                .name("完成率")
+                .value("value")
+                .range(0.0, 100.0)
+                .center(50.0, 55.0)
+                .radius(75.0),
+        )
         .render_to_svg("gauge.svg")?;
     println!("仪表盘已保存到 gauge.svg");
 

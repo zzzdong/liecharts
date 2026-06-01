@@ -6,7 +6,11 @@ pub struct SamplingProcessor;
 impl SamplingProcessor {
     /// 对 DataFrame 进行采样
     /// 假设 DataFrame 包含 'x' 和 'y' 列
-    pub fn sample(df: &DataFrame, threshold: usize, ty: crate::sampling::SamplingType) -> DataFrame {
+    pub fn sample(
+        df: &DataFrame,
+        threshold: usize,
+        ty: crate::sampling::SamplingType,
+    ) -> DataFrame {
         if df.row_count() <= threshold {
             return df.clone();
         }
@@ -38,7 +42,10 @@ impl SamplingProcessor {
         // 获取所有点的坐标
         let points: Vec<(f64, f64)> = (0..data_length)
             .map(|i| {
-                let x = df.get_column("x").and_then(|c| c.as_f64(i)).unwrap_or(i as f64);
+                let x = df
+                    .get_column("x")
+                    .and_then(|c| c.as_f64(i))
+                    .unwrap_or(i as f64);
                 let y = df.get_column("y").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
                 (x, y)
             })
@@ -54,12 +61,10 @@ impl SamplingProcessor {
             }
 
             // 计算当前桶的平均点
-            let avg_x = (bucket_start..bucket_end)
-                .map(|j| points[j].0)
-                .sum::<f64>() / (bucket_end - bucket_start) as f64;
-            let avg_y = (bucket_start..bucket_end)
-                .map(|j| points[j].1)
-                .sum::<f64>() / (bucket_end - bucket_start) as f64;
+            let avg_x = (bucket_start..bucket_end).map(|j| points[j].0).sum::<f64>()
+                / (bucket_end - bucket_start) as f64;
+            let avg_y = (bucket_start..bucket_end).map(|j| points[j].1).sum::<f64>()
+                / (bucket_end - bucket_start) as f64;
 
             // 上一个选中的点
             let last_idx = *sampled.last().unwrap();
@@ -75,7 +80,8 @@ impl SamplingProcessor {
                 let y = points[j].1;
 
                 // 计算三角形面积 (last, avg, current)
-                let area = ((last_x - avg_x) * (y - last_y) - (last_x - x) * (avg_y - last_y)).abs();
+                let area =
+                    ((last_x - avg_x) * (y - last_y) - (last_x - x) * (avg_y - last_y)).abs();
 
                 if area > max_area {
                     max_area = area;
