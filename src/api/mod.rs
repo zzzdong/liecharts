@@ -71,6 +71,8 @@ pub use chart::{
 };
 pub use layer::*;
 
+pub use crate::pipeline::dataframe::DataFrame;
+
 /// Macro to create a [`DataFrame`](crate::pipeline::dataframe::DataFrame) with a concise syntax.
 ///
 /// Each column is specified as `"name" => [val1, val2, ...]`.

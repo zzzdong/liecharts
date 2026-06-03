@@ -2,13 +2,14 @@ use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
     error::Result,
-    option::{AxisType, DataPoint, SeriesOption},
+    option::{DataPoint, SeriesOption},
     pipeline::{
         accessors::{CartesianGeometry, GroupInfo, StyleAccess},
         data_processor::{DataProcessor, DataProcessorInput},
         dataframe::{DataFrame, DataValue, Series},
         mapper::{CartesianMapper, CoordinateMapper},
         sampling::SamplingProcessor,
+        types::{AxisType, SeriesSpec},
     },
     visual::{
         FillStrokeStyle, Stroke, TextAlign, TextBaseline, VisualElement, Z_LABEL, Z_SERIES_FILL,
@@ -34,6 +35,23 @@ impl BarProcessor {
             DataPoint::Named(_, v) => *v,
             DataPoint::XY(_, y) => *y,
         }
+    }
+
+    /// 从 series_spec 获取 bar_width_ratio
+    fn get_bar_width(input: &DataProcessorInput) -> f64 {
+        input
+            .series_spec
+            .and_then(|s| s.bar_width)
+            .unwrap_or(0.6)
+    }
+
+    /// 检查是否为水平柱状图（Y轴为 Category 类型）
+    fn is_horizontal(input: &DataProcessorInput, series_spec: &SeriesSpec) -> bool {
+        input
+            .chart_spec
+            .and_then(|cs| cs.y_axes.get(series_spec.y_axis_index))
+            .map(|a| a.axis_type == AxisType::Category)
+            .unwrap_or(false)
     }
 }
 
@@ -82,19 +100,14 @@ impl DataProcessor for BarProcessor {
     }
 
     fn transform(&self, mut df: DataFrame, input: &DataProcessorInput) -> Result<DataFrame> {
-        let series = &input.option.series[input.series_idx];
-        let bar = match series {
-            SeriesOption::Bar(b) => b,
-            _ => {
-                return Err(crate::error::ChartError::DataError(
-                    "Expected Bar series".into(),
-                ));
-            }
-        };
+        // 获取 series_spec（当前路径下始终有值）
+        let series_spec = input.series_spec.as_ref().ok_or_else(|| {
+            crate::error::ChartError::DataError("BarProcessor: missing series_spec".into())
+        })?;
 
         // 应用采样（如果配置了）
-        if let Some(sampling) = &bar.sampling {
-            df = SamplingProcessor::sample(&df, sampling.threshold, sampling.ty);
+        if let Some((sampling_type, threshold)) = &series_spec.sampling {
+            df = SamplingProcessor::sample(&df, *threshold, *sampling_type);
         }
 
         if df.get_column("color").is_none() {
@@ -121,31 +134,14 @@ impl DataProcessor for BarProcessor {
             ));
         }
 
-        let series = &input.option.series[input.series_idx];
-        let bar_width_ratio = match series {
-            SeriesOption::Bar(b) => b
-                .bar_width
-                .as_ref()
-                .and_then(|bw| bw.strip_suffix('%'))
-                .and_then(|pct| pct.parse::<f64>().ok())
-                .map(|v| v / 100.0)
-                .unwrap_or(0.6),
-            _ => 0.6,
-        };
+        let bar_width_ratio = Self::get_bar_width(input);
         df.add_column(Series::new_constant(
             "bar_width_ratio",
             DataValue::Float(bar_width_ratio),
             df.row_count(),
         ));
 
-        let y_axis_idx = self.resolve_y_axis_idx(series, input);
-        let is_horizontal = input
-            .option
-            .y_axis
-            .get(y_axis_idx)
-            .and_then(|a| a.axis_type)
-            .map(|t| t == AxisType::Category)
-            .unwrap_or(false);
+        let is_horizontal = Self::is_horizontal(input, series_spec);
 
         if is_horizontal {
             let y_vals: Vec<DataValue> = (0..df.row_count())
@@ -162,14 +158,12 @@ impl DataProcessor for BarProcessor {
         Ok(df)
     }
 
-    fn resolve_y_axis_idx(&self, series: &SeriesOption, input: &DataProcessorInput) -> usize {
-        match series {
-            SeriesOption::Bar(b) => b
-                .y_axis_index
-                .or_else(|| input.spec.y_axis_indices.first().copied())
-                .unwrap_or(0),
-            _ => input.spec.y_axis_indices.first().copied().unwrap_or(0),
-        }
+    fn resolve_y_axis_idx(&self, _series: &SeriesOption, input: &DataProcessorInput) -> usize {
+        input
+            .series_spec
+            .map(|s| s.y_axis_index)
+            .or_else(|| input.spec.y_axis_indices.first().copied())
+            .unwrap_or(0)
     }
 
     fn mapper(&self) -> Box<dyn CoordinateMapper> {
@@ -181,6 +175,10 @@ impl DataProcessor for BarProcessor {
         df: &DataFrame,
         input: &DataProcessorInput,
     ) -> Result<Vec<VisualElement>> {
+        let series_spec = input.series_spec.as_ref().ok_or_else(|| {
+            crate::error::ChartError::DataError("BarProcessor: missing series_spec".into())
+        })?;
+
         let geom = CartesianGeometry::from_df(df)?;
         let group = GroupInfo::from_df(df);
         let style = StyleAccess::from_df(df, input.colors.get_default_color());
@@ -194,21 +192,8 @@ impl DataProcessor for BarProcessor {
         let spec = input.spec;
         let bounds = spec.bounds;
 
-        let y_axis_idx = {
-            let series = &input.option.series[input.series_idx];
-            match series {
-                SeriesOption::Bar(b) => b
-                    .y_axis_index
-                    .or_else(|| spec.y_axis_indices.first().copied())
-                    .unwrap_or(0),
-                _ => spec.y_axis_indices.first().copied().unwrap_or(0),
-            }
-        };
-        let y_axis_config = input.option.y_axis.get(y_axis_idx);
-        let is_horizontal = y_axis_config
-            .and_then(|a| a.axis_type)
-            .map(|t| t == AxisType::Category)
-            .unwrap_or(false);
+        let y_axis_idx = series_spec.y_axis_index;
+        let is_horizontal = Self::is_horizontal(input, series_spec);
 
         let y_range = input.axis_ranges.get_y_range(y_axis_idx);
         let (y_min, y_max) = y_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 100.0));
@@ -323,5 +308,72 @@ impl DataProcessor for BarProcessor {
 
         elements.extend(label_elements);
         Ok(elements)
+    }
+
+    /// 从 SeriesSpec 直接处理（跳过 to_dataframe，数据已在 DataFrame 中）
+    fn process_from_spec(
+        &self,
+        series: &SeriesSpec,
+        input: &DataProcessorInput,
+    ) -> Result<Vec<VisualElement>> {
+        let mut df = series.data.clone();
+
+        // 添加必要的计算列
+        // 应用采样（如果配置了）
+        if let Some((sampling_type, threshold)) = &series.sampling {
+            df = SamplingProcessor::sample(&df, *threshold, *sampling_type);
+        }
+
+        if df.get_column("color").is_none() {
+            let series_color = input.colors.get_series_color(input.series_idx);
+            df.add_column(Series::new_constant(
+                "color",
+                DataValue::Color(series_color),
+                df.row_count(),
+            ));
+        }
+
+        if df.get_column("group_total").is_none() {
+            df.add_column(Series::new_constant(
+                "group_total",
+                DataValue::Integer(1),
+                df.row_count(),
+            ));
+        }
+        if df.get_column("group_position").is_none() {
+            df.add_column(Series::new_constant(
+                "group_position",
+                DataValue::Integer(0),
+                df.row_count(),
+            ));
+        }
+
+        let bar_width_ratio = series.bar_width.unwrap_or(0.6);
+        df.add_column(Series::new_constant(
+            "bar_width_ratio",
+            DataValue::Float(bar_width_ratio),
+            df.row_count(),
+        ));
+
+        let is_horizontal = Self::is_horizontal(input, series);
+
+        if is_horizontal {
+            let y_vals: Vec<DataValue> = (0..df.row_count())
+                .map(|i| {
+                    df.get_column("y")
+                        .and_then(|c| c.data.get(i))
+                        .cloned()
+                        .unwrap_or(DataValue::Null)
+                })
+                .collect();
+            df.add_column(Series::new("x", y_vals));
+        }
+
+        // 坐标系映射
+        self.mapper()
+            .map_coordinates(&mut df, input, series.x_axis_index, series.y_axis_index);
+
+        // 生成视觉元素
+        self.to_visual_elements(&df, input)
     }
 }

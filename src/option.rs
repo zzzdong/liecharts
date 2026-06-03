@@ -1235,7 +1235,7 @@ pub struct GradientColorStopOption {
 /// let b: DataPoint = ("Jan", 30.0).into();  // Named
 /// let c: DataPoint = (-1.0, 1.0).into();    // XY
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum DataPoint {
     /// Value-only data point; x position is derived from category index.
     Value(f64),

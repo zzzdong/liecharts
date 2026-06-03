@@ -18,10 +18,11 @@ use crate::{
         axis_binding_resolver::AxisBindingResolver,
         axis_renderer::AxisRenderer,
         color_assigner::ColorAssigner,
-        data_processor::{DataProcessorInput, create_processor},
+        compat,
+        data_processor::{create_processor_from_chart_type, DataProcessorInput},
         grid_planner::GridPlanner,
         group::{GroupAnalyzer, GroupType, dataframe_builder::GroupedBarProcessor},
-        types::{ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
+        types::{ChartSpec, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
     },
     text::create_text_layout,
     theme::Theme,
@@ -30,6 +31,13 @@ use crate::{
         Z_TITLE,
     },
 };
+
+/// 从 ChartSpec 构建图表（新 API 入口）
+pub fn build_chart_from_spec(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualElement>> {
+    // 不再兼容转换为 ChartOption，直接使用 ChartSpec
+    let compat_option = compat::chart_spec_to_chart_option(spec);
+    build_chart_internal(spec, &compat_option, theme)
+}
 
 pub fn build_chart(option: &ChartOption, width: u32, height: u32) -> Result<Vec<VisualElement>> {
     build_chart_with_theme(option, width, height, &Theme::echarts())
@@ -41,16 +49,37 @@ pub fn build_chart_with_theme(
     height: u32,
     theme: &Theme,
 ) -> Result<Vec<VisualElement>> {
+    // 将 ChartOption 转换为 ChartSpec，然后使用新管线
+    let spec = compat::chart_option_to_chart_spec(option, width, height);
+    build_chart_internal(&spec, option, theme)
+}
+
+/// 内部的 ChartSpec 管线
+fn build_chart_internal(
+    spec: &ChartSpec,
+    option: &ChartOption,
+    theme: &Theme,
+) -> Result<Vec<VisualElement>> {
+    let width = spec.width;
+    let height = spec.height;
+
     // 1. 布局规划
-    let planner = GridPlanner::new(width, height, option);
+    let planner = GridPlanner::new(
+        width,
+        height,
+        &spec.grids,
+        &spec.series,
+        &spec.x_axes,
+        &spec.y_axes,
+    );
     let specs: Vec<SubplotSpec> = planner.plan();
 
     // 2. 解析轴范围
-    let resolver = AxisBindingResolver::new(option);
+    let resolver = AxisBindingResolver::new(&spec.x_axes, &spec.y_axes, &spec.series);
     let axis_ranges: ResolvedAxisRanges = resolver.resolve(&specs);
 
     // 3. 分配颜色
-    let series_count = option.series.len();
+    let series_count = spec.series.len();
     let assigner = ColorAssigner;
     let colors: ColorContext = assigner.assign_with_theme(series_count, theme);
 
@@ -69,9 +98,9 @@ pub fn build_chart_with_theme(
 
     // 5. 渲染轴
     let mut text_measurer = TextMeasurer::new();
-    for spec in &specs {
+    for subplot in &specs {
         let axis_elements =
-            AxisRenderer::render(spec, option, &axis_ranges, &colors, &mut text_measurer);
+            AxisRenderer::render(subplot, option, &axis_ranges, &colors, &mut text_measurer);
         all_elements.extend(axis_elements);
     }
 
@@ -79,42 +108,46 @@ pub fn build_chart_with_theme(
     // 先通过 GroupAnalyzer 将 series 分组（SideBySide / Stacked / Single）
     // 分组模式：合并为一个 DataFrame，一次处理
     // 单 series 模式：保持原有流程
-    for spec in &specs {
-        let plans = GroupAnalyzer::analyze(&spec.series_indices, option);
+    for subplot in &specs {
+        let plans = GroupAnalyzer::analyze(&subplot.series_indices, &spec.series);
 
         for plan in plans {
             match plan.group_type {
                 GroupType::Single => {
                     let series_idx = plan.series_indices[0];
-                    let series = &option.series[series_idx];
-                    let processor = create_processor(series);
+                    let series_spec = &spec.series[series_idx];
+                    let processor = create_processor_from_chart_type(series_spec.chart_type);
 
                     let input = DataProcessorInput {
-                        spec,
+                        spec: subplot,
                         option,
                         colors: &colors,
                         axis_ranges: &axis_ranges,
-                        bounds: spec.bounds,
+                        bounds: subplot.bounds,
                         series_idx,
+                        chart_spec: Some(spec),
+                        series_spec: Some(series_spec),
                     };
 
-                    let elements = processor.process(series, &input)?;
+                    let elements = processor.process_from_spec(series_spec, &input)?;
                     all_elements.extend(elements);
                 }
                 GroupType::SideBySide | GroupType::Stacked => {
                     let first_idx = plan.series_indices[0];
-                    let series = &option.series[first_idx];
-                    let processor = create_processor(series);
+                    let series_spec = &spec.series[first_idx];
+                    let processor = create_processor_from_chart_type(series_spec.chart_type);
 
-                    let df = GroupedBarProcessor::combine_to_dataframe(&plan, option, &colors);
+                    let df = GroupedBarProcessor::combine_to_dataframe(&plan, spec, &colors);
 
                     let input = DataProcessorInput {
-                        spec,
+                        spec: subplot,
                         option,
                         colors: &colors,
                         axis_ranges: &axis_ranges,
-                        bounds: spec.bounds,
+                        bounds: subplot.bounds,
                         series_idx: first_idx,
+                        chart_spec: Some(spec),
+                        series_spec: Some(series_spec),
                     };
 
                     let elements = processor.process_dataframe(df, &input)?;
@@ -544,25 +577,67 @@ fn compute_text_layouts(elements: &mut [VisualElement]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::option::*;
+    use crate::pipeline::dataframe::DataFrame;
 
     #[test]
     fn test_build_pie_chart_v2() {
-        let option = ChartOption {
-            title: Some(TitleOption::new("Pie Test")),
-            series: vec![SeriesOption::Pie(PieSeriesOption {
-                name: Some("Sales".into()),
-                data: vec![
-                    DataPoint::Named("A".into(), 30.0),
-                    DataPoint::Named("B".into(), 50.0),
-                    DataPoint::Named("C".into(), 20.0),
-                ],
+        let mut df = DataFrame::new();
+        df.add_column(crate::pipeline::dataframe::Series::new(
+            "name",
+            vec![
+                crate::pipeline::dataframe::DataValue::String("A".into()),
+                crate::pipeline::dataframe::DataValue::String("B".into()),
+                crate::pipeline::dataframe::DataValue::String("C".into()),
+            ],
+        ));
+        df.add_column(crate::pipeline::dataframe::Series::new(
+            "value",
+            vec![
+                crate::pipeline::dataframe::DataValue::Float(30.0),
+                crate::pipeline::dataframe::DataValue::Float(50.0),
+                crate::pipeline::dataframe::DataValue::Float(20.0),
+            ],
+        ));
+
+        let spec = crate::pipeline::types::ChartSpec {
+            width: 800,
+            height: 600,
+            grids: vec![crate::pipeline::types::GridSpec {
+                left: None,
+                right: None,
+                top: None,
+                bottom: None,
+                contain_label: false,
+            }],
+            x_axes: vec![],
+            y_axes: vec![],
+            series: vec![crate::pipeline::types::SeriesSpec {
+                name: "Sales".into(),
+                chart_type: crate::pipeline::types::ChartType::Pie,
+                data: df,
+                x_col: "name".into(),
+                y_col: "value".into(),
+                grid_index: 0,
+                x_axis_index: 0,
+                y_axis_index: 0,
+                stack: None,
+                group_index: 0,
+                sampling: None,
+                smooth: false,
+                item_style: crate::pipeline::types::ItemStyleSpec::default(),
                 ..Default::default()
-            })],
-            ..Default::default()
+            }],
+            title: Some(crate::pipeline::types::TitleSpec {
+                text: Some("Pie Test".into()),
+                subtext: None,
+            }),
+            legend: None,
+            background: crate::visual::Color::new(255, 255, 255),
+            palette: vec![],
+            theme_name: None,
         };
 
-        let elements = build_chart(&option, 800, 600).unwrap();
+        let elements = build_chart_from_spec(&spec, &Theme::echarts()).unwrap();
 
         assert!(
             !elements.is_empty(),

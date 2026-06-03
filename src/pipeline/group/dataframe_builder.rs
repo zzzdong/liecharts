@@ -1,4 +1,7 @@
-use crate::pipeline::dataframe::{DataFrame, DataValue, Series};
+use crate::pipeline::{
+    dataframe::{DataFrame, DataValue, Series},
+    types::{ChartSpec, ChartType},
+};
 
 pub struct GroupedBarProcessor;
 
@@ -15,11 +18,9 @@ impl GroupedBarProcessor {
 
     pub fn combine_to_dataframe(
         plan: &super::analyzer::GroupPlan,
-        option: &crate::option::ChartOption,
+        spec: &ChartSpec,
         colors: &crate::pipeline::types::ColorContext,
     ) -> DataFrame {
-        use crate::option::{DataPoint, SeriesOption};
-
         let is_stacked = plan.group_type == super::analyzer::GroupType::Stacked;
 
         let mut all_x: Vec<DataValue> = Vec::new();
@@ -30,12 +31,17 @@ impl GroupedBarProcessor {
         let mut all_base: Vec<DataValue> = Vec::new();
 
         if is_stacked {
+            // 获取所有 bar 系列的最大类别数
             let max_cats = plan
                 .series_indices
                 .iter()
-                .filter_map(|&idx| match &option.series[idx] {
-                    SeriesOption::Bar(b) => Some(b.data.len()),
-                    _ => None,
+                .filter_map(|&idx| {
+                    let s = &spec.series[idx];
+                    if s.chart_type == ChartType::Bar {
+                        Some(s.data.row_count())
+                    } else {
+                        None
+                    }
                 })
                 .max()
                 .unwrap_or(0);
@@ -43,61 +49,71 @@ impl GroupedBarProcessor {
             let mut stack_cums: Vec<f64> = vec![0.0; max_cats];
 
             for &global_idx in plan.series_indices.iter() {
-                let bar = match &option.series[global_idx] {
-                    SeriesOption::Bar(b) => b,
-                    _ => continue,
-                };
+                let s = &spec.series[global_idx];
+                if s.chart_type != ChartType::Bar {
+                    continue;
+                }
                 let color = colors.get_series_color(global_idx);
                 let color_val = DataValue::Color(color);
 
-                for (cat_idx, dp) in bar.data.iter().enumerate() {
-                    let x_val = match dp {
-                        DataPoint::Named(name, _) => DataValue::String(name.clone()),
-                        _ => DataValue::Integer(cat_idx as i64),
-                    };
-                    let raw_val = match dp {
-                        DataPoint::Value(v) => *v,
-                        DataPoint::Named(_, v) => *v,
-                        DataPoint::XY(_, y) => *y,
-                    };
-                    let base = stack_cums[cat_idx];
-                    let cum_val = base + raw_val;
-                    stack_cums[cat_idx] = cum_val;
+                let x_col = s.data.get_column(&s.x_col);
+                let y_col = s.data.get_column(&s.y_col);
 
-                    all_x.push(x_val);
-                    all_y.push(DataValue::Float(cum_val));
-                    all_cat.push(DataValue::Integer(cat_idx as i64));
-                    all_color.push(color_val.clone());
-                    all_pos.push(DataValue::Integer(0));
-                    all_base.push(DataValue::Float(base));
+                if let (Some(x_series), Some(y_series)) = (x_col, y_col) {
+                    for cat_idx in 0..s.data.row_count() {
+                        let x_val = x_series
+                            .data
+                            .get(cat_idx)
+                            .cloned()
+                            .unwrap_or(DataValue::Integer(cat_idx as i64));
+                        let raw_val = y_series
+                            .as_f64(cat_idx)
+                            .unwrap_or(0.0);
+                        let base = stack_cums[cat_idx];
+                        let cum_val = base + raw_val;
+                        stack_cums[cat_idx] = cum_val;
+
+                        all_x.push(x_val);
+                        all_y.push(DataValue::Float(cum_val));
+                        all_cat.push(DataValue::Integer(cat_idx as i64));
+                        all_color.push(color_val.clone());
+                        all_pos.push(DataValue::Integer(0));
+                        all_base.push(DataValue::Float(base));
+                    }
                 }
             }
         } else {
             for (pos, &global_idx) in plan.series_indices.iter().enumerate() {
-                let bar = match &option.series[global_idx] {
-                    SeriesOption::Bar(b) => b,
-                    _ => continue,
-                };
+                let s = &spec.series[global_idx];
+                if s.chart_type != ChartType::Bar {
+                    continue;
+                }
                 let color = colors.get_series_color(global_idx);
                 let color_val = DataValue::Color(color);
 
-                for (cat_idx, dp) in bar.data.iter().enumerate() {
-                    let x_val = match dp {
-                        DataPoint::Named(name, _) => DataValue::String(name.clone()),
-                        _ => DataValue::Integer(cat_idx as i64),
-                    };
-                    let y_val = DataValue::Float(match dp {
-                        DataPoint::Value(v) => *v,
-                        DataPoint::Named(_, v) => *v,
-                        DataPoint::XY(_, y) => *y,
-                    });
+                let x_col = s.data.get_column(&s.x_col);
+                let y_col = s.data.get_column(&s.y_col);
 
-                    all_x.push(x_val);
-                    all_y.push(y_val);
-                    all_cat.push(DataValue::Integer(cat_idx as i64));
-                    all_color.push(color_val.clone());
-                    all_pos.push(DataValue::Integer(pos as i64));
-                    all_base.push(DataValue::Float(0.0));
+                if let (Some(x_series), Some(y_series)) = (x_col, y_col) {
+                    for cat_idx in 0..s.data.row_count() {
+                        let x_val = x_series
+                            .data
+                            .get(cat_idx)
+                            .cloned()
+                            .unwrap_or(DataValue::Integer(cat_idx as i64));
+                        let y_val = DataValue::Float(
+                            y_series
+                                .as_f64(cat_idx)
+                                .unwrap_or(0.0),
+                        );
+
+                        all_x.push(x_val);
+                        all_y.push(y_val);
+                        all_cat.push(DataValue::Integer(cat_idx as i64));
+                        all_color.push(color_val.clone());
+                        all_pos.push(DataValue::Integer(pos as i64));
+                        all_base.push(DataValue::Float(0.0));
+                    }
                 }
             }
         }

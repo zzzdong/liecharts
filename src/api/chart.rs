@@ -1,22 +1,10 @@
 use super::layer::{
     Bar, Bubble, Candlestick, Gauge, LayerSpec, Line, Pie, PolarBar, PolarScatter, Radar, Scatter,
-    Table,
+    SymbolType as LayerSymbol, Table,
 };
 use crate::{
     error::Result,
-    option::{
-        self, AxisOption, AxisType as InternalAxisType, BarSeriesOption, BubbleDataPoint,
-        BubbleSeriesOption, CandlestickDataPoint, CandlestickSeriesOption, ChartOption,
-        ColorOption, DataPoint, GaugeDataPoint, GaugeSeriesOption, GridOption, ItemStyleOption,
-        LegendOption, LineSeriesOption, PieSeriesOption, PolarBarSeriesOption,
-        PolarScatterDataPoint, PolarScatterSeriesOption, PositionOption, PositionPreset,
-        RadarDataOption, RadarIndicatorOption, RadarOption, RadarSeriesOption, ScatterSeriesOption,
-        SeriesOption, TableSeriesOption,
-    },
-    pipeline::{
-        dataframe::{DataFrame, DataValue},
-        pipeline::build_chart_with_theme,
-    },
+    pipeline::dataframe::DataFrame,
     theme::Theme,
     visual::{Color, VisualElement},
 };
@@ -133,6 +121,18 @@ impl Position {
     pub fn pct(v: f64) -> Self {
         Position::Percent(v)
     }
+
+    /// 将 Position 转换为像素值（对 Percent 根据容器尺寸换算）
+    pub(crate) fn to_pixels(&self, container_size: f64) -> f64 {
+        match self {
+            Position::Pixel(v) => *v,
+            Position::Percent(v) => container_size * v / 100.0,
+            Position::Auto | Position::Center => container_size / 2.0,
+            Position::Left | Position::Top => 0.0,
+            Position::Right => container_size,
+            Position::Bottom => container_size,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -145,6 +145,8 @@ pub enum Orient {
 pub enum AxisType {
     Category,
     Value,
+    Time,
+    Log,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -525,12 +527,12 @@ impl Chart {
 
     /// Build the chart and collect visual elements.
     pub fn build(&self) -> Result<Vec<VisualElement>> {
-        let option = self.to_chart_option();
+        let spec = self.to_chart_spec();
         let theme = match self.theme_name.as_deref() {
             Some("dark") => Theme::dark(),
             _ => Theme::echarts(),
         };
-        build_chart_with_theme(&option, self.width, self.height, &theme)
+        crate::pipeline::pipeline::build_chart_from_spec(&spec, &theme)
     }
 
     /// Render to SVG string.
@@ -586,564 +588,267 @@ impl Chart {
     }
 }
 
-// ── Conversion to ChartOption ──
-
 impl Chart {
-    fn to_chart_option(&self) -> ChartOption {
-        let mut option = ChartOption::default();
-
-        // Title
-        if let Some(title) = &self.title {
-            option.title = Some(option::TitleOption {
-                text: Some(title.text.clone()),
-                subtext: title.subtext.clone(),
-                left: Some(convert_position(title.left)),
-                top: Some(convert_position(title.top)),
-                text_style: None,
-                subtext_style: None,
-            });
-        }
-
-        // Legend
-        if let Some(legend) = &self.legend
-            && (!legend.data.is_empty() || legend.show)
-        {
-            option.legend = Some(LegendOption {
-                show: Some(legend.show),
-                data: Some(legend.data.clone()),
-                left: Some(convert_position(legend.left)),
-                top: Some(convert_position(legend.top)),
-                orient: Some(convert_orient(legend.orient)),
-                ..Default::default()
-            });
-        }
+/// 直接转换为 ChartSpec（新管线入口）
+pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
+        use crate::pipeline::types::{
+            AxisSpec, BarConfig, BubbleConfig, CandlestickConfig, ChartSpec, ChartType, GaugeConfig,
+            GridSpec, ItemStyleSpec, LegendSpec, LineConfig, PieConfig, PolarBarConfig,
+            PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig, SeriesSpec, SymbolType,
+            TableConfig, TitleSpec, LabelPosition,
+        };
 
         // Grids
-        if self.grids.is_empty() {
-            option.grid.push(GridOption::default());
+        let grids = if self.grids.is_empty() {
+            vec![GridSpec { left: None, right: None, top: None, bottom: None, contain_label: false }]
         } else {
-            for grid in &self.grids {
-                option.grid.push(GridOption {
-                    left: Some(convert_position(grid.left)),
-                    right: Some(convert_position(grid.right)),
-                    top: Some(convert_position(grid.top)),
-                    bottom: Some(convert_position(grid.bottom)),
-                    contain_label: Some(grid.contain_label),
-                });
-            }
-        }
+            self.grids.iter().map(|g| GridSpec {
+                left: Some(g.left.to_pixels(self.width as f64)),
+                right: Some(g.right.to_pixels(self.width as f64)),
+                top: Some(g.top.to_pixels(self.height as f64)),
+                bottom: Some(g.bottom.to_pixels(self.height as f64)),
+                contain_label: g.contain_label,
+            }).collect()
+        };
 
         // X Axes
-        if self.x_axes.is_empty() && self.has_cartesian_layers() {
-            option.x_axis.push(AxisOption::category());
+        let x_axes: Vec<AxisSpec> = if self.x_axes.is_empty() {
+            vec![AxisSpec {
+                axis_type: crate::pipeline::types::AxisType::Category,
+                position: crate::pipeline::types::AxisPosition::Bottom,
+                grid_index: 0, min: None, max: None, name: None,
+                categories: vec![], boundary_gap: true,
+            }]
         } else {
-            for axis in &self.x_axes {
-                option.x_axis.push(convert_axis(axis));
-            }
-        }
+            self.x_axes.iter().map(|a| AxisSpec {
+                axis_type: match a.axis_type {
+                    crate::api::AxisType::Value => crate::pipeline::types::AxisType::Value,
+                    crate::api::AxisType::Category => crate::pipeline::types::AxisType::Category,
+                    crate::api::AxisType::Time => crate::pipeline::types::AxisType::Time,
+                    crate::api::AxisType::Log => crate::pipeline::types::AxisType::Log,
+                },
+                position: match a.position {
+                    crate::api::AxisPosition::Left => crate::pipeline::types::AxisPosition::Left,
+                    crate::api::AxisPosition::Right => crate::pipeline::types::AxisPosition::Right,
+                    crate::api::AxisPosition::Bottom => crate::pipeline::types::AxisPosition::Bottom,
+                    crate::api::AxisPosition::Top => crate::pipeline::types::AxisPosition::Top,
+                },
+                grid_index: a.grid_index,
+                min: a.min, max: a.max,
+                name: a.name.clone(),
+                categories: a.data.clone(),
+                boundary_gap: a.boundary_gap,
+            }).collect()
+        };
 
         // Y Axes
-        if self.y_axes.is_empty() && self.has_cartesian_layers() {
-            option.y_axis.push(AxisOption::value());
+        let y_axes: Vec<AxisSpec> = if self.y_axes.is_empty() {
+            vec![AxisSpec {
+                axis_type: crate::pipeline::types::AxisType::Value,
+                position: crate::pipeline::types::AxisPosition::Left,
+                grid_index: 0, min: None, max: None, name: None,
+                categories: vec![], boundary_gap: true,
+            }]
         } else {
-            for axis in &self.y_axes {
-                option.y_axis.push(convert_axis(axis));
+            self.y_axes.iter().map(|a| AxisSpec {
+                axis_type: match a.axis_type {
+                    crate::api::AxisType::Value => crate::pipeline::types::AxisType::Value,
+                    crate::api::AxisType::Category => crate::pipeline::types::AxisType::Category,
+                    crate::api::AxisType::Time => crate::pipeline::types::AxisType::Time,
+                    crate::api::AxisType::Log => crate::pipeline::types::AxisType::Log,
+                },
+                position: match a.position {
+                    crate::api::AxisPosition::Left => crate::pipeline::types::AxisPosition::Left,
+                    crate::api::AxisPosition::Right => crate::pipeline::types::AxisPosition::Right,
+                    crate::api::AxisPosition::Bottom => crate::pipeline::types::AxisPosition::Bottom,
+                    crate::api::AxisPosition::Top => crate::pipeline::types::AxisPosition::Top,
+                },
+                grid_index: a.grid_index,
+                min: a.min, max: a.max,
+                name: a.name.clone(),
+                categories: a.data.clone(),
+                boundary_gap: a.boundary_gap,
+            }).collect()
+        };
+
+        // Series
+        let shared_data = self.data.as_ref();
+        let series: Vec<SeriesSpec> = self.layers.iter().map(|layer| {
+            let (chart_type, config): (ChartType, SeriesConfig) = match layer {
+                LayerSpec::Line(l) => {
+                    let sym = match l.symbol {
+                        LayerSymbol::Circle => SymbolType::Circle,
+                        LayerSymbol::Rect => SymbolType::Rect,
+                        LayerSymbol::RoundRect => SymbolType::RoundRect,
+                        LayerSymbol::Triangle => SymbolType::Triangle,
+                        LayerSymbol::Diamond => SymbolType::Diamond,
+                        LayerSymbol::Pin => SymbolType::Pin,
+                        LayerSymbol::Arrow => SymbolType::Arrow,
+                        LayerSymbol::None => SymbolType::None,
+                    };
+                    (ChartType::Line, SeriesConfig::Line(LineConfig {
+                        x_col: l.x.clone(),
+                        y_col: l.y.clone(),
+                        smooth: l.smooth,
+                        line_width: 2.0,
+                        area_color: if l.area { l.color } else { None },
+                        area_opacity: 0.5,
+                        symbol_type: sym,
+                        symbol_size: l.symbol_size,
+                    }))
+                }
+                LayerSpec::Bar(l) => (ChartType::Bar, SeriesConfig::Bar(BarConfig {
+                    x_col: l.x.clone(),
+                    y_col: l.y.clone(),
+                    bar_width: 0.6,
+                })),
+                LayerSpec::Scatter(l) => (ChartType::Scatter, SeriesConfig::Scatter(ScatterConfig {
+                    x_col: l.x.clone(),
+                    y_col: l.y.clone(),
+                    symbol_size: l.symbol_size,
+                })),
+                LayerSpec::Bubble(l) => (ChartType::Bubble, SeriesConfig::Bubble(BubbleConfig {
+                    x_col: "x".into(),
+                    y_col: "y".into(),
+                    size_col: None,
+                    name_col: l.name_col.clone(),
+                    symbol_size_scale: l.symbol_size_scale,
+                })),
+                LayerSpec::Candlestick(l) => (ChartType::Candlestick, SeriesConfig::Candlestick(CandlestickConfig {
+                    category_col: l.category.clone(),
+                    open_col: l.open.clone(),
+                    close_col: l.close.clone(),
+                    low_col: l.low.clone(),
+                    high_col: l.high.clone(),
+                })),
+                LayerSpec::Pie(l) => (ChartType::Pie, SeriesConfig::Pie(PieConfig {
+                    category_col: l.category.clone(),
+                    value_col: l.value.clone(),
+                    center: l.center,
+                    radius: l.radius,
+                    label_show: false,
+                    label_position: LabelPosition::Outside,
+                    label_font_size: 12.0,
+                })),
+                LayerSpec::Radar(l) => (ChartType::Radar, SeriesConfig::Radar(RadarConfig {
+                    value_col: l.values.clone(),
+                    indicators: l.indicators.clone(),
+                })),
+                LayerSpec::PolarBar(l) => (ChartType::PolarBar, SeriesConfig::PolarBar(PolarBarConfig {
+                    angle_col: l.angle.clone(),
+                    radius_col: l.radius.clone(),
+                    pad_angle: l.pad_angle,
+                    start_angle: l.start_angle,
+                })),
+                LayerSpec::PolarScatter(l) => (ChartType::PolarScatter, SeriesConfig::PolarScatter(PolarScatterConfig {
+                    angle_col: l.angle.clone(),
+                    radius_col: l.radius.clone(),
+                    symbol_size: l.symbol_size.unwrap_or(8.0),
+                })),
+                LayerSpec::Gauge(l) => (ChartType::Gauge, SeriesConfig::Gauge(GaugeConfig {
+                    value_col: l.value.clone(),
+                    min: l.min,
+                    max: l.max,
+                    center: l.center,
+                    radius: l.radius,
+                    start_angle: l.start_angle,
+                    end_angle: l.end_angle,
+                    split_number: l.split_number,
+                })),
+                LayerSpec::Table(_) => (ChartType::Table, SeriesConfig::Table(TableConfig)),
+            };
+
+            let data = match layer {
+                LayerSpec::Line(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::Bar(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::Scatter(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::Bubble(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::Candlestick(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::Pie(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::Radar(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::PolarBar(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::PolarScatter(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::Gauge(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+                LayerSpec::Table(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
+            };
+
+            let name = match layer {
+                LayerSpec::Line(l) => l.name.clone(),
+                LayerSpec::Bar(l) => l.name.clone(),
+                LayerSpec::Scatter(l) => l.name.clone(),
+                LayerSpec::Bubble(l) => l.name.clone(),
+                LayerSpec::Candlestick(l) => l.name.clone(),
+                LayerSpec::Pie(l) => l.name.clone(),
+                LayerSpec::Radar(l) => l.name.clone(),
+                LayerSpec::PolarBar(l) => l.name.clone(),
+                LayerSpec::PolarScatter(l) => l.name.clone(),
+                LayerSpec::Gauge(l) => l.name.clone(),
+                LayerSpec::Table(l) => l.name.clone(),
+            };
+
+            let grid_idx = match layer {
+                LayerSpec::Line(l) => l.grid_index,
+                LayerSpec::Bar(l) => l.grid_index,
+                LayerSpec::Scatter(l) => l.grid_index,
+                LayerSpec::Bubble(l) => l.grid_index,
+                LayerSpec::Candlestick(l) => l.grid_index,
+                LayerSpec::Pie(_) => 0,
+                LayerSpec::Radar(_) => 0,
+                LayerSpec::PolarBar(_) => 0,
+                LayerSpec::PolarScatter(_) => 0,
+                LayerSpec::Gauge(_) => 0,
+                LayerSpec::Table(_) => 0,
+            };
+
+            let y_axis_idx = match layer {
+                LayerSpec::Line(l) => l.y_axis_index,
+                LayerSpec::Bar(l) => l.y_axis_index,
+                LayerSpec::Scatter(l) => l.y_axis_index,
+                LayerSpec::Bubble(l) => l.y_axis_index,
+                LayerSpec::Candlestick(l) => l.y_axis_index,
+                _ => 0,
+            };
+
+            let stack = match layer {
+                LayerSpec::Line(l) => l.stack.clone(),
+                LayerSpec::Bar(l) => l.stack.clone(),
+                _ => None,
+            };
+
+            let group_index = match layer {
+                LayerSpec::Bar(l) => l.group_index.unwrap_or(0),
+                _ => 0,
+            };
+
+            SeriesSpec {
+                name, chart_type, data,
+                grid_index: grid_idx,
+                x_axis_index: 0,
+                y_axis_index: y_axis_idx,
+                stack, group_index,
+                sampling: None,
+                item_style: ItemStyleSpec::default(),
+                config,
             }
+        }).collect();
+
+        ChartSpec {
+            width: self.width, height: self.height,
+            grids, x_axes, y_axes, series,
+            title: self.title.as_ref().map(|t| TitleSpec {
+                text: Some(t.text.clone()),
+                subtext: t.subtext.clone(),
+            }),
+            legend: self.legend.as_ref().map(|l| LegendSpec {
+                show: l.show,
+                data: l.data.clone(),
+                symbol_size: 10.0,
+            }),
+            background: self.background_color.unwrap_or(Color::new(255, 255, 255)),
+            palette: vec![],
+            theme_name: self.theme_name.clone(),
         }
-
-        // Background color
-        if let Some(color) = &self.background_color {
-            option.background_color = Some(ColorOption::new(color.r, color.g, color.b));
-        }
-
-        // Series / Layers
-        for layer in &self.layers {
-            let series = convert_layer(layer, self.data.as_ref());
-            option.series.push(series);
-        }
-
-        // Auto-detect category labels from data if no x_axis data set
-        if let Some(series) = option.series.first() {
-            let cat_data = extract_category_names(&option, series);
-            if let Some(cat_names) = cat_data
-                && let Some(x_axis) = option.x_axis.first_mut()
-                && (x_axis.data.is_none()
-                    || x_axis.data.as_ref().map(|d| d.is_empty()).unwrap_or(true))
-            {
-                x_axis.data = Some(cat_names);
-            }
-        }
-
-        // Radar indicators from layers
-        for layer in &self.layers {
-            if let LayerSpec::Radar(rl) = layer {
-                let indicators: Vec<RadarIndicatorOption> = rl
-                    .indicators
-                    .iter()
-                    .map(|name| RadarIndicatorOption {
-                        name: Some(name.clone()),
-                        max: None,
-                    })
-                    .collect();
-                option.radar = Some(RadarOption {
-                    indicator: Some(indicators),
-                    ..Default::default()
-                });
-                break;
-            }
-        }
-
-        option
     }
-
-    fn has_cartesian_layers(&self) -> bool {
-        self.layers.iter().any(|l| {
-            matches!(
-                l,
-                LayerSpec::Line(_)
-                    | LayerSpec::Bar(_)
-                    | LayerSpec::Scatter(_)
-                    | LayerSpec::Bubble(_)
-                    | LayerSpec::Candlestick(_)
-            )
-        })
-    }
-}
-
-// ── Conversion helpers ──
-
-fn convert_position(pos: Position) -> PositionOption {
-    match pos {
-        Position::Auto => PositionOption::Preset(PositionPreset::Auto),
-        Position::Center => PositionOption::Preset(PositionPreset::Center),
-        Position::Left => PositionOption::Preset(PositionPreset::Left),
-        Position::Right => PositionOption::Preset(PositionPreset::Right),
-        Position::Top => PositionOption::Preset(PositionPreset::Top),
-        Position::Bottom => PositionOption::Preset(PositionPreset::Bottom),
-        Position::Pixel(v) => PositionOption::Pixel(v),
-        Position::Percent(v) => PositionOption::Percent(v),
-    }
-}
-
-fn convert_orient(orient: Orient) -> option::Orient {
-    match orient {
-        Orient::Horizontal => option::Orient::Horizontal,
-        Orient::Vertical => option::Orient::Vertical,
-    }
-}
-
-fn convert_axis(axis: &Axis) -> AxisOption {
-    let axis_type = match axis.axis_type {
-        AxisType::Category => InternalAxisType::Category,
-        AxisType::Value => InternalAxisType::Value,
-    };
-
-    let pos = match axis.position {
-        AxisPosition::Top => crate::option::AxisPosition::Top,
-        AxisPosition::Bottom => crate::option::AxisPosition::Bottom,
-        AxisPosition::Left => crate::option::AxisPosition::Left,
-        AxisPosition::Right => crate::option::AxisPosition::Right,
-    };
-
-    AxisOption {
-        axis_type: Some(axis_type),
-        data: if axis.data.is_empty() {
-            None
-        } else {
-            Some(axis.data.clone())
-        },
-        name: axis.name.clone(),
-        min: axis.min,
-        max: axis.max,
-        boundary_gap: Some(axis.boundary_gap),
-        position: Some(pos),
-        grid_index: Some(axis.grid_index),
-        ..Default::default()
-    }
-}
-
-fn convert_layer(layer: &LayerSpec, chart_data: Option<&DataFrame>) -> SeriesOption {
-    match layer {
-        LayerSpec::Line(l) => convert_line_layer(l, chart_data),
-        LayerSpec::Bar(b) => convert_bar_layer(b, chart_data),
-        LayerSpec::Pie(p) => convert_pie_layer(p, chart_data),
-        LayerSpec::Scatter(s) => convert_scatter_layer(s, chart_data),
-        LayerSpec::Bubble(b) => convert_bubble_layer(b, chart_data),
-        LayerSpec::Candlestick(c) => convert_candlestick_layer(c, chart_data),
-        LayerSpec::Radar(r) => convert_radar_layer(r, chart_data),
-        LayerSpec::PolarBar(p) => convert_polar_bar_layer(p, chart_data),
-        LayerSpec::PolarScatter(p) => convert_polar_scatter_layer(p, chart_data),
-        LayerSpec::Gauge(g) => convert_gauge_layer(g, chart_data),
-        LayerSpec::Table(t) => convert_table_layer(t, chart_data),
-    }
-}
-
-fn resolve_data<'a>(
-    layer_data: &'a Option<DataFrame>,
-    chart_data: Option<&'a DataFrame>,
-) -> &'a DataFrame {
-    layer_data
-        .as_ref()
-        .or(chart_data)
-        .expect("Layer must have data either from layer.data() or Chart.data()")
-}
-
-fn convert_line_layer(l: &Line, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&l.data, chart_data);
-    let data = extract_xy_data(df, &l.x, &l.y);
-    let mut item_style = l.color.map(|c| ItemStyleOption {
-        color: Some(ColorOption::new(c.r, c.g, c.b)),
-        ..Default::default()
-    });
-
-    let area_style = if l.area {
-        Some(option::AreaStyleOption {
-            color: item_style
-                .as_ref()
-                .and_then(|s| s.color)
-                .or_else(|| Some(ColorOption::new(80, 112, 221))),
-            opacity: Some(0.3),
-        })
-    } else {
-        None
-    };
-
-    if item_style.is_none() && area_style.is_some() {
-        item_style = Some(ItemStyleOption {
-            color: Some(ColorOption::new(80, 112, 221)),
-            ..Default::default()
-        });
-    }
-
-    let mut opt = LineSeriesOption::new(l.name.clone(), data);
-    opt.smooth = Some(l.smooth);
-    opt.stack = l.stack.clone();
-    opt.symbol = Some(l.symbol.into());
-    opt.symbol_size = Some(l.symbol_size);
-    opt.item_style = item_style;
-    opt.area_style = area_style;
-    opt.y_axis_index = Some(l.y_axis_index);
-    opt.grid_index = Some(l.grid_index);
-
-    SeriesOption::Line(opt)
-}
-
-fn convert_bar_layer(b: &Bar, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&b.data, chart_data);
-    let data = extract_xy_data(df, &b.x, &b.y);
-    let item_style = b.color.map(|c| ItemStyleOption {
-        color: Some(ColorOption::new(c.r, c.g, c.b)),
-        ..Default::default()
-    });
-
-    let mut opt = BarSeriesOption::new(b.name.clone(), data);
-    opt.stack = b.stack.clone();
-    opt.group_index = b.group_index;
-    opt.item_style = item_style;
-    opt.y_axis_index = Some(b.y_axis_index);
-    opt.grid_index = Some(b.grid_index);
-
-    SeriesOption::Bar(opt)
-}
-
-fn convert_pie_layer(p: &Pie, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&p.data, chart_data);
-    let data: Vec<DataPoint> = (0..df.row_count())
-        .map(|i| {
-            let name = df
-                .get_column(&p.category)
-                .and_then(|c| c.as_string(i))
-                .unwrap_or_default();
-            let value = df
-                .get_column(&p.value)
-                .and_then(|c| c.as_f64(i))
-                .unwrap_or(0.0);
-            DataPoint::Named(name, value)
-        })
-        .collect();
-
-    let mut opt = PieSeriesOption::new(p.name.clone(), data);
-    opt.radius = Some(vec![format!("{}%", p.radius.0), format!("{}%", p.radius.1)]);
-    opt.center = Some(vec![format!("{}%", p.center.0), format!("{}%", p.center.1)]);
-
-    SeriesOption::Pie(opt)
-}
-
-fn convert_scatter_layer(s: &Scatter, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&s.data, chart_data);
-    let data = extract_xy_data(df, &s.x, &s.y);
-    let item_style = s.color.map(|c| ItemStyleOption {
-        color: Some(ColorOption::new(c.r, c.g, c.b)),
-        ..Default::default()
-    });
-
-    let mut opt = ScatterSeriesOption::new(s.name.clone(), data);
-    opt.symbol_size = Some(s.symbol_size);
-    opt.item_style = item_style;
-    opt.y_axis_index = Some(s.y_axis_index);
-    opt.grid_index = Some(s.grid_index);
-
-    SeriesOption::Scatter(opt)
-}
-
-fn convert_bubble_layer(b: &Bubble, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&b.data, chart_data);
-    let data: Vec<BubbleDataPoint> = (0..df.row_count())
-        .map(|i| {
-            let x = df.get_column("x").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let y = df.get_column("y").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let size = df.get_column("size").and_then(|c| c.as_f64(i));
-            let name = b
-                .name_col
-                .as_ref()
-                .and_then(|col| df.get_column(col).and_then(|c| c.as_string(i)));
-            BubbleDataPoint { x, y, size, name }
-        })
-        .collect();
-
-    let opt = BubbleSeriesOption {
-        name: Some(b.name.clone()),
-        data,
-        y_axis_index: Some(b.y_axis_index),
-        grid_index: Some(b.grid_index),
-        symbol_size_scale: Some(b.symbol_size_scale),
-        item_style: b.color.map(|c| ItemStyleOption {
-            color: Some(ColorOption::new(c.r, c.g, c.b)),
-            ..Default::default()
-        }),
-    };
-
-    SeriesOption::Bubble(opt)
-}
-
-fn convert_candlestick_layer(c: &Candlestick, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&c.data, chart_data);
-    let data: Vec<CandlestickDataPoint> = (0..df.row_count())
-        .map(|i| {
-            let open = df
-                .get_column(&c.open)
-                .and_then(|col| col.as_f64(i))
-                .unwrap_or(0.0);
-            let close = df
-                .get_column(&c.close)
-                .and_then(|col| col.as_f64(i))
-                .unwrap_or(0.0);
-            let low = df
-                .get_column(&c.low)
-                .and_then(|col| col.as_f64(i))
-                .unwrap_or(0.0);
-            let high = df
-                .get_column(&c.high)
-                .and_then(|col| col.as_f64(i))
-                .unwrap_or(0.0);
-            let name = df.get_column(&c.category).and_then(|col| col.as_string(i));
-            CandlestickDataPoint {
-                open,
-                close,
-                low,
-                high,
-                name,
-            }
-        })
-        .collect();
-
-    let mut opt = CandlestickSeriesOption::default();
-    opt.name = Some(c.name.clone());
-    opt.data = data;
-    opt.y_axis_index = Some(c.y_axis_index);
-    opt.grid_index = Some(c.grid_index);
-
-    SeriesOption::Candlestick(opt)
-}
-
-fn convert_radar_layer(r: &Radar, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&r.data, chart_data);
-    let data: Vec<RadarDataOption> = (0..df.row_count())
-        .map(|i| {
-            let value_str = df
-                .get_column(&r.values)
-                .and_then(|c| c.as_string(i))
-                .unwrap_or_default();
-            let values: Vec<f64> = value_str
-                .split(',')
-                .filter_map(|s| s.trim().parse::<f64>().ok())
-                .collect();
-            let name = df.get_column("name").and_then(|c| c.as_string(i));
-            RadarDataOption {
-                value: values,
-                name,
-            }
-        })
-        .collect();
-
-    let mut opt = RadarSeriesOption::default();
-    opt.name = Some(r.name.clone());
-    opt.data = data;
-
-    SeriesOption::Radar(opt)
-}
-
-fn convert_polar_bar_layer(p: &PolarBar, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&p.data, chart_data);
-    let data: Vec<DataPoint> = (0..df.row_count())
-        .map(|i| {
-            let angle = df
-                .get_column(&p.angle)
-                .and_then(|c| c.as_f64(i))
-                .unwrap_or(0.0);
-            let radius = df
-                .get_column(&p.radius)
-                .and_then(|c| c.as_f64(i))
-                .unwrap_or(0.0);
-            DataPoint::XY(angle, radius)
-        })
-        .collect();
-
-    let mut opt = PolarBarSeriesOption::new(p.name.clone(), data);
-    opt.pad_angle = Some(p.pad_angle);
-    opt.start_angle = Some(p.start_angle);
-
-    SeriesOption::PolarBar(opt)
-}
-
-fn convert_polar_scatter_layer(p: &PolarScatter, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&p.data, chart_data);
-    let data: Vec<PolarScatterDataPoint> = (0..df.row_count())
-        .map(|i| {
-            let angle = df
-                .get_column(&p.angle)
-                .and_then(|c| c.as_f64(i))
-                .unwrap_or(0.0);
-            let radius = df
-                .get_column(&p.radius)
-                .and_then(|c| c.as_f64(i))
-                .unwrap_or(0.0);
-            PolarScatterDataPoint {
-                angle,
-                radius,
-                symbol_size: p.symbol_size,
-                name: None,
-            }
-        })
-        .collect();
-
-    let mut opt = PolarScatterSeriesOption::default();
-    opt.name = Some(p.name.clone());
-    opt.data = data;
-
-    SeriesOption::PolarScatter(opt)
-}
-
-fn convert_gauge_layer(g: &Gauge, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&g.data, chart_data);
-    let data: Vec<GaugeDataPoint> = (0..df.row_count())
-        .map(|i| {
-            let value = df
-                .get_column(&g.value)
-                .and_then(|c| c.as_f64(i))
-                .unwrap_or(0.0);
-            let name = df.get_column("name").and_then(|c| c.as_string(i));
-            GaugeDataPoint { value, name }
-        })
-        .collect();
-
-    let mut opt = GaugeSeriesOption::default();
-    opt.name = Some(g.name.clone());
-    opt.data = data;
-    opt.min = Some(g.min);
-    opt.max = Some(g.max);
-    opt.center = Some(vec![format!("{}%", g.center.0), format!("{}%", g.center.1)]);
-    opt.radius = Some(format!("{}%", g.radius));
-    opt.start_angle = Some(g.start_angle);
-    opt.end_angle = Some(g.end_angle);
-    opt.split_number = Some(g.split_number);
-
-    SeriesOption::Gauge(opt)
-}
-
-fn convert_table_layer(t: &Table, chart_data: Option<&DataFrame>) -> SeriesOption {
-    let df = resolve_data(&t.data, chart_data);
-    // Convert DataFrame to a grid of strings for the table renderer
-    let col_names: Vec<String> = df.column_names().to_vec();
-    let row_count = df.row_count();
-
-    let mut grid_data: Vec<Vec<serde_json::Value>> = Vec::new();
-
-    for i in 0..row_count {
-        let mut row = Vec::new();
-        for col_name in &col_names {
-            let val = df.get_column(col_name).and_then(|c| c.as_string(i));
-            let json_val: serde_json::Value = val
-                .map(|s| {
-                    // Try to parse as number first
-                    s.parse::<f64>()
-                        .map(serde_json::Value::from)
-                        .unwrap_or_else(|_| serde_json::Value::String(s))
-                })
-                .unwrap_or(serde_json::Value::Null);
-            row.push(json_val);
-        }
-        grid_data.push(row);
-    }
-
-    let mut opt = TableSeriesOption::default();
-    opt.name = Some(t.name.clone());
-    opt.columns = Some(col_names);
-    opt.data = Some(grid_data);
-
-    SeriesOption::Table(opt)
-}
-
-/// Extract (x, y) DataPoints from a DataFrame, detecting whether x is category or numeric.
-fn extract_xy_data(df: &DataFrame, x_col: &str, y_col: &str) -> Vec<DataPoint> {
-    let has_category = df
-        .get_column(x_col)
-        .and_then(|c| c.data.first())
-        .map(|v| matches!(v, DataValue::String(_)))
-        .unwrap_or(false);
-
-    (0..df.row_count())
-        .map(|i| {
-            let y_val = df
-                .get_column(y_col)
-                .and_then(|c| c.as_f64(i))
-                .unwrap_or(0.0);
-
-            if has_category {
-                let name = df
-                    .get_column(x_col)
-                    .and_then(|c| c.as_string(i))
-                    .unwrap_or_default();
-                DataPoint::Named(name, y_val)
-            } else {
-                let x_val = df
-                    .get_column(x_col)
-                    .and_then(|c| c.as_f64(i))
-                    .unwrap_or(i as f64);
-                DataPoint::XY(x_val, y_val)
-            }
-        })
-        .collect()
-}
-
-/// Extract unique category names from a layer's data for populating x_axis labels.
-fn extract_category_names(_option: &ChartOption, series: &SeriesOption) -> Option<Vec<String>> {
-    let data = match series {
-        SeriesOption::Line(l) => Some(&l.data),
-        SeriesOption::Bar(b) => Some(&b.data),
-        SeriesOption::Scatter(s) => Some(&s.data),
-        _ => None,
-    }?;
-
-    let names: Vec<String> = data
-        .iter()
-        .filter_map(|dp| match dp {
-            DataPoint::Named(n, _) => Some(n.clone()),
-            _ => None,
-        })
-        .collect();
-
-    if names.is_empty() { None } else { Some(names) }
 }
 
 // ── From impls for Into<LayerSpec> ──

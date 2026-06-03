@@ -2,7 +2,7 @@ use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
     option::{AxisOption, AxisType, ChartOption},
-    pipeline::types::{ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
+    pipeline::types::{AxisPosition, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
     visual::{
         Color, StrokeStyle, TextAlign, TextBaseline, TextStyle, VisualElement, Z_AXIS, Z_GRID,
         Z_LABEL,
@@ -68,7 +68,7 @@ impl AxisRenderer {
                 let (y_min, y_max) = y_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 100.0));
 
                 let is_right = y_range
-                    .map(|r| r.position == crate::option::AxisPosition::Right)
+                    .map(|r| r.position == AxisPosition::Right)
                     .unwrap_or(false);
                 let axis_x = if is_right { bounds.x1 } else { bounds.x0 };
 

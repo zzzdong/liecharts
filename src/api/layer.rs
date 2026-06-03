@@ -1,5 +1,36 @@
 use crate::{pipeline::dataframe::DataFrame, visual::Color};
 
+// ── Sampling ──
+
+/// Data sampling strategy for reducing the number of data points
+/// while preserving visual features.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Sampling {
+    Lttb(usize),
+    Average(usize),
+    Max(usize),
+    Min(usize),
+}
+
+impl Sampling {
+    pub fn threshold(&self) -> usize {
+        match self {
+            Sampling::Lttb(n) | Sampling::Average(n) | Sampling::Max(n) | Sampling::Min(n) => *n,
+        }
+    }
+}
+
+impl From<Sampling> for (crate::sampling::SamplingType, usize) {
+    fn from(s: Sampling) -> Self {
+        match s {
+            Sampling::Lttb(n) => (crate::sampling::SamplingType::Lttb, n),
+            Sampling::Average(n) => (crate::sampling::SamplingType::Average, n),
+            Sampling::Max(n) => (crate::sampling::SamplingType::Max, n),
+            Sampling::Min(n) => (crate::sampling::SamplingType::Min, n),
+        }
+    }
+}
+
 /// A chart layer that maps a DataFrame to visual elements.
 #[derive(Debug, Clone)]
 pub enum LayerSpec {
@@ -45,6 +76,7 @@ pub struct Line {
     pub color: Option<Color>,
     pub y_axis_index: usize,
     pub grid_index: usize,
+    pub sampling: Option<Sampling>,
 }
 
 impl Line {
@@ -62,6 +94,7 @@ impl Line {
             color: None,
             y_axis_index: 0,
             grid_index: 0,
+            sampling: None,
         }
     }
     pub fn data(mut self, data: DataFrame) -> Self {
@@ -115,6 +148,11 @@ impl Line {
     /// Shortcut for `y_axis_index(1)`: bind this series to the right y-axis.
     pub fn right_axis(mut self) -> Self {
         self.y_axis_index = 1;
+        self
+    }
+    /// Set data sampling strategy for large datasets.
+    pub fn sampling(mut self, sampling: Sampling) -> Self {
+        self.sampling = Some(sampling);
         self
     }
 }

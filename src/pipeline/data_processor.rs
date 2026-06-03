@@ -1,20 +1,10 @@
 use vello_cpu::kurbo::Rect;
 
-/// 基于 DataFrame 的新 DataProcessor trait
-///
-/// 设计原则：
-/// 1. 每个 Processor 负责将 SeriesOption 转换为 DataFrame
-/// 2. 使用 Transformer 对 DataFrame 进行转换（添加计算列）
-/// 3. 使用 CoordinateMapper 将数据坐标映射为像素坐标
-/// 4. 从 DataFrame 生成 VisualElement
-/// 5. 不直接操作原始数据，所有操作通过 DataFrame 进行
-use crate::error::Result;
 use crate::{
+    error::Result,
     option::{ChartOption, SeriesOption},
     pipeline::{
-        dataframe::DataFrame,
-        mapper::CoordinateMapper,
-        types::{ColorContext, ResolvedAxisRanges, SubplotSpec},
+        ChartType, dataframe::DataFrame, mapper::CoordinateMapper, types::{ChartSpec, ColorContext, ResolvedAxisRanges, SeriesSpec, SubplotSpec}
     },
     visual::VisualElement,
 };
@@ -27,6 +17,10 @@ pub struct DataProcessorInput<'a> {
     pub axis_ranges: &'a ResolvedAxisRanges,
     pub bounds: Rect,
     pub series_idx: usize, // 当前正在处理的系列索引
+    /// 新增：新 API 的 ChartSpec（可选，用于新管线）
+    pub chart_spec: Option<&'a ChartSpec>,
+    /// 新增：当前处理的 SeriesSpec（可选，用于新管线）
+    pub series_spec: Option<&'a SeriesSpec>,
 }
 
 /// DataProcessorV2 trait
@@ -90,6 +84,21 @@ pub trait DataProcessor {
             .map_coordinates(&mut df, input, x_axis_idx, y_axis_idx);
         self.to_visual_elements(&df, input)
     }
+
+    /// 从 SeriesSpec 直接处理（跳过 to_dataframe，数据已在 DataFrame 中）
+    /// 新 API 路径调用此方法，处理器可覆写以使用 SeriesSpec 的配置字段
+    fn process_from_spec(
+        &self,
+        series: &SeriesSpec,
+        input: &DataProcessorInput,
+    ) -> Result<Vec<VisualElement>> {
+        // 默认实现：使用 SeriesSpec 的数据直接进入 transform 阶段
+        let df = series.data.clone();
+        let mut df = self.transform(df, input)?;
+        self.mapper()
+            .map_coordinates(&mut df, input, series.x_axis_index, series.y_axis_index);
+        self.to_visual_elements(&df, input)
+    }
 }
 
 /// 创建对应类型的 DataProcessorV2
@@ -112,5 +121,28 @@ pub fn create_processor(series: &SeriesOption) -> Box<dyn DataProcessor> {
         }
         SeriesOption::Gauge(_) => Box::new(super::processor::gauge::GaugeProcessor::new()),
         SeriesOption::Table(_) => Box::new(super::processor::table::TableProcessor::new()),
+    }
+}
+
+/// 根据 ChartType 创建 DataProcessorV2（用于新 API 路径）
+pub fn create_processor_from_chart_type(chart_type: ChartType) -> Box<dyn DataProcessor> {
+    match chart_type {
+        ChartType::Pie => Box::new(super::processor::pie::PieProcessor::new()),
+        ChartType::Line => Box::new(super::processor::line::LineProcessor::new()),
+        ChartType::Bar => Box::new(super::processor::bar::BarProcessor::new()),
+        ChartType::Scatter => Box::new(super::processor::scatter::ScatterProcessor::new()),
+        ChartType::Bubble => Box::new(super::processor::bubble::BubbleProcessor::new()),
+        ChartType::Candlestick => {
+            Box::new(super::processor::candlestick::CandlestickProcessor::new())
+        }
+        ChartType::Radar => Box::new(super::processor::radar::RadarProcessor::new()),
+        ChartType::PolarBar => {
+            Box::new(super::processor::polar_bar::PolarBarProcessor::new())
+        }
+        ChartType::PolarScatter => {
+            Box::new(super::processor::polar_scatter::PolarScatterProcessor::new())
+        }
+        ChartType::Gauge => Box::new(super::processor::gauge::GaugeProcessor::new()),
+        ChartType::Table => Box::new(super::processor::table::TableProcessor::new()),
     }
 }

@@ -9,6 +9,7 @@ use crate::{
         data_processor::{DataProcessor, DataProcessorInput},
         dataframe::{DataFrame, DataValue, Series},
         mapper::{CoordinateMapper, PolarMapper},
+        types::{ChartType, SeriesSpec},
     },
     text::create_text_layout,
     visual::{
@@ -271,6 +272,231 @@ impl DataProcessor for PolarBarProcessor {
                     .and_then(|legend| legend.data.as_ref())
                     .and_then(|legend_data| legend_data.get(*bar_idx))
                     .cloned()
+                    .unwrap_or_else(|| (bar_idx + 1).to_string());
+
+                let label_r = max_radius + 18.0;
+                let label_x = center.x + label_r * angle.cos();
+                let label_y = center.y + label_r * angle.sin();
+
+                let text_layout = create_text_layout(
+                    &label_text,
+                    &crate::visual::TextStyle {
+                        font_size: 11.0,
+                        color: colors.axis_label_color,
+                        align: TextAlign::Center,
+                        ..Default::default()
+                    },
+                    None,
+                );
+
+                elements.push(VisualElement::TextRun {
+                    text: label_text,
+                    position: Point::new(label_x - text_layout.width() as f64 / 2.0, label_y),
+                    style: crate::visual::TextStyle {
+                        font_size: 11.0,
+                        color: colors.axis_label_color,
+                        align: TextAlign::Left,
+                        vertical_align: TextBaseline::Middle,
+                        ..Default::default()
+                    },
+                    rotation: 0.0,
+                    max_width: None,
+                    layout: Some(text_layout),
+                    z_index: Z_LABEL,
+                });
+            }
+        }
+
+        Ok(elements)
+    }
+
+    fn process_from_spec(
+        &self,
+        series: &SeriesSpec,
+        input: &DataProcessorInput,
+    ) -> Result<Vec<VisualElement>> {
+        let mut df = series.data.clone();
+        let colors = &input.colors;
+
+        // 添加极坐标映射所需的计算列
+        let max_value: f64 = (0..df.row_count())
+            .filter_map(|i| df.get_column("value").and_then(|c| c.as_f64(i)))
+            .fold(0.0, |max, v| v.max(max));
+        let data_count = df.row_count().max(1);
+        let pad_angle_deg = series.pad_angle.unwrap_or(2.0);
+        let start_angle_deg = series.start_angle.unwrap_or(0.0);
+
+        df.add_column(Series::new_constant(
+            "max_value",
+            DataValue::Float(max_value),
+            df.row_count(),
+        ));
+        df.add_column(Series::new_constant(
+            "data_count",
+            DataValue::Float(data_count as f64),
+            df.row_count(),
+        ));
+        df.add_column(Series::new_constant(
+            "pad_angle_deg",
+            DataValue::Float(pad_angle_deg),
+            df.row_count(),
+        ));
+        df.add_column(Series::new_constant(
+            "start_angle_deg",
+            DataValue::Float(start_angle_deg),
+            df.row_count(),
+        ));
+
+        // 极坐标映射
+        self.mapper().map_coordinates(
+            &mut df,
+            input,
+            series.x_axis_index,
+            series.y_axis_index,
+        );
+
+        // --- 视觉元素生成（使用 DataFrame 和 SeriesSpec 配置）---
+        let cx = df
+            .get_column("center_x")
+            .and_then(|c| c.as_f64(0))
+            .unwrap_or(400.0);
+        let cy = df
+            .get_column("center_y")
+            .and_then(|c| c.as_f64(0))
+            .unwrap_or(300.0);
+        let max_radius = df
+            .get_column("max_radius")
+            .and_then(|c| c.as_f64(0))
+            .unwrap_or(150.0);
+        let data_count = df.row_count().max(1);
+        let max_value: f64 = (0..df.row_count())
+            .filter_map(|i| df.get_column("value").and_then(|c| c.as_f64(i)))
+            .fold(0.0, |max, v| v.max(max));
+        let pad_angle_deg = series.pad_angle.unwrap_or(2.0);
+        let start_angle_deg = series.start_angle.unwrap_or(0.0);
+
+        if max_value <= 0.0 || data_count == 0 {
+            return Ok(Vec::new());
+        }
+
+        let center = Point::new(cx, cy);
+        let pad_angle = pad_angle_deg * PI / 180.0;
+        let sweep_per_bar = (2.0 * PI) / data_count as f64 - pad_angle;
+        let mut current_angle = (start_angle_deg - 90.0) * PI / 180.0;
+
+        let mut elements = Vec::new();
+        let mut bar_info: Vec<(f64, f64, usize)> = Vec::new();
+
+        for i in 0..df.row_count() {
+            let value = df
+                .get_column("value")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            if value <= 0.0 {
+                current_angle += sweep_per_bar + pad_angle;
+                continue;
+            }
+
+            bar_info.push((current_angle + sweep_per_bar / 2.0, value, i));
+
+            let radius = max_radius * (value / max_value);
+            let color = colors.get_data_color(i);
+
+            let path =
+                build_annular_sector(center, 0.0, radius, current_angle, sweep_per_bar.max(0.01));
+
+            elements.push(VisualElement::Path {
+                path,
+                style: FillStrokeStyle {
+                    fill: Some(color),
+                    stroke: Some(Stroke {
+                        color: colors.border_color,
+                        width: 1.5,
+                    }),
+                },
+                z_index: Z_SERIES_FILL,
+            });
+
+            current_angle += sweep_per_bar + pad_angle;
+        }
+
+        // 确定是否为第一个极坐标柱状图系列（只渲染一次网格）
+        let is_first_polar = input
+            .chart_spec
+            .map(|spec| {
+                spec.series
+                    .iter()
+                    .position(|s| s.chart_type == ChartType::PolarBar)
+                    == Some(input.series_idx)
+            })
+            .unwrap_or(true);
+
+        if is_first_polar {
+            let grid_levels = 5;
+            for level in 1..=grid_levels {
+                let r = max_radius * level as f64 / grid_levels as f64;
+                elements.push(VisualElement::Circle {
+                    center,
+                    radius: r,
+                    style: FillStrokeStyle {
+                        fill: None,
+                        stroke: Some(Stroke {
+                            color: colors.grid_line_color,
+                            width: 1.0,
+                        }),
+                    },
+                    z_index: Z_AXIS,
+                });
+
+                let label_value = max_value * level as f64 / grid_levels as f64;
+                let label_text = if label_value >= 1000.0 {
+                    format!("{:.0}", label_value)
+                } else if label_value >= 10.0 {
+                    format!("{:.1}", label_value)
+                } else {
+                    format!("{:.2}", label_value)
+                };
+                elements.push(VisualElement::TextRun {
+                    text: label_text,
+                    position: Point::new(center.x + r + 4.0, center.y),
+                    style: crate::visual::TextStyle {
+                        font_size: 10.0,
+                        color: colors.axis_label_color,
+                        align: TextAlign::Left,
+                        vertical_align: TextBaseline::Middle,
+                        ..Default::default()
+                    },
+                    rotation: 0.0,
+                    max_width: None,
+                    layout: None,
+                    z_index: Z_LABEL,
+                });
+            }
+
+            for (bar_angle, _bar_value, bar_idx) in &bar_info {
+                let angle = *bar_angle;
+                let end_x = center.x + max_radius * angle.cos();
+                let end_y = center.y + max_radius * angle.sin();
+
+                elements.push(VisualElement::Line {
+                    start: center,
+                    end: Point::new(end_x, end_y),
+                    style: StrokeStyle::new(colors.grid_line_color, 1.0),
+                    z_index: Z_AXIS,
+                });
+
+                let label_text = input
+                    .chart_spec
+                    .and_then(|spec| spec.legend.as_ref())
+                    .and_then(|l| l.data.get(*bar_idx).cloned())
+                    .or_else(|| {
+                        input.option.legend.as_ref().and_then(|legend| {
+                            legend
+                                .data
+                                .as_ref()
+                                .and_then(|legend_data| legend_data.get(*bar_idx).cloned())
+                        })
+                    })
                     .unwrap_or_else(|| (bar_idx + 1).to_string());
 
                 let label_r = max_radius + 18.0;

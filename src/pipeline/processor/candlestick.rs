@@ -8,6 +8,7 @@ use crate::{
         dataframe::{DataFrame, DataValue, Series},
         mapper::{CartesianMapper, CoordinateMapper},
         sampling::SamplingProcessor,
+        types::SeriesSpec,
     },
     visual::{FillStrokeStyle, Stroke, VisualElement, Z_SERIES_FILL, Z_SERIES_LINE},
 };
@@ -23,6 +24,76 @@ impl Default for CandlestickProcessor {
 impl CandlestickProcessor {
     pub fn new() -> Self {
         Self
+    }
+}
+
+impl DataProcessor for CandlestickProcessor {
+    fn process_from_spec(
+        &self,
+        series: &SeriesSpec,
+        input: &DataProcessorInput,
+    ) -> Result<Vec<VisualElement>> {
+        let mut df = series.data.clone();
+
+        // 应用采样（如果配置了）
+        if let Some((sampling_type, threshold)) = &series.sampling {
+            df = SamplingProcessor::sample(&df, *threshold, *sampling_type);
+        }
+
+        let bounds = input.bounds;
+        let x_axis_idx = input.spec.x_axis_indices.first().copied().unwrap_or(0);
+        let y_axis_idx = series.y_axis_index;
+
+        let x_range = input.axis_ranges.get_x_range(x_axis_idx);
+        let y_range = input.axis_ranges.get_y_range(y_axis_idx);
+
+        let (_, x_max) = x_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 1.0));
+        let (y_min, y_max) = y_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 100.0));
+
+        let data_len = df.row_count().max(1);
+        let cat_count = (x_max - 0.0).max(1.0);
+        let cat_width = bounds.width() / cat_count;
+        let bar_width = cat_width * 0.6;
+
+        let mut px_values = Vec::new();
+        let mut open_y_values = Vec::new();
+        let mut close_y_values = Vec::new();
+        let mut low_y_values = Vec::new();
+        let mut high_y_values = Vec::new();
+
+        for i in 0..df.row_count() {
+            let px = bounds.x0 + (i as f64 + 0.5) / data_len as f64 * bounds.width();
+            let y_scale = bounds.height() / (y_max - y_min).max(0.001);
+
+            let open = df.get_column("open").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
+            let close = df.get_column("close").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
+            let low = df.get_column("low").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
+            let high = df.get_column("high").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
+
+            let open_y = bounds.y1 - (open - y_min) * y_scale;
+            let close_y = bounds.y1 - (close - y_min) * y_scale;
+            let low_y = bounds.y1 - (low - y_min) * y_scale;
+            let high_y = bounds.y1 - (high - y_min) * y_scale;
+
+            px_values.push(DataValue::Float(px));
+            open_y_values.push(DataValue::Float(open_y));
+            close_y_values.push(DataValue::Float(close_y));
+            low_y_values.push(DataValue::Float(low_y));
+            high_y_values.push(DataValue::Float(high_y));
+        }
+
+        df.add_column(Series::new("px", px_values));
+        df.add_column(Series::new("open_y", open_y_values));
+        df.add_column(Series::new("close_y", close_y_values));
+        df.add_column(Series::new("low_y", low_y_values));
+        df.add_column(Series::new("high_y", high_y_values));
+        df.add_column(Series::new_constant(
+            "bar_width",
+            DataValue::Float(bar_width),
+            data_len,
+        ));
+
+        self.to_visual_elements(&df, input)
     }
 }
 
