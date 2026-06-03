@@ -50,26 +50,80 @@ pub struct Line {
 impl Line {
     pub fn new() -> Self {
         Self {
-            name: String::new(), data: None, x: "x".into(), y: "y".into(),
-            smooth: false, stack: None, symbol: SymbolType::Circle, symbol_size: 4.0,
-            area: false, color: None, y_axis_index: 0, grid_index: 0,
+            name: String::new(),
+            data: None,
+            x: "x".into(),
+            y: "y".into(),
+            smooth: false,
+            stack: None,
+            symbol: SymbolType::Circle,
+            symbol_size: 4.0,
+            area: false,
+            color: None,
+            y_axis_index: 0,
+            grid_index: 0,
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn x(mut self, col: impl Into<String>) -> Self { self.x = col.into(); self }
-    pub fn y(mut self, col: impl Into<String>) -> Self { self.y = col.into(); self }
-    pub fn smooth(mut self, val: bool) -> Self { self.smooth = val; self }
-    pub fn stack(mut self, name: impl Into<String>) -> Self { self.stack = Some(name.into()); self }
-    pub fn symbol(mut self, symbol: SymbolType) -> Self { self.symbol = symbol; self }
-    pub fn symbol_size(mut self, size: f64) -> Self { self.symbol_size = size; self }
-    pub fn area(mut self, val: bool) -> Self { self.area = val; self }
-    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
-    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
-    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn x(mut self, col: impl Into<String>) -> Self {
+        self.x = col.into();
+        self
+    }
+    pub fn y(mut self, col: impl Into<String>) -> Self {
+        self.y = col.into();
+        self
+    }
+    pub fn smooth(mut self, val: bool) -> Self {
+        self.smooth = val;
+        self
+    }
+    pub fn stack(mut self, name: impl Into<String>) -> Self {
+        self.stack = Some(name.into());
+        self
+    }
+    pub fn symbol(mut self, symbol: SymbolType) -> Self {
+        self.symbol = symbol;
+        self
+    }
+    pub fn symbol_size(mut self, size: f64) -> Self {
+        self.symbol_size = size;
+        self
+    }
+    pub fn area(mut self, val: bool) -> Self {
+        self.area = val;
+        self
+    }
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+    pub fn y_axis_index(mut self, idx: usize) -> Self {
+        self.y_axis_index = idx;
+        self
+    }
+    pub fn grid_index(mut self, idx: usize) -> Self {
+        self.grid_index = idx;
+        self
+    }
+    /// Shortcut for `y_axis_index(1)`: bind this series to the right y-axis.
+    pub fn right_axis(mut self) -> Self {
+        self.y_axis_index = 1;
+        self
+    }
 }
 
-impl Default for Line { fn default() -> Self { Self::new() } }
+impl Default for Line {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── Bar ──
 
@@ -89,22 +143,65 @@ pub struct Bar {
 impl Bar {
     pub fn new() -> Self {
         Self {
-            name: String::new(), data: None, x: "x".into(), y: "y".into(),
-            stack: None, group_index: None, color: None, y_axis_index: 0, grid_index: 0,
+            name: String::new(),
+            data: None,
+            x: "x".into(),
+            y: "y".into(),
+            stack: None,
+            group_index: None,
+            color: None,
+            y_axis_index: 0,
+            grid_index: 0,
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn x(mut self, col: impl Into<String>) -> Self { self.x = col.into(); self }
-    pub fn y(mut self, col: impl Into<String>) -> Self { self.y = col.into(); self }
-    pub fn stack(mut self, name: impl Into<String>) -> Self { self.stack = Some(name.into()); self }
-    pub fn group_index(mut self, idx: usize) -> Self { self.group_index = Some(idx); self }
-    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
-    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
-    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn x(mut self, col: impl Into<String>) -> Self {
+        self.x = col.into();
+        self
+    }
+    pub fn y(mut self, col: impl Into<String>) -> Self {
+        self.y = col.into();
+        self
+    }
+    pub fn stack(mut self, name: impl Into<String>) -> Self {
+        self.stack = Some(name.into());
+        self
+    }
+    pub fn group_index(mut self, idx: usize) -> Self {
+        self.group_index = Some(idx);
+        self
+    }
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+    pub fn y_axis_index(mut self, idx: usize) -> Self {
+        self.y_axis_index = idx;
+        self
+    }
+    pub fn grid_index(mut self, idx: usize) -> Self {
+        self.grid_index = idx;
+        self
+    }
+    /// Shortcut for `y_axis_index(1)`: bind this series to the right y-axis.
+    pub fn right_axis(mut self) -> Self {
+        self.y_axis_index = 1;
+        self
+    }
 }
 
-impl Default for Bar { fn default() -> Self { Self::new() } }
+impl Default for Bar {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── Pie ──
 
@@ -121,20 +218,45 @@ pub struct Pie {
 impl Pie {
     pub fn new() -> Self {
         Self {
-            name: String::new(), data: None,
-            category: "category".into(), value: "value".into(),
-            radius: (0.0, 75.0), center: (50.0, 50.0),
+            name: String::new(),
+            data: None,
+            category: "category".into(),
+            value: "value".into(),
+            radius: (0.0, 75.0),
+            center: (50.0, 50.0),
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn category(mut self, col: impl Into<String>) -> Self { self.category = col.into(); self }
-    pub fn value(mut self, col: impl Into<String>) -> Self { self.value = col.into(); self }
-    pub fn radius(mut self, inner: f64, outer: f64) -> Self { self.radius = (inner, outer); self }
-    pub fn center(mut self, x: f64, y: f64) -> Self { self.center = (x, y); self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn category(mut self, col: impl Into<String>) -> Self {
+        self.category = col.into();
+        self
+    }
+    pub fn value(mut self, col: impl Into<String>) -> Self {
+        self.value = col.into();
+        self
+    }
+    pub fn radius(mut self, inner: f64, outer: f64) -> Self {
+        self.radius = (inner, outer);
+        self
+    }
+    pub fn center(mut self, x: f64, y: f64) -> Self {
+        self.center = (x, y);
+        self
+    }
 }
 
-impl Default for Pie { fn default() -> Self { Self::new() } }
+impl Default for Pie {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── Scatter ──
 
@@ -153,21 +275,60 @@ pub struct Scatter {
 impl Scatter {
     pub fn new() -> Self {
         Self {
-            name: String::new(), data: None, x: "x".into(), y: "y".into(),
-            symbol_size: 10.0, color: None, y_axis_index: 0, grid_index: 0,
+            name: String::new(),
+            data: None,
+            x: "x".into(),
+            y: "y".into(),
+            symbol_size: 10.0,
+            color: None,
+            y_axis_index: 0,
+            grid_index: 0,
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn x(mut self, col: impl Into<String>) -> Self { self.x = col.into(); self }
-    pub fn y(mut self, col: impl Into<String>) -> Self { self.y = col.into(); self }
-    pub fn symbol_size(mut self, size: f64) -> Self { self.symbol_size = size; self }
-    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
-    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
-    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn x(mut self, col: impl Into<String>) -> Self {
+        self.x = col.into();
+        self
+    }
+    pub fn y(mut self, col: impl Into<String>) -> Self {
+        self.y = col.into();
+        self
+    }
+    pub fn symbol_size(mut self, size: f64) -> Self {
+        self.symbol_size = size;
+        self
+    }
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+    pub fn y_axis_index(mut self, idx: usize) -> Self {
+        self.y_axis_index = idx;
+        self
+    }
+    pub fn grid_index(mut self, idx: usize) -> Self {
+        self.grid_index = idx;
+        self
+    }
+    /// Shortcut for `y_axis_index(1)`: bind this series to the right y-axis.
+    pub fn right_axis(mut self) -> Self {
+        self.y_axis_index = 1;
+        self
+    }
 }
 
-impl Default for Scatter { fn default() -> Self { Self::new() } }
+impl Default for Scatter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── Bubble ──
 
@@ -185,20 +346,55 @@ pub struct Bubble {
 impl Bubble {
     pub fn new() -> Self {
         Self {
-            name: String::new(), data: None, name_col: None,
-            color: None, symbol_size_scale: 1.0, y_axis_index: 0, grid_index: 0,
+            name: String::new(),
+            data: None,
+            name_col: None,
+            color: None,
+            symbol_size_scale: 1.0,
+            y_axis_index: 0,
+            grid_index: 0,
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn name_col(mut self, col: impl Into<String>) -> Self { self.name_col = Some(col.into()); self }
-    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
-    pub fn symbol_size_scale(mut self, scale: f64) -> Self { self.symbol_size_scale = scale; self }
-    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
-    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn name_col(mut self, col: impl Into<String>) -> Self {
+        self.name_col = Some(col.into());
+        self
+    }
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = Some(color);
+        self
+    }
+    pub fn symbol_size_scale(mut self, scale: f64) -> Self {
+        self.symbol_size_scale = scale;
+        self
+    }
+    pub fn y_axis_index(mut self, idx: usize) -> Self {
+        self.y_axis_index = idx;
+        self
+    }
+    pub fn grid_index(mut self, idx: usize) -> Self {
+        self.grid_index = idx;
+        self
+    }
+    /// Shortcut for `y_axis_index(1)`: bind this series to the right y-axis.
+    pub fn right_axis(mut self) -> Self {
+        self.y_axis_index = 1;
+        self
+    }
 }
 
-impl Default for Bubble { fn default() -> Self { Self::new() } }
+impl Default for Bubble {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── Candlestick ──
 
@@ -218,23 +414,65 @@ pub struct Candlestick {
 impl Candlestick {
     pub fn new() -> Self {
         Self {
-            name: String::new(), data: None,
-            category: "category".into(), open: "open".into(), close: "close".into(),
-            low: "low".into(), high: "high".into(), y_axis_index: 0, grid_index: 0,
+            name: String::new(),
+            data: None,
+            category: "category".into(),
+            open: "open".into(),
+            close: "close".into(),
+            low: "low".into(),
+            high: "high".into(),
+            y_axis_index: 0,
+            grid_index: 0,
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn category(mut self, col: impl Into<String>) -> Self { self.category = col.into(); self }
-    pub fn open(mut self, col: impl Into<String>) -> Self { self.open = col.into(); self }
-    pub fn close(mut self, col: impl Into<String>) -> Self { self.close = col.into(); self }
-    pub fn low(mut self, col: impl Into<String>) -> Self { self.low = col.into(); self }
-    pub fn high(mut self, col: impl Into<String>) -> Self { self.high = col.into(); self }
-    pub fn y_axis_index(mut self, idx: usize) -> Self { self.y_axis_index = idx; self }
-    pub fn grid_index(mut self, idx: usize) -> Self { self.grid_index = idx; self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn category(mut self, col: impl Into<String>) -> Self {
+        self.category = col.into();
+        self
+    }
+    pub fn open(mut self, col: impl Into<String>) -> Self {
+        self.open = col.into();
+        self
+    }
+    pub fn close(mut self, col: impl Into<String>) -> Self {
+        self.close = col.into();
+        self
+    }
+    pub fn low(mut self, col: impl Into<String>) -> Self {
+        self.low = col.into();
+        self
+    }
+    pub fn high(mut self, col: impl Into<String>) -> Self {
+        self.high = col.into();
+        self
+    }
+    pub fn y_axis_index(mut self, idx: usize) -> Self {
+        self.y_axis_index = idx;
+        self
+    }
+    pub fn grid_index(mut self, idx: usize) -> Self {
+        self.grid_index = idx;
+        self
+    }
+    /// Shortcut for `y_axis_index(1)`: bind this series to the right y-axis.
+    pub fn right_axis(mut self) -> Self {
+        self.y_axis_index = 1;
+        self
+    }
 }
 
-impl Default for Candlestick { fn default() -> Self { Self::new() } }
+impl Default for Candlestick {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── Radar ──
 
@@ -250,14 +488,29 @@ pub struct Radar {
 impl Radar {
     pub fn new(indicators: Vec<String>) -> Self {
         Self {
-            name: String::new(), data: None,
-            values: "value".into(), indicators, color: None,
+            name: String::new(),
+            data: None,
+            values: "value".into(),
+            indicators,
+            color: None,
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn values(mut self, col: impl Into<String>) -> Self { self.values = col.into(); self }
-    pub fn color(mut self, color: Color) -> Self { self.color = Some(color); self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn values(mut self, col: impl Into<String>) -> Self {
+        self.values = col.into();
+        self
+    }
+    pub fn color(mut self, color: Color) -> Self {
+        self.color = Some(color);
+        self
+    }
 }
 
 // ── PolarBar ──
@@ -276,20 +529,46 @@ pub struct PolarBar {
 impl PolarBar {
     pub fn new() -> Self {
         Self {
-            name: String::new(), data: None,
-            angle: "angle".into(), radius: "radius".into(),
-            color: None, pad_angle: 2.0, start_angle: 0.0,
+            name: String::new(),
+            data: None,
+            angle: "angle".into(),
+            radius: "radius".into(),
+            color: None,
+            pad_angle: 2.0,
+            start_angle: 0.0,
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn angle(mut self, col: impl Into<String>) -> Self { self.angle = col.into(); self }
-    pub fn radius(mut self, col: impl Into<String>) -> Self { self.radius = col.into(); self }
-    pub fn pad_angle(mut self, angle: f64) -> Self { self.pad_angle = angle; self }
-    pub fn start_angle(mut self, angle: f64) -> Self { self.start_angle = angle; self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn angle(mut self, col: impl Into<String>) -> Self {
+        self.angle = col.into();
+        self
+    }
+    pub fn radius(mut self, col: impl Into<String>) -> Self {
+        self.radius = col.into();
+        self
+    }
+    pub fn pad_angle(mut self, angle: f64) -> Self {
+        self.pad_angle = angle;
+        self
+    }
+    pub fn start_angle(mut self, angle: f64) -> Self {
+        self.start_angle = angle;
+        self
+    }
 }
 
-impl Default for PolarBar { fn default() -> Self { Self::new() } }
+impl Default for PolarBar {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── PolarScatter ──
 
@@ -305,18 +584,40 @@ pub struct PolarScatter {
 impl PolarScatter {
     pub fn new() -> Self {
         Self {
-            name: String::new(), data: None,
-            angle: "angle".into(), radius: "radius".into(), symbol_size: None,
+            name: String::new(),
+            data: None,
+            angle: "angle".into(),
+            radius: "radius".into(),
+            symbol_size: None,
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn angle(mut self, col: impl Into<String>) -> Self { self.angle = col.into(); self }
-    pub fn radius(mut self, col: impl Into<String>) -> Self { self.radius = col.into(); self }
-    pub fn symbol_size(mut self, size: f64) -> Self { self.symbol_size = Some(size); self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn angle(mut self, col: impl Into<String>) -> Self {
+        self.angle = col.into();
+        self
+    }
+    pub fn radius(mut self, col: impl Into<String>) -> Self {
+        self.radius = col.into();
+        self
+    }
+    pub fn symbol_size(mut self, size: f64) -> Self {
+        self.symbol_size = Some(size);
+        self
+    }
 }
 
-impl Default for PolarScatter { fn default() -> Self { Self::new() } }
+impl Default for PolarScatter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── Gauge ──
 
@@ -337,22 +638,58 @@ pub struct Gauge {
 impl Gauge {
     pub fn new() -> Self {
         Self {
-            name: String::new(), data: None, value: "value".into(),
-            min: 0.0, max: 100.0, center: (50.0, 75.0), radius: 75.0,
-            start_angle: -225.0, end_angle: 45.0, split_number: 10,
+            name: String::new(),
+            data: None,
+            value: "value".into(),
+            min: 0.0,
+            max: 100.0,
+            center: (50.0, 75.0),
+            radius: 75.0,
+            start_angle: -225.0,
+            end_angle: 45.0,
+            split_number: 10,
         }
     }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
-    pub fn value(mut self, col: impl Into<String>) -> Self { self.value = col.into(); self }
-    pub fn min(mut self, val: f64) -> Self { self.min = val; self }
-    pub fn max(mut self, val: f64) -> Self { self.max = val; self }
-    pub fn range(mut self, min: f64, max: f64) -> Self { self.min = min; self.max = max; self }
-    pub fn center(mut self, x: f64, y: f64) -> Self { self.center = (x, y); self }
-    pub fn radius(mut self, r: f64) -> Self { self.radius = r; self }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn value(mut self, col: impl Into<String>) -> Self {
+        self.value = col.into();
+        self
+    }
+    pub fn min(mut self, val: f64) -> Self {
+        self.min = val;
+        self
+    }
+    pub fn max(mut self, val: f64) -> Self {
+        self.max = val;
+        self
+    }
+    pub fn range(mut self, min: f64, max: f64) -> Self {
+        self.min = min;
+        self.max = max;
+        self
+    }
+    pub fn center(mut self, x: f64, y: f64) -> Self {
+        self.center = (x, y);
+        self
+    }
+    pub fn radius(mut self, r: f64) -> Self {
+        self.radius = r;
+        self
+    }
 }
 
-impl Default for Gauge { fn default() -> Self { Self::new() } }
+impl Default for Gauge {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── Table ──
 
@@ -363,18 +700,40 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn new() -> Self { Self { name: String::new(), data: None } }
-    pub fn data(mut self, data: DataFrame) -> Self { self.data = Some(data); self }
-    pub fn name(mut self, name: impl Into<String>) -> Self { self.name = name.into(); self }
+    pub fn new() -> Self {
+        Self {
+            name: String::new(),
+            data: None,
+        }
+    }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
 }
 
-impl Default for Table { fn default() -> Self { Self::new() } }
+impl Default for Table {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ── SymbolType ──
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SymbolType {
-    Circle, Rect, RoundRect, Triangle, Diamond, Pin, Arrow, None,
+    Circle,
+    Rect,
+    RoundRect,
+    Triangle,
+    Diamond,
+    Pin,
+    Arrow,
+    None,
 }
 
 impl From<SymbolType> for crate::option::SymbolType {

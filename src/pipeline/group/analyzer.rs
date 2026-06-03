@@ -37,13 +37,12 @@ impl GroupAnalyzer {
                             if visited[j] {
                                 continue;
                             }
-                            if let SeriesOption::Bar(other_bar) = &option.series[other_idx] {
-                                if other_bar.grid_index.unwrap_or(0) == grid_idx
-                                    && other_bar.stack.as_ref() == Some(stack_name)
-                                {
-                                    visited[j] = true;
-                                    group_indices.push(other_idx);
-                                }
+                            if let SeriesOption::Bar(other_bar) = &option.series[other_idx]
+                                && other_bar.grid_index.unwrap_or(0) == grid_idx
+                                && other_bar.stack.as_ref() == Some(stack_name)
+                            {
+                                visited[j] = true;
+                                group_indices.push(other_idx);
                             }
                         }
                         plans.push(GroupPlan {
@@ -57,14 +56,13 @@ impl GroupAnalyzer {
                             if visited[j] {
                                 continue;
                             }
-                            if let SeriesOption::Bar(other_bar) = &option.series[other_idx] {
-                                if other_bar.grid_index.unwrap_or(0) == grid_idx
-                                    && other_bar.group_index.unwrap_or(0) == bar_group
-                                    && other_bar.stack.is_none()
-                                {
-                                    visited[j] = true;
-                                    group_indices.push(other_idx);
-                                }
+                            if let SeriesOption::Bar(other_bar) = &option.series[other_idx]
+                                && other_bar.grid_index.unwrap_or(0) == grid_idx
+                                && other_bar.group_index.unwrap_or(0) == bar_group
+                                && other_bar.stack.is_none()
+                            {
+                                visited[j] = true;
+                                group_indices.push(other_idx);
                             }
                         }
                         plans.push(GroupPlan {

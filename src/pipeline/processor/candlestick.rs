@@ -14,6 +14,12 @@ use crate::{
 
 pub struct CandlestickProcessor;
 
+impl Default for CandlestickProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CandlestickProcessor {
     pub fn new() -> Self {
         Self

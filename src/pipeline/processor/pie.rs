@@ -16,6 +16,12 @@ use crate::{
 
 pub struct PieProcessor;
 
+impl Default for PieProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PieProcessor {
     pub fn new() -> Self {
         Self
@@ -228,13 +234,7 @@ impl DataProcessor for PieProcessor {
                 z_index: Z_SERIES_FILL,
             });
 
-            if pie
-                .label
-                .as_ref()
-                .map(|l| l.show)
-                .flatten()
-                .unwrap_or(false)
-            {
+            if pie.label.as_ref().and_then(|l| l.show).unwrap_or(false) {
                 let mid_angle = (start_angle + end_angle) / 2.0;
                 let is_right_side = mid_angle.cos() >= 0.0;
                 let is_outside = pie

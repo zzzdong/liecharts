@@ -23,7 +23,7 @@ use crate::{
         group::{GroupAnalyzer, GroupType, dataframe_builder::GroupedBarProcessor},
         types::{ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
     },
-    text::{create_text_layout, layout_text},
+    text::create_text_layout,
     theme::Theme,
     visual::{
         Color, FillStrokeStyle, TextAlign, TextBaseline, VisualElement, Z_BACKGROUND, Z_LABEL,
@@ -138,7 +138,9 @@ pub fn build_chart_with_theme(
     ));
 
     // 9. 渲染轴名称
-    all_elements.extend(build_axis_name_elements(option, &specs, &colors, theme));
+    all_elements.extend(build_axis_name_elements(
+        option, width, &specs, &colors, theme,
+    ));
 
     // 10. 计算文本布局
     compute_text_layouts(&mut all_elements);
@@ -252,7 +254,7 @@ fn build_legend_elements_v2(
         let legend_style = theme.get_legend_text_style();
         let legend_color = Color::from_hex(&legend_style.color).unwrap_or(colors.text_color);
 
-        let data = legend.data.as_ref().map(|d| d.as_slice()).unwrap_or(&[]);
+        let data = legend.data.as_deref().unwrap_or(&[]);
         let symbol_size = legend.symbol_size.unwrap_or(10.0);
         let item_gap = 8.0; // symbol 和文本之间的间距
         let legend_padding = 16.0; // 每个 item 内部的 padding
@@ -267,7 +269,7 @@ fn build_legend_elements_v2(
         let mut item_widths = Vec::new();
         let mut total_content_width = 0.0;
 
-        for (i, name) in data.iter().enumerate() {
+        for (_i, name) in data.iter().enumerate() {
             // 估算文本宽度（使用 create_text_layout）
             let text_style = crate::visual::TextStyle {
                 font_size: legend_style.font_size,
@@ -357,6 +359,7 @@ fn build_legend_elements_v2(
 /// 构建轴名称元素
 fn build_axis_name_elements(
     option: &ChartOption,
+    width: u32,
     specs: &[SubplotSpec],
     _colors: &ColorContext,
     theme: &Theme,
@@ -371,74 +374,137 @@ fn build_axis_name_elements(
 
         // 处理 Y 轴名称
         for (i, &y_axis_idx) in spec.y_axis_indices.iter().enumerate() {
-            if let Some(y_axis) = option.y_axis.get(y_axis_idx) {
-                if let Some(name) = &y_axis.name {
-                    let is_right = y_axis.position == Some(crate::option::AxisPosition::Right)
-                        || (y_axis.position.is_none() && i > 0);
+            if let Some(y_axis) = option.y_axis.get(y_axis_idx)
+                && let Some(name) = &y_axis.name
+            {
+                let is_right = y_axis.position == Some(crate::option::AxisPosition::Right)
+                    || (y_axis.position.is_none() && i > 0);
 
-                    // 计算轴名称位置，确保不会超出画布
-                    // 左侧轴：确保 x >= 15，右侧轴：确保不超出画布宽度
-                    let (x, rotation) = if is_right {
-                        let x_pos = bounds.x1 + 35.0;
-                        (x_pos, std::f64::consts::FRAC_PI_2)
+                // 先测量文本尺寸，基于实际宽度和 grid 边界计算安全位置
+                // 轴名称强制单行显示，避免旋转后布局异常
+                // 使用左上角作为锚点，根据左右轴设置不同的对齐方式
+                let (initial_align, initial_baseline) = (TextAlign::Left, TextBaseline::Top);
+                let text_style = crate::visual::TextStyle {
+                    font_size: axis_label_style.font_size,
+                    color: label_color,
+                    font_family: axis_label_style.font_family.clone(),
+                    align: initial_align,
+                    vertical_align: initial_baseline,
+                    ..Default::default()
+                };
+                // 使用 None 让文本自然布局，不进行强制换行
+                let text_layout = create_text_layout(name, &text_style, None);
+                let _text_width = text_layout.width() as f64;
+                let text_height = text_layout.height() as f64;
+
+                // 计算轴名称位置
+                // 旋转后文本呈竖直状态：
+                // - 左轴（旋转-90°）：文本向上延伸，需保证 text_top >= margin
+                // - 右轴（旋转+90°）：文本向下延伸，需保证 text_bottom <= width - margin
+                let margin = 10.0; // 画布边缘留白
+                let label_margin = 8.0; // 轴名称与刻度标签间距
+
+                // 使用左上角作为锚点和旋转中心
+                // 左轴：旋转-90°，文本向上延伸，锚点放在 grid 左侧
+                // 右轴：旋转+90°，文本向下延伸，锚点放在 grid 右侧
+                // 需要考虑刻度标签的空间，避免重叠
+                let max_label_width = 35.0; // 预估最大刻度标签宽度（包括多位数）
+                let (x, rotation, align, baseline) = if is_right {
+                    // 右轴名称放在 grid 右侧
+                    // 旋转+90°，文本从左上角向下延伸
+                    // 刻度标签在 bounds.x1 + 8 处左对齐，最宽约 35px
+                    // 轴名称应放在标签右侧：锚点.x >= bounds.x1 + 8 + max_label_width + label_margin
+                    let min_anchor_x = bounds.x1 + 8.0 + max_label_width + label_margin;
+                    let anchor_x = min_anchor_x
+                        .max(bounds.x1 + label_margin)
+                        .min(width as f64 - margin - text_height);
+                    (
+                        anchor_x,
+                        std::f64::consts::FRAC_PI_2,
+                        TextAlign::Left,
+                        TextBaseline::Top,
+                    )
+                } else {
+                    // 左轴名称放在 grid 左侧
+                    // 旋转-90°，文本从左上角向上延伸
+                    // 刻度标签在 bounds.x0 - 8 处右对齐，最宽约 35px，左边缘约在 bounds.x0 - 8 - 35 = bounds.x0 - 43
+                    // 轴名称应放在标签左侧：锚点.x + text_height <= bounds.x0 - 43 - label_margin
+                    let label_left_edge = bounds.x0 - 8.0 - max_label_width;
+                    let max_anchor_x = label_left_edge - label_margin - text_height;
+                    if max_anchor_x >= margin {
+                        // 正常情况：放在标签左侧
+                        (
+                            max_anchor_x,
+                            -std::f64::consts::FRAC_PI_2,
+                            TextAlign::Left,
+                            TextBaseline::Top,
+                        )
                     } else {
-                        // 左侧轴，确保不会超出左边界
-                        let x_pos = (bounds.x0 - 35.0).max(15.0);
-                        (x_pos, -std::f64::consts::FRAC_PI_2)
-                    };
-                    let y = bounds.y0 + bounds.height() / 2.0;
+                        // 空间不足：放在 grid 右侧，旋转+90°
+                        let min_anchor_x = bounds.x1 + 8.0 + max_label_width + label_margin;
+                        let anchor_x = min_anchor_x
+                            .max(bounds.x1 + label_margin)
+                            .min(width as f64 - margin - text_height);
+                        (
+                            anchor_x,
+                            std::f64::consts::FRAC_PI_2,
+                            TextAlign::Left,
+                            TextBaseline::Top,
+                        )
+                    }
+                };
+                let y = bounds.y0 + bounds.height() / 2.0;
 
-                    elements.push(VisualElement::TextRun {
-                        text: name.clone(),
-                        position: Point::new(x, y),
-                        style: crate::visual::TextStyle {
-                            font_size: axis_label_style.font_size,
-                            color: label_color,
-                            font_family: axis_label_style.font_family.clone(),
-                            align: TextAlign::Center,
-                            vertical_align: TextBaseline::Middle,
-                            ..Default::default()
-                        },
-                        rotation,
-                        max_width: None,
-                        layout: None,
-                        z_index: Z_LABEL,
-                    });
-                }
+                elements.push(VisualElement::TextRun {
+                    text: name.clone(),
+                    position: Point::new(x, y),
+                    style: crate::visual::TextStyle {
+                        font_size: axis_label_style.font_size,
+                        color: label_color,
+                        font_family: axis_label_style.font_family.clone(),
+                        align,
+                        vertical_align: baseline,
+                        ..Default::default()
+                    },
+                    rotation,
+                    max_width: None,
+                    layout: Some(text_layout),
+                    z_index: Z_LABEL,
+                });
             }
         }
 
         // 处理 X 轴名称
         for (i, &x_axis_idx) in spec.x_axis_indices.iter().enumerate() {
-            if let Some(x_axis) = option.x_axis.get(x_axis_idx) {
-                if let Some(name) = &x_axis.name {
-                    let is_top = x_axis.position == Some(crate::option::AxisPosition::Top)
-                        || (x_axis.position.is_none() && i > 0);
+            if let Some(x_axis) = option.x_axis.get(x_axis_idx)
+                && let Some(name) = &x_axis.name
+            {
+                let is_top = x_axis.position == Some(crate::option::AxisPosition::Top)
+                    || (x_axis.position.is_none() && i > 0);
 
-                    let x = bounds.x0 + bounds.width() / 2.0;
-                    let y = if is_top {
-                        bounds.y0 - 25.0 // 上方轴，名称在轴上方
-                    } else {
-                        bounds.y1 + 35.0 // 下方轴，名称在轴下方
-                    };
+                let x = bounds.x0 + bounds.width() / 2.0;
+                let y = if is_top {
+                    bounds.y0 - 25.0 // 上方轴，名称在轴上方
+                } else {
+                    bounds.y1 + 35.0 // 下方轴，名称在轴下方
+                };
 
-                    elements.push(VisualElement::TextRun {
-                        text: name.clone(),
-                        position: Point::new(x, y),
-                        style: crate::visual::TextStyle {
-                            font_size: axis_label_style.font_size,
-                            color: label_color,
-                            font_family: axis_label_style.font_family.clone(),
-                            align: TextAlign::Center,
-                            vertical_align: TextBaseline::Middle,
-                            ..Default::default()
-                        },
-                        rotation: 0.0, // X轴名称不旋转
-                        max_width: None,
-                        layout: None,
-                        z_index: Z_LABEL,
-                    });
-                }
+                elements.push(VisualElement::TextRun {
+                    text: name.clone(),
+                    position: Point::new(x, y),
+                    style: crate::visual::TextStyle {
+                        font_size: axis_label_style.font_size,
+                        color: label_color,
+                        font_family: axis_label_style.font_family.clone(),
+                        align: TextAlign::Center,
+                        vertical_align: TextBaseline::Middle,
+                        ..Default::default()
+                    },
+                    rotation: 0.0, // X轴名称不旋转
+                    max_width: None,
+                    layout: None,
+                    z_index: Z_LABEL,
+                });
             }
         }
     }
@@ -458,19 +524,18 @@ fn compute_text_layouts(elements: &mut [VisualElement]) {
             layout,
             ..
         } = element
+            && layout.is_none()
         {
-            if layout.is_none() {
-                let text_layout = create_text_layout(text, style, *max_width);
-                let (x_off, y_off) =
-                    compute_text_offset(&text_layout, style.align, style.vertical_align);
-                if let VisualElement::TextRun {
-                    position, layout, ..
-                } = element
-                {
-                    position.x += x_off;
-                    position.y += y_off;
-                    *layout = Some(text_layout);
-                }
+            let text_layout = create_text_layout(text, style, *max_width);
+            let (x_off, y_off) =
+                compute_text_offset(&text_layout, style.align, style.vertical_align);
+            if let VisualElement::TextRun {
+                position, layout, ..
+            } = element
+            {
+                position.x += x_off;
+                position.y += y_off;
+                *layout = Some(text_layout);
             }
         }
     }

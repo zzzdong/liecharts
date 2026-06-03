@@ -19,6 +19,12 @@ use crate::{
 
 pub struct PolarScatterProcessor;
 
+impl Default for PolarScatterProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PolarScatterProcessor {
     pub fn new() -> Self {
         Self

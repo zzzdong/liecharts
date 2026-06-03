@@ -13,6 +13,12 @@ pub struct VisualElementBuilder {
     legend_elements: Vec<VisualElement>,
 }
 
+impl Default for VisualElementBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VisualElementBuilder {
     pub fn new() -> Self {
         Self {

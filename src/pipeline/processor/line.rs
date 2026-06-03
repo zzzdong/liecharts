@@ -18,6 +18,12 @@ use crate::{
 
 pub struct LineProcessor;
 
+impl Default for LineProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LineProcessor {
     pub fn new() -> Self {
         Self
@@ -207,23 +213,24 @@ impl DataProcessor for LineProcessor {
 
         let mut elements = Vec::new();
 
-        if points.len() >= 2 && area_color.is_some() {
-            if let Some(ac) = area_color {
-                let opacity = area_opacity.unwrap_or(0.5);
-                let alpha = (255.0 * opacity).clamp(0.0, 255.0) as u8;
-                let mut fill_color = ac;
-                fill_color.a = alpha;
+        if points.len() >= 2
+            && area_color.is_some()
+            && let Some(ac) = area_color
+        {
+            let opacity = area_opacity.unwrap_or(0.5);
+            let alpha = (255.0 * opacity).clamp(0.0, 255.0) as u8;
+            let mut fill_color = ac;
+            fill_color.a = alpha;
 
-                let path = Self::build_area_path(&points, input.spec.bounds.y1);
-                elements.push(VisualElement::Path {
-                    path,
-                    style: FillStrokeStyle {
-                        fill: Some(fill_color),
-                        stroke: None,
-                    },
-                    z_index: Z_SERIES_FILL,
-                });
-            }
+            let path = Self::build_area_path(&points, input.spec.bounds.y1);
+            elements.push(VisualElement::Path {
+                path,
+                style: FillStrokeStyle {
+                    fill: Some(fill_color),
+                    stroke: None,
+                },
+                z_index: Z_SERIES_FILL,
+            });
         }
 
         if points.len() >= 2 {

@@ -15,6 +15,12 @@ use crate::{
 
 pub struct TableProcessor;
 
+impl Default for TableProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TableProcessor {
     pub fn new() -> Self {
         Self
@@ -198,7 +204,7 @@ impl DataProcessor for TableProcessor {
                 if let Some(rv) = r.as_f64(_i) {
                     let c = if rv < 1.0 {
                         header_bg
-                    } else if (rv as usize) % 2 == 0 {
+                    } else if (rv as usize).is_multiple_of(2) {
                         even_bg
                     } else {
                         odd_bg

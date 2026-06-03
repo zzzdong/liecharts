@@ -19,22 +19,27 @@ A Rust library for creating charts, inspired by ECharts.
 
 ## Usage
 
-### Builder API (Recommended)
+### DataFrame API (Recommended)
 
 ```rust
-use liecharts::prelude::*;
+use liecharts::api::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ChartBuilder::new()
-        .with_title(TitleOption::new("月度趋势").subtext("2024年"))
-        .with_x_axis(AxisOption::category().data(["1月", "2月", "3月"]))
-        .with_y_axis(AxisOption::value())
-        .with_series(SeriesOption::Bar(BarSeriesOption::new(
-            "销售额",
-            vec![120.0, 200.0, 150.0],
-        )))
-        .build(800, 600)?
-        .render_to_image("chart.png")?;
+    let df = dataframe!(
+        "month"   => ["1月", "2月", "3月"],
+        "revenue" => [120.0, 200.0, 150.0],
+    );
+
+    Chart::new(800, 600)
+        .title("月度趋势")
+        .add_bar(
+            Bar::new()
+                .data(df)
+                .x("month")
+                .y("revenue")
+                .name("销售额"),
+        )
+        .render_to_svg("chart.svg")?;
     Ok(())
 }
 ```

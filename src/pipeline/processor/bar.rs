@@ -17,6 +17,12 @@ use crate::{
 
 pub struct BarProcessor;
 
+impl Default for BarProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BarProcessor {
     pub fn new() -> Self {
         Self

@@ -139,11 +139,11 @@ impl SamplingProcessor {
             let mut max_idx = start;
 
             for j in start..end {
-                if let Some(y) = y_col.and_then(|c| c.as_f64(j)) {
-                    if y > max_val {
-                        max_val = y;
-                        max_idx = j;
-                    }
+                if let Some(y) = y_col.and_then(|c| c.as_f64(j))
+                    && y > max_val
+                {
+                    max_val = y;
+                    max_idx = j;
                 }
             }
 
@@ -172,11 +172,11 @@ impl SamplingProcessor {
             let mut min_idx = start;
 
             for j in start..end {
-                if let Some(y) = y_col.and_then(|c| c.as_f64(j)) {
-                    if y < min_val {
-                        min_val = y;
-                        min_idx = j;
-                    }
+                if let Some(y) = y_col.and_then(|c| c.as_f64(j))
+                    && y < min_val
+                {
+                    min_val = y;
+                    min_idx = j;
                 }
             }
 

@@ -16,21 +16,49 @@
 //!     "cost" => [90.0, 140.0, 110.0, 60.0],
 //! );
 //!
-//! // Build a chart with layers
+//! // Dual-axis chart: line (left) + bar (right)
 //! let svg = Chart::new(800, 600)
 //!     .title("Monthly Sales")
 //!     .add_line(
-//!         LineLayer::new(sales.clone())
-//!             .x("month")
-//!             .y("revenue")
+//!         Line::new()
+//!             .data(sales.clone())
+//!             .x("month").y("revenue")
 //!             .name("Revenue"),
 //!     )
 //!     .add_bar(
-//!         BarLayer::new(sales)
-//!             .x("month")
-//!             .y("cost")
-//!             .name("Cost"),
+//!         Bar::new()
+//!             .data(sales)
+//!             .x("month").y("cost")
+//!             .name("Cost")
+//!             .right_axis(),
 //!     )
+//!     .render_svg()
+//!     .unwrap();
+//! ```
+//!
+//! # Multi-grid layout with sub_grid (no manual grid_index)
+//!
+//! ```no_run
+//! use liecharts::api::*;
+//!
+//! let _svg = Chart::new(1000, 900)
+//!     .sub_grid(
+//!         Grid::new().left(Position::pct(3.0)).top(Position::pct(3.0))
+//!                     .right(Position::pct(50.0)).bottom(Position::pct(50.0)),
+//!         |g| g
+//!             .x_axis(Axis::category().data(["A", "B", "C"]))
+//!             .y_axis(Axis::value())
+//!             .add_layer(Bar::new().data(dataframe!("x"=>["A","B","C"],"y"=>[1.0,2.0,3.0])).x("x").y("y")),
+//!     )
+//!     .sub_grid(
+//!         Grid::new().left(Position::pct(50.0)).top(Position::pct(3.0))
+//!                     .right(Position::pct(3.0)).bottom(Position::pct(50.0)),
+//!         |g| g
+//!             .x_axis(Axis::category().data(["D", "E", "F"]))
+//!             .y_axis(Axis::value())
+//!             .add_layer(Line::new().data(dataframe!("x"=>["D","E","F"],"y"=>[4.0,5.0,6.0])).x("x").y("y")),
+//!     )
+//!     .add_pie(Pie::new().data(dataframe!("name"=>["X","Y"],"val"=>[10.0,20.0])).category("name").value("val"))
 //!     .render_svg()
 //!     .unwrap();
 //! ```
@@ -38,7 +66,9 @@
 mod chart;
 mod layer;
 
-pub use chart::{Axis, AxisPosition, AxisType, Chart, Grid, Legend, Orient, Position, Title};
+pub use chart::{
+    Axis, AxisPosition, AxisType, Chart, Grid, GridBuilder, Legend, Orient, Position, Title,
+};
 pub use layer::*;
 
 /// Macro to create a [`DataFrame`](crate::pipeline::dataframe::DataFrame) with a concise syntax.

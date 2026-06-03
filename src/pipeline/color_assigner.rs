@@ -8,6 +8,12 @@ use crate::{pipeline::types::ColorContext, theme::Theme, visual::Color};
 /// - 分面场景下同一系列跨分面保持颜色一致
 pub struct ColorAssigner;
 
+impl Default for ColorAssigner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ColorAssigner {
     pub fn new() -> Self {
         Self

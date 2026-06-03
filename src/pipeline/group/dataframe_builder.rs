@@ -2,6 +2,12 @@ use crate::pipeline::dataframe::{DataFrame, DataValue, Series};
 
 pub struct GroupedBarProcessor;
 
+impl Default for GroupedBarProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GroupedBarProcessor {
     pub fn new() -> Self {
         Self
@@ -36,7 +42,7 @@ impl GroupedBarProcessor {
 
             let mut stack_cums: Vec<f64> = vec![0.0; max_cats];
 
-            for (_pos, &global_idx) in plan.series_indices.iter().enumerate() {
+            for &global_idx in plan.series_indices.iter() {
                 let bar = match &option.series[global_idx] {
                     SeriesOption::Bar(b) => b,
                     _ => continue,

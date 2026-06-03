@@ -17,6 +17,12 @@ use crate::{
 
 pub struct ScatterProcessor;
 
+impl Default for ScatterProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScatterProcessor {
     pub fn new() -> Self {
         Self
@@ -158,26 +164,25 @@ impl DataProcessor for ScatterProcessor {
                 z_index: Z_SERIES_POINT,
             });
 
-            if let Some(name_col) = name_col {
-                if let Some(name) = name_col.as_string(i) {
-                    if !name.is_empty() {
-                        elements.push(VisualElement::TextRun {
-                            text: name,
-                            position: Point::new(px + symbol_size / 2.0 + 3.0, py),
-                            style: crate::visual::TextStyle {
-                                font_size: 10.0,
-                                color,
-                                align: TextAlign::Left,
-                                vertical_align: TextBaseline::Middle,
-                                ..Default::default()
-                            },
-                            rotation: 0.0,
-                            max_width: None,
-                            layout: None,
-                            z_index: Z_LABEL,
-                        });
-                    }
-                }
+            if let Some(name_col) = name_col
+                && let Some(name) = name_col.as_string(i)
+                && !name.is_empty()
+            {
+                elements.push(VisualElement::TextRun {
+                    text: name,
+                    position: Point::new(px + symbol_size / 2.0 + 3.0, py),
+                    style: crate::visual::TextStyle {
+                        font_size: 10.0,
+                        color,
+                        align: TextAlign::Left,
+                        vertical_align: TextBaseline::Middle,
+                        ..Default::default()
+                    },
+                    rotation: 0.0,
+                    max_width: None,
+                    layout: None,
+                    z_index: Z_LABEL,
+                });
             }
         }
 

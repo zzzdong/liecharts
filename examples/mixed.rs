@@ -18,8 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ))
                 .x("day")
                 .y("value")
-                .name("销量")
-                .y_axis_index(0),
+                .name("销量"),
         )
         .add_line(
             Line::new()
@@ -30,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .x("day")
                 .y("value")
                 .name("增长率")
-                .y_axis_index(1),
+                .right_axis(),
         )
         .render_to_svg("mixed.svg")?;
     println!("混合图表已保存到 mixed.svg");

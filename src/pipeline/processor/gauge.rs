@@ -10,12 +10,18 @@ use crate::{
         dataframe::{DataFrame, DataValue, Series},
     },
     visual::{
-        Color, FillStrokeStyle, GradientDef, StrokeStyle, TextAlign, TextBaseline, VisualElement,
-        Z_AXIS, Z_LABEL, Z_SERIES_FILL,
+        Color, FillStrokeStyle, StrokeStyle, TextAlign, TextBaseline, VisualElement, Z_AXIS,
+        Z_LABEL, Z_SERIES_FILL,
     },
 };
 
 pub struct GaugeProcessor;
+
+impl Default for GaugeProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl GaugeProcessor {
     pub fn new() -> Self {
@@ -118,7 +124,7 @@ impl DataProcessor for GaugeProcessor {
             gauge
                 .center
                 .as_ref()
-                .map(|v| v.get(0).map(|s| s.as_str()).unwrap_or("50%")),
+                .map(|v| v.first().map(|s| s.as_str()).unwrap_or("50%")),
             &bounds,
         );
         let radius = resolve_radius(gauge.radius.as_deref(), &bounds);

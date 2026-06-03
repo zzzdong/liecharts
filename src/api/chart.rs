@@ -1,6 +1,6 @@
 use super::layer::{
-    Bar, Bubble, Candlestick, Gauge, LayerSpec, Line, Pie,
-    PolarBar, PolarScatter, Radar, Scatter, Table,
+    Bar, Bubble, Candlestick, Gauge, LayerSpec, Line, Pie, PolarBar, PolarScatter, Radar, Scatter,
+    Table,
 };
 use crate::{
     error::Result,
@@ -40,6 +40,76 @@ macro_rules! impl_from_layer {
             }
         }
     };
+}
+
+// ── GridBuilder ──
+
+/// A context for configuring a single grid and its contents.
+///
+/// Created by [`Chart::sub_grid`]. All layers and axes added through
+/// this builder are automatically linked to the correct grid index,
+/// eliminating the need for manual `grid_index()` calls.
+///
+/// # Example
+///
+/// ```ignore
+/// .sub_grid(Grid::new(), |g| g
+///     .x_axis(Axis::category().data(["A", "B"]))
+///     .y_axis(Axis::value())
+///     .add_layer(Bar::new().data(df).x("cat").y("val"))
+/// )
+/// ```
+#[derive(Debug, Clone)]
+pub struct GridBuilder {
+    grid_index: usize,
+    x_axes: Vec<Axis>,
+    y_axes: Vec<Axis>,
+    layers: Vec<LayerSpec>,
+}
+
+impl GridBuilder {
+    fn new(grid_index: usize) -> Self {
+        Self {
+            grid_index,
+            x_axes: Vec::new(),
+            y_axes: Vec::new(),
+            layers: Vec::new(),
+        }
+    }
+
+    /// Add an x-axis linked to this grid.
+    pub fn x_axis(mut self, mut axis: Axis) -> Self {
+        axis.grid_index = self.grid_index;
+        self.x_axes.push(axis);
+        self
+    }
+
+    /// Add a y-axis linked to this grid.
+    /// The first y-axis is positioned on the left, the second on the right.
+    pub fn y_axis(mut self, mut axis: Axis) -> Self {
+        axis.grid_index = self.grid_index;
+        // Auto-set position based on index: first -> Left, second -> Right
+        let y_axis_idx = self.y_axes.len();
+        if y_axis_idx == 0 {
+            axis.position = AxisPosition::Left;
+        } else {
+            axis.position = AxisPosition::Right;
+        }
+        self.y_axes.push(axis);
+        self
+    }
+
+    /// Add a layer (Line, Bar, Pie, etc.) linked to this grid.
+    ///
+    /// Cartesian layers (Line, Bar, Scatter, Bubble, Candlestick)
+    /// get their `grid_index` set automatically. Non-cartesian layers
+    /// (Pie, Radar, Gauge, etc.) ignore the grid index.
+    pub fn add_layer(mut self, layer: impl Into<LayerSpec>) -> Self {
+        let mut spec: LayerSpec = layer.into();
+        spec.set_grid_index(self.grid_index);
+        self.layers.push(spec);
+        self
+    }
 }
 
 // ── Position / Orient / Axis enums ──
@@ -370,7 +440,14 @@ impl Chart {
         self
     }
 
-    pub fn y_axis(mut self, axis: Axis) -> Self {
+    pub fn y_axis(mut self, mut axis: Axis) -> Self {
+        // Auto-set position based on index: first -> Left, second -> Right
+        let y_axis_idx = self.y_axes.len();
+        if y_axis_idx == 0 {
+            axis.position = AxisPosition::Left;
+        } else {
+            axis.position = AxisPosition::Right;
+        }
         self.y_axes.push(axis);
         self
     }
@@ -412,6 +489,35 @@ impl Chart {
         let mut spec = layer.into();
         spec.set_grid_index(idx);
         self.layers.push(spec);
+        self
+    }
+
+    /// Define a grid and its contents in a closure.
+    ///
+    /// All axes and layers added inside the closure are automatically
+    /// linked to this grid, eliminating manual `grid_index()` calls.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// Chart::new(1000, 900)
+    ///     .sub_grid(
+    ///         Grid::new().left(Position::pct(3.0)).top(Position::pct(12.0)),
+    ///         |g| g
+    ///             .x_axis(Axis::category().data(["A", "B", "C"]))
+    ///             .y_axis(Axis::value())
+    ///             .add_layer(Bar::new().data(sales).x("cat").y("val"))
+    ///             .add_layer(Line::new().data(trend).x("cat").y("val")),
+    ///     )
+    ///     .add_pie(Pie::new().data(segments).category("name").value("pct"))
+    /// ```
+    pub fn sub_grid(mut self, grid: Grid, f: impl FnOnce(GridBuilder) -> GridBuilder) -> Self {
+        let idx = self.grids.len();
+        self.grids.push(grid);
+        let gb = f(GridBuilder::new(idx));
+        self.x_axes.extend(gb.x_axes);
+        self.y_axes.extend(gb.y_axes);
+        self.layers.extend(gb.layers);
         self
     }
 
@@ -499,17 +605,17 @@ impl Chart {
         }
 
         // Legend
-        if let Some(legend) = &self.legend {
-            if !legend.data.is_empty() || legend.show {
-                option.legend = Some(LegendOption {
-                    show: Some(legend.show),
-                    data: Some(legend.data.clone()),
-                    left: Some(convert_position(legend.left)),
-                    top: Some(convert_position(legend.top)),
-                    orient: Some(convert_orient(legend.orient)),
-                    ..Default::default()
-                });
-            }
+        if let Some(legend) = &self.legend
+            && (!legend.data.is_empty() || legend.show)
+        {
+            option.legend = Some(LegendOption {
+                show: Some(legend.show),
+                data: Some(legend.data.clone()),
+                left: Some(convert_position(legend.left)),
+                top: Some(convert_position(legend.top)),
+                orient: Some(convert_orient(legend.orient)),
+                ..Default::default()
+            });
         }
 
         // Grids
@@ -559,14 +665,12 @@ impl Chart {
         // Auto-detect category labels from data if no x_axis data set
         if let Some(series) = option.series.first() {
             let cat_data = extract_category_names(&option, series);
-            if let Some(cat_names) = cat_data {
-                if let Some(x_axis) = option.x_axis.first_mut() {
-                    if x_axis.data.is_none()
-                        || x_axis.data.as_ref().map(|d| d.is_empty()).unwrap_or(true)
-                    {
-                        x_axis.data = Some(cat_names);
-                    }
-                }
+            if let Some(cat_names) = cat_data
+                && let Some(x_axis) = option.x_axis.first_mut()
+                && (x_axis.data.is_none()
+                    || x_axis.data.as_ref().map(|d| d.is_empty()).unwrap_or(true))
+            {
+                x_axis.data = Some(cat_names);
             }
         }
 
@@ -674,8 +778,14 @@ fn convert_layer(layer: &LayerSpec, chart_data: Option<&DataFrame>) -> SeriesOpt
     }
 }
 
-fn resolve_data<'a>(layer_data: &'a Option<DataFrame>, chart_data: Option<&'a DataFrame>) -> &'a DataFrame {
-    layer_data.as_ref().or(chart_data).expect("Layer must have data either from layer.data() or Chart.data()")
+fn resolve_data<'a>(
+    layer_data: &'a Option<DataFrame>,
+    chart_data: Option<&'a DataFrame>,
+) -> &'a DataFrame {
+    layer_data
+        .as_ref()
+        .or(chart_data)
+        .expect("Layer must have data either from layer.data() or Chart.data()")
 }
 
 fn convert_line_layer(l: &Line, chart_data: Option<&DataFrame>) -> SeriesOption {
@@ -780,14 +890,8 @@ fn convert_bubble_layer(b: &Bubble, chart_data: Option<&DataFrame>) -> SeriesOpt
     let df = resolve_data(&b.data, chart_data);
     let data: Vec<BubbleDataPoint> = (0..df.row_count())
         .map(|i| {
-            let x = df
-                .get_column("x")
-                .and_then(|c| c.as_f64(i))
-                .unwrap_or(0.0);
-            let y = df
-                .get_column("y")
-                .and_then(|c| c.as_f64(i))
-                .unwrap_or(0.0);
+            let x = df.get_column("x").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
+            let y = df.get_column("y").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
             let size = df.get_column("size").and_then(|c| c.as_f64(i));
             let name = b
                 .name_col
@@ -832,9 +936,7 @@ fn convert_candlestick_layer(c: &Candlestick, chart_data: Option<&DataFrame>) ->
                 .get_column(&c.high)
                 .and_then(|col| col.as_f64(i))
                 .unwrap_or(0.0);
-            let name = df
-                .get_column(&c.category)
-                .and_then(|col| col.as_string(i));
+            let name = df.get_column(&c.category).and_then(|col| col.as_string(i));
             CandlestickDataPoint {
                 open,
                 close,
@@ -975,7 +1077,7 @@ fn convert_table_layer(t: &Table, chart_data: Option<&DataFrame>) -> SeriesOptio
                 .map(|s| {
                     // Try to parse as number first
                     s.parse::<f64>()
-                        .map(|n| serde_json::Value::from(n))
+                        .map(serde_json::Value::from)
                         .unwrap_or_else(|_| serde_json::Value::String(s))
                 })
                 .unwrap_or(serde_json::Value::Null);

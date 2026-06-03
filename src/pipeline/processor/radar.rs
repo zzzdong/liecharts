@@ -17,6 +17,12 @@ use crate::{
 
 pub struct RadarProcessor;
 
+impl Default for RadarProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RadarProcessor {
     pub fn new() -> Self {
         Self

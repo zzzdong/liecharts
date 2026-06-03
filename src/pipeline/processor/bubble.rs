@@ -16,6 +16,12 @@ use crate::{
 
 pub struct BubbleProcessor;
 
+impl Default for BubbleProcessor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl BubbleProcessor {
     pub fn new() -> Self {
         Self
@@ -48,7 +54,7 @@ impl DataProcessor for BubbleProcessor {
             let BubbleDataPoint { x, y, size, name } = item;
             x_values.push(DataValue::Float(*x));
             y_values.push(DataValue::Float(*y));
-            size_values.push(size.map(|s| DataValue::Float(s)).unwrap_or(DataValue::Null));
+            size_values.push(size.map(DataValue::Float).unwrap_or(DataValue::Null));
             name_values.push(
                 name.as_ref()
                     .map(|n| DataValue::String(n.clone()))
@@ -135,26 +141,25 @@ impl DataProcessor for BubbleProcessor {
                 z_index: Z_SERIES_POINT,
             });
 
-            if let Some(name_col) = name_col {
-                if let Some(name) = name_col.as_string(i) {
-                    if !name.is_empty() {
-                        elements.push(VisualElement::TextRun {
-                            text: name.clone(),
-                            position: Point::new(px, py),
-                            style: crate::visual::TextStyle {
-                                font_size: 10.0,
-                                color: input.colors.text_color,
-                                align: TextAlign::Center,
-                                vertical_align: TextBaseline::Middle,
-                                ..Default::default()
-                            },
-                            rotation: 0.0,
-                            max_width: None,
-                            layout: None,
-                            z_index: Z_LABEL,
-                        });
-                    }
-                }
+            if let Some(name_col) = name_col
+                && let Some(name) = name_col.as_string(i)
+                && !name.is_empty()
+            {
+                elements.push(VisualElement::TextRun {
+                    text: name.clone(),
+                    position: Point::new(px, py),
+                    style: crate::visual::TextStyle {
+                        font_size: 10.0,
+                        color: input.colors.text_color,
+                        align: TextAlign::Center,
+                        vertical_align: TextBaseline::Middle,
+                        ..Default::default()
+                    },
+                    rotation: 0.0,
+                    max_width: None,
+                    layout: None,
+                    z_index: Z_LABEL,
+                });
             }
         }
 

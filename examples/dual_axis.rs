@@ -14,8 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ))
                 .x("month")
                 .y("value")
-                .name("温度")
-                .y_axis_index(0),
+                .name("温度"),
         )
         .add_bar(
             Bar::new()
@@ -26,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .x("month")
                 .y("value")
                 .name("降水量")
-                .y_axis_index(1),
+                .right_axis(),
         )
         .render_to_svg("dual_axis.svg")?;
     println!("双轴图已保存到 dual_axis.svg");
