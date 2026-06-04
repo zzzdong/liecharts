@@ -611,13 +611,36 @@ pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
             }).collect()
         };
 
+        // 从层数据中提取 X 轴类别（用于默认 X 轴）
+        let mut default_categories: Vec<String> = vec![];
+        for layer in &self.layers {
+            let (data, x_col) = match layer {
+                LayerSpec::Line(l) => (l.data.clone().or_else(|| self.data.clone()), l.x.clone()),
+                LayerSpec::Bar(l) => (l.data.clone().or_else(|| self.data.clone()), l.x.clone()),
+                LayerSpec::Scatter(l) => (l.data.clone().or_else(|| self.data.clone()), l.x.clone()),
+                _ => (None, String::new()),
+            };
+            if let Some(df) = data {
+                if let Some(col) = df.get_column(&x_col) {
+                    // 提取类别（字符串列）
+                    let cats: Vec<String> = (0..col.len())
+                        .filter_map(|i| col.as_string(i))
+                        .collect();
+                    if !cats.is_empty() {
+                        default_categories = cats;
+                        break;
+                    }
+                }
+            }
+        }
+
         // X Axes
         let x_axes: Vec<AxisSpec> = if self.x_axes.is_empty() {
             vec![AxisSpec {
                 axis_type: crate::pipeline::types::AxisType::Category,
                 position: crate::pipeline::types::AxisPosition::Bottom,
                 grid_index: 0, min: None, max: None, name: None,
-                categories: vec![], boundary_gap: true,
+                categories: default_categories.clone(), boundary_gap: true,
             }]
         } else {
             self.x_axes.iter().map(|a| AxisSpec {
@@ -636,7 +659,7 @@ pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
                 grid_index: a.grid_index,
                 min: a.min, max: a.max,
                 name: a.name.clone(),
-                categories: a.data.clone(),
+                categories: if a.data.is_empty() { default_categories.clone() } else { a.data.clone() },
                 boundary_gap: a.boundary_gap,
             }).collect()
         };
@@ -686,12 +709,18 @@ pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
                         LayerSymbol::Arrow => SymbolType::Arrow,
                         LayerSymbol::None => SymbolType::None,
                     };
+                    // 面积颜色：如果启用面积且用户指定了颜色则使用，否则使用默认蓝色
+                    let area_color = if l.area {
+                        Some(l.color.unwrap_or(crate::visual::Color::new(80, 112, 221)))
+                    } else {
+                        None
+                    };
                     (ChartType::Line, SeriesConfig::Line(LineConfig {
                         x_col: l.x.clone(),
                         y_col: l.y.clone(),
                         smooth: l.smooth,
                         line_width: 2.0,
-                        area_color: if l.area { l.color } else { None },
+                        area_color,
                         area_opacity: 0.5,
                         symbol_type: sym,
                         symbol_size: l.symbol_size,
@@ -726,8 +755,8 @@ pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
                     value_col: l.value.clone(),
                     center: l.center,
                     radius: l.radius,
-                    label_show: false,
-                    label_position: LabelPosition::Outside,
+                    label_show: l.label_show,
+                    label_position: l.label_position,
                     label_font_size: 12.0,
                 })),
                 LayerSpec::Radar(l) => (ChartType::Radar, SeriesConfig::Radar(RadarConfig {

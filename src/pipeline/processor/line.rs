@@ -318,17 +318,14 @@ impl DataProcessor for LineProcessor {
             series.y_axis_index,
         );
 
-        // 读取 SeriesSpec 中的配置
-        let line_width = series.line_width.unwrap_or(2.0);
-        let smooth = series.smooth;
-        let area_color = series.area_color;
-        let area_opacity = series.area_opacity.unwrap_or(0.5);
-        let show_symbol = series
-            .symbol_type
-            .as_deref()
-            .map(|s| s != "none")
-            .unwrap_or(true);
-        let symbol_size = series.symbol_size.unwrap_or(8.0);
+        // 读取 SeriesSpec 中的配置（从 config 字段获取）
+        let (line_width, smooth, area_color, area_opacity, show_symbol, symbol_size) = match &series.config {
+            crate::pipeline::types::SeriesConfig::Line(cfg) => {
+                let show_sym = !matches!(cfg.symbol_type, crate::pipeline::types::SymbolType::None);
+                (cfg.line_width, cfg.smooth, cfg.area_color, cfg.area_opacity, show_sym, cfg.symbol_size)
+            }
+            _ => (2.0, false, None, 0.5, true, 8.0),
+        };
 
         let geom = CartesianGeometry::from_df(&df)?;
         let style = StyleAccess::from_df(&df, input.colors.get_default_color());

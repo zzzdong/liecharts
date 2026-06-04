@@ -95,140 +95,18 @@ impl DataProcessor for CandlestickProcessor {
 
         self.to_visual_elements(&df, input)
     }
-}
 
-impl DataProcessor for CandlestickProcessor {
     fn to_dataframe(
         &self,
-        series: &SeriesOption,
+        _series: &SeriesOption,
         _input: &DataProcessorInput,
     ) -> Result<DataFrame> {
-        let candle = match series {
-            SeriesOption::Candlestick(c) => c,
-            _ => {
-                return Err(crate::error::ChartError::DataError(
-                    "Expected Candlestick series".into(),
-                ));
-            }
-        };
-
-        let mut df = DataFrame::new();
-
-        let opens: Vec<DataValue> = candle
-            .data
-            .iter()
-            .map(|d| DataValue::Float(d.open))
-            .collect();
-        let closes: Vec<DataValue> = candle
-            .data
-            .iter()
-            .map(|d| DataValue::Float(d.close))
-            .collect();
-        let lows: Vec<DataValue> = candle
-            .data
-            .iter()
-            .map(|d| DataValue::Float(d.low))
-            .collect();
-        let highs: Vec<DataValue> = candle
-            .data
-            .iter()
-            .map(|d| DataValue::Float(d.high))
-            .collect();
-        let is_up: Vec<DataValue> = candle
-            .data
-            .iter()
-            .map(|d| DataValue::Bool(d.is_up()))
-            .collect();
-        let cat_idx: Vec<DataValue> = (0..candle.data.len())
-            .map(|i| DataValue::Integer(i as i64))
-            .collect();
-
-        df.add_column(Series::new("open", opens));
-        df.add_column(Series::new("close", closes));
-        df.add_column(Series::new("low", lows));
-        df.add_column(Series::new("high", highs));
-        df.add_column(Series::new("is_up", is_up));
-        df.add_column(Series::new("cat_idx", cat_idx));
-
-        Ok(df)
+        // 在新 API 中，数据已经在 DataFrame 中
+        Ok(DataFrame::new())
     }
 
-    fn transform(&self, mut df: DataFrame, input: &DataProcessorInput) -> Result<DataFrame> {
-        let series = &input.option.series[input.series_idx];
-        let candle = match series {
-            SeriesOption::Candlestick(c) => c,
-            _ => return Ok(df),
-        };
-
-        // 应用采样（如果配置了）
-        if let Some(sampling) = &candle.sampling {
-            df = SamplingProcessor::sample(&df, sampling.threshold, sampling.ty);
-        }
-
-        let bounds = input.bounds;
-        let x_axis_idx = input.spec.x_axis_indices.first().copied().unwrap_or(0);
-        let y_axis_idx = candle.y_axis_index.unwrap_or(0);
-
-        let x_axis_config = input.option.x_axis.get(x_axis_idx);
-        let x_range = input.axis_ranges.get_x_range(x_axis_idx);
-        let y_range = input.axis_ranges.get_y_range(y_axis_idx);
-
-        let (x_min, x_max) = x_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 1.0));
-        let (y_min, y_max) = y_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 100.0));
-
-        let is_cat_x = x_axis_config
-            .and_then(|a| a.axis_type)
-            .map(|t| t == AxisType::Category)
-            .unwrap_or(false);
-
-        let data_len = candle.data.len().max(1);
-        let cat_count = (x_max - x_min).max(1.0);
-        let cat_width = bounds.width() / cat_count;
-        let bar_width = cat_width * 0.6;
-
-        let mut px_values = Vec::new();
-        let mut open_y_values = Vec::new();
-        let mut close_y_values = Vec::new();
-        let mut low_y_values = Vec::new();
-        let mut high_y_values = Vec::new();
-
-        for (i, dp) in candle.data.iter().enumerate() {
-            let px = if is_cat_x {
-                bounds.x0 + (i as f64 + 0.5) * cat_width
-            } else {
-                bounds.x0 + (i as f64 + 0.5) / data_len as f64 * bounds.width()
-            };
-
-            let y_scale = bounds.height() / (y_max - y_min).max(0.001);
-
-            let open_y = bounds.y1 - (dp.open - y_min) * y_scale;
-            let close_y = bounds.y1 - (dp.close - y_min) * y_scale;
-            let low_y = bounds.y1 - (dp.low - y_min) * y_scale;
-            let high_y = bounds.y1 - (dp.high - y_min) * y_scale;
-
-            px_values.push(DataValue::Float(px));
-            open_y_values.push(DataValue::Float(open_y));
-            close_y_values.push(DataValue::Float(close_y));
-            low_y_values.push(DataValue::Float(low_y));
-            high_y_values.push(DataValue::Float(high_y));
-        }
-
-        df.add_column(Series::new("px", px_values));
-        df.add_column(Series::new("open_y", open_y_values));
-        df.add_column(Series::new("close_y", close_y_values));
-        df.add_column(Series::new("low_y", low_y_values));
-        df.add_column(Series::new("high_y", high_y_values));
-        df.add_column(Series::new_constant(
-            "bar_width",
-            DataValue::Float(bar_width),
-            data_len,
-        ));
-
+    fn transform(&self, df: DataFrame, _input: &DataProcessorInput) -> Result<DataFrame> {
         Ok(df)
-    }
-
-    fn mapper(&self) -> Box<dyn CoordinateMapper> {
-        Box::new(CartesianMapper)
     }
 
     fn to_visual_elements(

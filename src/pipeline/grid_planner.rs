@@ -1,14 +1,18 @@
 use vello_cpu::kurbo::Rect;
 
-use crate::pipeline::types::{AxisSpec, GridSpec, SeriesSpec, SubplotSpec};
+use crate::pipeline::types::{AxisSpec, GridSpec, SeriesSpec, SubplotSpec, SeriesConfig, LineConfig, ItemStyleSpec};
 
 /// 纯数学画布切分器
 ///
-/// 职责：仅根据 grid 配置和画布尺寸，计算每个 subplot 的像素边界。
+/// 职责：根据 grid 配置和画布尺寸，计算每个 subplot 的像素边界。
 /// **完全不接触系列数据、轴标签、文本测量、刻度计算**。
+///
+/// header_height 参数告诉 planner 顶部有多少空间被标题/图例占据，
+/// 确保 subplot 不会与这些装饰元素重叠。
 pub struct GridPlanner<'a> {
     total_width: u32,
     total_height: u32,
+    header_height: f64,
     grids: &'a [GridSpec],
     series: &'a [SeriesSpec],
     x_axes: &'a [AxisSpec],
@@ -19,6 +23,7 @@ impl<'a> GridPlanner<'a> {
     pub fn new(
         width: u32,
         height: u32,
+        header_height: f64,
         grids: &'a [GridSpec],
         series: &'a [SeriesSpec],
         x_axes: &'a [AxisSpec],
@@ -27,6 +32,7 @@ impl<'a> GridPlanner<'a> {
         Self {
             total_width: width,
             total_height: height,
+            header_height: header_height.max(0.0),
             grids,
             series,
             x_axes,
@@ -90,21 +96,39 @@ impl<'a> GridPlanner<'a> {
         specs
     }
 
+    /// 无 grid 配置时的默认区域
+    ///
+    /// left/right/bottom: 留 60px 边距供轴标签和名称使用
+    /// top: 使用 header_height（若无标题/图例则回退 60px）
     fn default_bounds(&self) -> Rect {
         let total_w = self.total_width as f64;
         let total_h = self.total_height as f64;
         let margin = 60.0;
-        Rect::new(margin, margin, total_w - margin, total_h - margin)
+        let top = self.header_height.max(margin);
+        Rect::new(margin, top, total_w - margin, total_h - margin)
     }
 
+    /// 根据 GridSpec 计算 subplot 像素边界
+    ///
+    /// - 当用户显式指定 left/right/top/bottom 时，直接使用
+    /// - 当值为 None（auto）时：
+    ///   - top 使用 header_height（标题/图例空间）
+    ///   - 若 contain_label=true，left/bottom 使用更大默认值以容纳轴标签
+    ///   - 否则使用标准边距
     fn resolve_position(&self, grid: &GridSpec) -> Rect {
         let total_w = self.total_width as f64;
         let total_h = self.total_height as f64;
 
-        let left = grid.left.unwrap_or(60.0);
-        let right = grid.right.unwrap_or(60.0);
-        let top = grid.top.unwrap_or(60.0);
-        let bottom = grid.bottom.unwrap_or(60.0);
+        // 根据 contain_label 决定默认边距
+        // contain_label=true 时，边距需要足够容纳轴刻度标签
+        let default_left = if grid.contain_label { 70.0 } else { 60.0 };
+        let default_right = if grid.contain_label { 50.0 } else { 60.0 };
+        let default_bottom = if grid.contain_label { 60.0 } else { 60.0 };
+
+        let left = grid.left.unwrap_or(default_left);
+        let right = grid.right.unwrap_or(default_right);
+        let top = grid.top.unwrap_or(self.header_height.max(40.0));
+        let bottom = grid.bottom.unwrap_or(default_bottom);
 
         let width = total_w - left - right;
         let height = total_h - top - bottom;
@@ -124,6 +148,7 @@ mod tests {
     };
 
     fn make_series(name: &str, chart_type: ChartType, grid_index: usize) -> SeriesSpec {
+        use crate::pipeline::dataframe::{DataFrame, DataValue, Series};
         let mut df = DataFrame::new();
         df.add_column(Series::new("x", vec![DataValue::Float(0.0)]));
         df.add_column(Series::new("y", vec![DataValue::Float(0.0)]));
@@ -131,17 +156,14 @@ mod tests {
             name: name.to_string(),
             chart_type,
             data: df,
-            x_col: "x".into(),
-            y_col: "y".into(),
             grid_index,
             x_axis_index: 0,
             y_axis_index: 0,
             stack: None,
             group_index: 0,
             sampling: None,
-            smooth: false,
             item_style: ItemStyleSpec::default(),
-            ..Default::default()
+            config: SeriesConfig::Line(LineConfig::default()),
         }
     }
 
@@ -160,7 +182,7 @@ mod tests {
     #[test]
     fn test_single_grid_default() {
         let grids = vec![];
-        let planner = GridPlanner::new(800, 600, &grids, &[], &[], &[]);
+        let planner = GridPlanner::new(800, 600, 100.0, &grids, &[], &[], &[]);
         let specs = planner.plan();
 
         assert_eq!(specs.len(), 1);
@@ -169,6 +191,17 @@ mod tests {
         assert!(s.bounds.width() > 0.0);
         assert!(s.bounds.height() > 0.0);
         assert!(s.bounds.x0 >= 60.0);
+        assert!(s.bounds.y0 >= 100.0); // header_height
+    }
+
+    #[test]
+    fn test_single_grid_no_header() {
+        let grids = vec![];
+        let planner = GridPlanner::new(800, 600, 0.0, &grids, &[], &[], &[]);
+        let specs = planner.plan();
+
+        let s = &specs[0];
+        // top 回退到 60.0（因为 0.0 < margin 60.0）
         assert!(s.bounds.y0 >= 60.0);
     }
 
@@ -194,7 +227,7 @@ mod tests {
             make_series("S1", ChartType::Bar, 0),
             make_series("S2", ChartType::Bar, 1),
         ];
-        let planner = GridPlanner::new(800, 600, &grids, &series, &[], &[]);
+        let planner = GridPlanner::new(800, 600, 100.0, &grids, &series, &[], &[]);
         let specs = planner.plan();
 
         assert_eq!(specs.len(), 2);
@@ -214,7 +247,7 @@ mod tests {
             make_series("Pie1", ChartType::Pie, 1),
             make_series("Bar1", ChartType::Bar, 0),
         ];
-        let planner = GridPlanner::new(800, 600, &grids, &series, &[], &[]);
+        let planner = GridPlanner::new(800, 600, 100.0, &grids, &series, &[], &[]);
         let specs = planner.plan();
 
         assert_eq!(specs[0].series_indices, vec![0, 2]);
@@ -265,12 +298,32 @@ mod tests {
                 boundary_gap: true,
             }
         }];
-        let planner = GridPlanner::new(800, 600, &grids, &[], &x_axes, &y_axes);
+        let planner = GridPlanner::new(800, 600, 100.0, &grids, &[], &x_axes, &y_axes);
         let specs = planner.plan();
 
         assert_eq!(specs[0].x_axis_indices, vec![0]);
         assert_eq!(specs[1].x_axis_indices, vec![1]);
         assert_eq!(specs[0].y_axis_indices, vec![0]);
         assert!(specs[1].y_axis_indices.is_empty());
+    }
+
+    #[test]
+    fn test_contain_label_increases_margins() {
+        let grids = vec![GridSpec {
+            left: None,
+            right: None,
+            top: None,
+            bottom: None,
+            contain_label: true,
+        }];
+        let planner = GridPlanner::new(800, 600, 100.0, &grids, &[], &[], &[]);
+        let specs = planner.plan();
+        let s = &specs[0];
+
+        // contain_label=true 时 left 默认 70，right 默认 50，bottom 默认 60
+        assert!((s.bounds.x0 - 70.0).abs() < 1.0);
+        assert!((s.bounds.x1 - 750.0).abs() < 1.0); // 800 - 50
+        assert!((s.bounds.y0 - 100.0).abs() < 1.0); // header_height
+        assert!((s.bounds.y1 - 540.0).abs() < 1.0); // 600 - 60
     }
 }

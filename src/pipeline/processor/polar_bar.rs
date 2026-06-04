@@ -323,8 +323,10 @@ impl DataProcessor for PolarBarProcessor {
             .filter_map(|i| df.get_column("value").and_then(|c| c.as_f64(i)))
             .fold(0.0, |max, v| v.max(max));
         let data_count = df.row_count().max(1);
-        let pad_angle_deg = series.pad_angle.unwrap_or(2.0);
-        let start_angle_deg = series.start_angle.unwrap_or(0.0);
+        let (pad_angle_deg, start_angle_deg) = match &series.config {
+            crate::pipeline::types::SeriesConfig::PolarBar(cfg) => (cfg.pad_angle, cfg.start_angle),
+            _ => (2.0, 0.0),
+        };
 
         df.add_column(Series::new_constant(
             "max_value",
@@ -372,8 +374,10 @@ impl DataProcessor for PolarBarProcessor {
         let max_value: f64 = (0..df.row_count())
             .filter_map(|i| df.get_column("value").and_then(|c| c.as_f64(i)))
             .fold(0.0, |max, v| v.max(max));
-        let pad_angle_deg = series.pad_angle.unwrap_or(2.0);
-        let start_angle_deg = series.start_angle.unwrap_or(0.0);
+        let (pad_angle_deg, start_angle_deg) = match &series.config {
+            crate::pipeline::types::SeriesConfig::PolarBar(cfg) => (cfg.pad_angle, cfg.start_angle),
+            _ => (2.0, 0.0),
+        };
 
         if max_value <= 0.0 || data_count == 0 {
             return Ok(Vec::new());

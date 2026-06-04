@@ -1,6 +1,6 @@
 use crate::pipeline::{
     dataframe::{DataFrame, DataValue, Series},
-    types::{ChartSpec, ChartType},
+    types::{ChartSpec, ChartType, SeriesConfig},
 };
 
 pub struct GroupedBarProcessor;
@@ -56,8 +56,13 @@ impl GroupedBarProcessor {
                 let color = colors.get_series_color(global_idx);
                 let color_val = DataValue::Color(color);
 
-                let x_col = s.data.get_column(&s.x_col);
-                let y_col = s.data.get_column(&s.y_col);
+                // 从 config 获取列名
+                let (x_col_name, y_col_name) = match &s.config {
+                    SeriesConfig::Bar(cfg) => (cfg.x_col.as_str(), cfg.y_col.as_str()),
+                    _ => ("x", "y"),
+                };
+                let x_col = s.data.get_column(x_col_name);
+                let y_col = s.data.get_column(y_col_name);
 
                 if let (Some(x_series), Some(y_series)) = (x_col, y_col) {
                     for cat_idx in 0..s.data.row_count() {
@@ -91,8 +96,13 @@ impl GroupedBarProcessor {
                 let color = colors.get_series_color(global_idx);
                 let color_val = DataValue::Color(color);
 
-                let x_col = s.data.get_column(&s.x_col);
-                let y_col = s.data.get_column(&s.y_col);
+                // 从 config 获取列名
+                let (x_col_name, y_col_name) = match &s.config {
+                    SeriesConfig::Bar(cfg) => (cfg.x_col.as_str(), cfg.y_col.as_str()),
+                    _ => ("x", "y"),
+                };
+                let x_col = s.data.get_column(x_col_name);
+                let y_col = s.data.get_column(y_col_name);
 
                 if let (Some(x_series), Some(y_series)) = (x_col, y_col) {
                     for cat_idx in 0..s.data.row_count() {

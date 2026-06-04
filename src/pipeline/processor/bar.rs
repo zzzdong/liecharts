@@ -41,7 +41,10 @@ impl BarProcessor {
     fn get_bar_width(input: &DataProcessorInput) -> f64 {
         input
             .series_spec
-            .and_then(|s| s.bar_width)
+            .map(|s| match &s.config {
+                crate::pipeline::types::SeriesConfig::Bar(cfg) => cfg.bar_width,
+                _ => 0.6,
+            })
             .unwrap_or(0.6)
     }
 
@@ -348,7 +351,10 @@ impl DataProcessor for BarProcessor {
             ));
         }
 
-        let bar_width_ratio = series.bar_width.unwrap_or(0.6);
+        let bar_width_ratio = match &series.config {
+            crate::pipeline::types::SeriesConfig::Bar(cfg) => cfg.bar_width,
+            _ => 0.6,
+        };
         df.add_column(Series::new_constant(
             "bar_width_ratio",
             DataValue::Float(bar_width_ratio),

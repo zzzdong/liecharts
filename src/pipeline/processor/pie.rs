@@ -376,13 +376,26 @@ impl DataProcessor for PieProcessor {
         df = PieDataTransformer::transform(&df, &input.colors.palette);
 
         let bounds = input.bounds;
-        let center = Self::resolve_center_from_spec(&series.pie_center, &bounds);
-        let (inner_radius, outer_radius) = Self::resolve_radius_from_spec(&series.pie_radius, &bounds);
+        // 从 config 获取 Pie 配置
+        let ((center_x, center_y), (inner_r_pct, outer_r_pct), label_show, label_font_size, label_position) = match &series.config {
+            crate::pipeline::types::SeriesConfig::Pie(cfg) => {
+                let pos_str = match cfg.label_position {
+                    crate::pipeline::types::LabelPosition::Outside => "outside",
+                    crate::pipeline::types::LabelPosition::Inside => "inside",
+                };
+                (cfg.center, cfg.radius, cfg.label_show, cfg.label_font_size, pos_str)
+            }
+            _ => ((50.0, 50.0), (0.0, 75.0), false, 12.0, "outside"),
+        };
+        // 将百分比转换为像素值
+        let center = Point::new(
+            bounds.x0 + bounds.width() * center_x / 100.0,
+            bounds.y0 + bounds.height() * center_y / 100.0,
+        );
+        let max_r = bounds.width().min(bounds.height()) * 0.5;
+        let inner_radius = max_r * inner_r_pct / 100.0;
+        let outer_radius = max_r * outer_r_pct / 100.0;
         let style = StyleAccess::from_df(&df, input.colors.get_default_color());
-
-        let label_show = series.label_show.unwrap_or(false);
-        let label_font_size = series.label_font_size.unwrap_or(12.0);
-        let label_position = series.label_position.as_deref().unwrap_or("outside");
 
         let mut elements = Vec::new();
         let mut label_elements = Vec::new();

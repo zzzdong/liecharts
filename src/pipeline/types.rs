@@ -522,6 +522,7 @@ pub struct SubplotSpec {
 pub struct ResolvedAxisRange {
     pub axis_index: usize,
     pub position: AxisPosition,
+    pub axis_type: AxisType,
     pub min: f64,
     pub max: f64,
     pub is_user_defined: bool,

@@ -16,13 +16,16 @@ use crate::{
     option::ChartOption,
     pipeline::{
         axis_binding_resolver::AxisBindingResolver,
-        axis_renderer::AxisRenderer,
+        axis_renderer,
         color_assigner::ColorAssigner,
         compat,
         data_processor::{create_processor_from_chart_type, DataProcessorInput},
         grid_planner::GridPlanner,
         group::{GroupAnalyzer, GroupType, dataframe_builder::GroupedBarProcessor},
+        materializer::materialize_all,
+        builder::build_typed_series,
         types::{ChartSpec, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
+        RenderContext,
     },
     text::create_text_layout,
     theme::Theme,
@@ -63,10 +66,14 @@ fn build_chart_internal(
     let width = spec.width;
     let height = spec.height;
 
+    // 0. 估计标题和图例的占用高度，用于 GridPlanner 计算 top margin
+    let header_height = estimate_header_height(option, theme);
+
     // 1. 布局规划
     let planner = GridPlanner::new(
         width,
         height,
+        header_height,
         &spec.grids,
         &spec.series,
         &spec.x_axes,
@@ -100,60 +107,32 @@ fn build_chart_internal(
     let mut text_measurer = TextMeasurer::new();
     for subplot in &specs {
         let axis_elements =
-            AxisRenderer::render(subplot, option, &axis_ranges, &colors, &mut text_measurer);
+            axis_renderer::render_axes(subplot, option, &axis_ranges, &colors, &mut text_measurer);
         all_elements.extend(axis_elements);
     }
 
-    // 6. 渲染系列数据
-    // 先通过 GroupAnalyzer 将 series 分组（SideBySide / Stacked / Single）
-    // 分组模式：合并为一个 DataFrame，一次处理
-    // 单 series 模式：保持原有流程
+    // 6. 渲染系列数据（新流程：Materialize + Build）
     for subplot in &specs {
-        let plans = GroupAnalyzer::analyze(&subplot.series_indices, &spec.series);
+        // 创建渲染上下文
+        let ctx = RenderContext {
+            colors: &colors,
+            theme,
+            bounds: subplot.bounds,
+        };
 
-        for plan in plans {
-            match plan.group_type {
-                GroupType::Single => {
-                    let series_idx = plan.series_indices[0];
-                    let series_spec = &spec.series[series_idx];
-                    let processor = create_processor_from_chart_type(series_spec.chart_type);
+        // Materialize 阶段：将 SeriesSpec 转换为 TypedSeries
+        let typed_series_list = materialize_all(
+            &subplot.series_indices,
+            spec,
+            subplot.bounds,
+            &axis_ranges,
+            &colors,
+        )?;
 
-                    let input = DataProcessorInput {
-                        spec: subplot,
-                        option,
-                        colors: &colors,
-                        axis_ranges: &axis_ranges,
-                        bounds: subplot.bounds,
-                        series_idx,
-                        chart_spec: Some(spec),
-                        series_spec: Some(series_spec),
-                    };
-
-                    let elements = processor.process_from_spec(series_spec, &input)?;
-                    all_elements.extend(elements);
-                }
-                GroupType::SideBySide | GroupType::Stacked => {
-                    let first_idx = plan.series_indices[0];
-                    let series_spec = &spec.series[first_idx];
-                    let processor = create_processor_from_chart_type(series_spec.chart_type);
-
-                    let df = GroupedBarProcessor::combine_to_dataframe(&plan, spec, &colors);
-
-                    let input = DataProcessorInput {
-                        spec: subplot,
-                        option,
-                        colors: &colors,
-                        axis_ranges: &axis_ranges,
-                        bounds: subplot.bounds,
-                        series_idx: first_idx,
-                        chart_spec: Some(spec),
-                        series_spec: Some(series_spec),
-                    };
-
-                    let elements = processor.process_dataframe(df, &input)?;
-                    all_elements.extend(elements);
-                }
-            }
+        // Build 阶段：将 TypedSeries 组装为 VisualElement
+        for typed_series in typed_series_list {
+            let elements = build_typed_series(&typed_series, &ctx)?;
+            all_elements.extend(elements);
         }
     }
 
@@ -179,6 +158,50 @@ fn build_chart_internal(
     compute_text_layouts(&mut all_elements);
 
     Ok(all_elements)
+}
+
+/// 估计标题和图例占用的顶部空间高度（像素）
+///
+/// 在 GridPlanner 之前调用，确保 subplot 的 top margin 足够容纳
+/// 标题和图例，避免重叠。使用 theme 中的字体大小估算，不依赖文本测量。
+fn estimate_header_height(option: &ChartOption, theme: &Theme) -> f64 {
+    let mut height = 0.0;
+
+    // 标题占用
+    if let Some(title) = &option.title {
+        let title_style = theme.get_title_text_style();
+        let subtitle_style = theme.get_subtitle_text_style();
+
+        // 标题顶部内边距 24px
+        height += 24.0;
+
+        // 主标题高度（基于 font_size + 行距）
+        if title.text.is_some() {
+            height += title_style.font_size * 1.4;
+        }
+
+        // 副标题高度
+        if title.subtext.is_some() {
+            height += subtitle_style.font_size * 1.4 + 2.0; // 2px 间距
+        }
+    }
+
+    // 图例占用（在标题下方，有 16px 间距）
+    if let Some(legend) = &option.legend {
+        if legend.show != Some(false) {
+            if height > 0.0 {
+                height += 16.0; // 标题和图例之间的间距
+            }
+
+            let legend_style = theme.get_legend_text_style();
+            // 图例行高：symbol_size + 上下内边距
+            let legend_height = legend_style.font_size * 1.4 + 16.0; // font + vertical padding
+            height += legend_height;
+        }
+    }
+
+    // 最小值为 0，空标题/图例时返回 0
+    height
 }
 
 /// 构建标题元素
@@ -464,27 +487,14 @@ fn build_axis_name_elements(
                     // 轴名称应放在标签左侧：锚点.x + text_height <= bounds.x0 - 43 - label_margin
                     let label_left_edge = bounds.x0 - 8.0 - max_label_width;
                     let max_anchor_x = label_left_edge - label_margin - text_height;
-                    if max_anchor_x >= margin {
-                        // 正常情况：放在标签左侧
-                        (
-                            max_anchor_x,
-                            -std::f64::consts::FRAC_PI_2,
-                            TextAlign::Left,
-                            TextBaseline::Top,
-                        )
-                    } else {
-                        // 空间不足：放在 grid 右侧，旋转+90°
-                        let min_anchor_x = bounds.x1 + 8.0 + max_label_width + label_margin;
-                        let anchor_x = min_anchor_x
-                            .max(bounds.x1 + label_margin)
-                            .min(width as f64 - margin - text_height);
-                        (
-                            anchor_x,
-                            std::f64::consts::FRAC_PI_2,
-                            TextAlign::Left,
-                            TextBaseline::Top,
-                        )
-                    }
+                    // 确保锚点不会超出画布左边缘，但保持左轴在左侧
+                    let anchor_x = max_anchor_x.max(margin);
+                    (
+                        anchor_x,
+                        -std::f64::consts::FRAC_PI_2,
+                        TextAlign::Left,
+                        TextBaseline::Top,
+                    )
                 };
                 let y = bounds.y0 + bounds.height() / 2.0;
 
@@ -615,17 +625,20 @@ mod tests {
                 name: "Sales".into(),
                 chart_type: crate::pipeline::types::ChartType::Pie,
                 data: df,
-                x_col: "name".into(),
-                y_col: "value".into(),
                 grid_index: 0,
                 x_axis_index: 0,
                 y_axis_index: 0,
                 stack: None,
                 group_index: 0,
                 sampling: None,
-                smooth: false,
                 item_style: crate::pipeline::types::ItemStyleSpec::default(),
-                ..Default::default()
+                config: crate::pipeline::types::SeriesConfig::Pie(
+                    crate::pipeline::types::PieConfig {
+                        category_col: "name".into(),
+                        value_col: "value".into(),
+                        ..Default::default()
+                    }
+                ),
             }],
             title: Some(crate::pipeline::types::TitleSpec {
                 text: Some("Pie Test".into()),

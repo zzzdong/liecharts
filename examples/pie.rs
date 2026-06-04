@@ -13,7 +13,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .name("访问来源")
                 .category("source")
                 .value("value")
-                .radius(0.0, 75.0),
+                .radius(0.0, 75.0)
+                .label(true),
         )
         .render_to_svg("pie.svg")?;
     println!("饼图已保存到 pie.svg");

@@ -221,7 +221,10 @@ impl DataProcessor for ScatterProcessor {
             series.y_axis_index,
         );
 
-        let symbol_size = series.symbol_size.unwrap_or(10.0);
+        let symbol_size = match &series.config {
+            crate::pipeline::types::SeriesConfig::Scatter(cfg) => cfg.symbol_size,
+            _ => 10.0,
+        };
         let geom = CartesianGeometry::from_df(&df)?;
         let style = StyleAccess::from_df(&df, input.colors.get_default_color());
         let name_col = df.get_column("name");

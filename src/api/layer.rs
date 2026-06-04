@@ -1,4 +1,4 @@
-use crate::{pipeline::dataframe::DataFrame, visual::Color};
+use crate::{pipeline::{dataframe::DataFrame, types::LabelPosition}, visual::Color};
 
 // ── Sampling ──
 
@@ -251,6 +251,8 @@ pub struct Pie {
     pub value: String,
     pub radius: (f64, f64),
     pub center: (f64, f64),
+    pub label_show: bool,
+    pub label_position: LabelPosition,
 }
 
 impl Pie {
@@ -262,6 +264,8 @@ impl Pie {
             value: "value".into(),
             radius: (0.0, 75.0),
             center: (50.0, 50.0),
+            label_show: false,
+            label_position: LabelPosition::Outside,
         }
     }
     pub fn data(mut self, data: DataFrame) -> Self {
@@ -286,6 +290,14 @@ impl Pie {
     }
     pub fn center(mut self, x: f64, y: f64) -> Self {
         self.center = (x, y);
+        self
+    }
+    pub fn label(mut self, show: bool) -> Self {
+        self.label_show = show;
+        self
+    }
+    pub fn label_position(mut self, position: LabelPosition) -> Self {
+        self.label_position = position;
         self
     }
 }

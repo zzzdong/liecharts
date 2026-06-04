@@ -8,12 +8,17 @@ use crate::{
         self, AxisOption, AxisType, BarSeriesOption, BubbleDataPoint, BubbleSeriesOption,
         CandlestickSeriesOption, ChartOption, GaugeSeriesOption, GridOption, LegendOption,
         LineSeriesOption, PieSeriesOption, PolarBarSeriesOption, PolarScatterSeriesOption,
-        PositionOption, PositionPreset, RadarSeriesOption, ScatterSeriesOption, SeriesOption,
-        TableSeriesOption, TitleOption,
+        PositionOption, PositionPreset, RadarIndicatorOption, RadarOption, RadarSeriesOption,
+        ScatterSeriesOption, SeriesOption, TableSeriesOption, TitleOption,
     },
     pipeline::{
         dataframe::DataValue,
-        types::{ChartSpec, ChartType, GridSpec, SeriesSpec},
+        types::{
+            AxisSpec, AxisType as NewAxisType, BarConfig, BubbleConfig, CandlestickConfig,
+            ChartSpec, ChartType, GaugeConfig, GridSpec, ItemStyleSpec, LegendSpec, LineConfig,
+            PieConfig, PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig,
+            SeriesConfig, SeriesSpec, SymbolType, TableConfig, TitleSpec,
+        },
     },
     sampling::{SamplingOption, SamplingType},
 };
@@ -58,6 +63,25 @@ pub fn chart_spec_to_chart_option(spec: &ChartSpec) -> ChartOption {
 
     // Series
     option.series = spec.series.iter().map(series_to_series_option).collect();
+
+    // Radar: 如果有雷达图系列，设置 radar 配置
+    for series in &spec.series {
+        if let SeriesConfig::Radar(cfg) = &series.config {
+            let indicators: Vec<RadarIndicatorOption> = cfg
+                .indicators
+                .iter()
+                .map(|name| RadarIndicatorOption {
+                    name: Some(name.clone()),
+                    max: Some(100.0),
+                })
+                .collect();
+            option.radar = Some(RadarOption {
+                indicator: Some(indicators),
+                ..Default::default()
+            });
+            break; // 只需要设置一次
+        }
+    }
 
     option
 }
@@ -106,7 +130,9 @@ fn axis_to_axis_option(a: &crate::pipeline::types::AxisSpec) -> AxisOption {
 }
 
 fn series_to_series_option(s: &SeriesSpec) -> SeriesOption {
-    let data = dataframe_to_datapoints(&s.data, &s.x_col, &s.y_col);
+    let x_col = s.config.x_col_name();
+    let y_col = s.config.y_col_name();
+    let data = dataframe_to_datapoints(&s.data, x_col, y_col);
 
     let sampling = s.sampling.map(|(ty, threshold)| {
         SamplingOption::new(
@@ -121,16 +147,22 @@ fn series_to_series_option(s: &SeriesSpec) -> SeriesOption {
     });
 
     match s.chart_type {
-        ChartType::Line => SeriesOption::Line(LineSeriesOption {
-            name: Some(s.name.clone()),
-            data,
-            stack: s.stack.clone(),
-            y_axis_index: Some(s.y_axis_index),
-            grid_index: Some(s.grid_index),
-            smooth: Some(s.smooth),
-            sampling,
-            ..Default::default()
-        }),
+        ChartType::Line => {
+            let smooth = match &s.config {
+                SeriesConfig::Line(cfg) => Some(cfg.smooth),
+                _ => Some(false),
+            };
+            SeriesOption::Line(LineSeriesOption {
+                name: Some(s.name.clone()),
+                data,
+                stack: s.stack.clone(),
+                y_axis_index: Some(s.y_axis_index),
+                grid_index: Some(s.grid_index),
+                smooth,
+                sampling,
+                ..Default::default()
+            })
+        }
         ChartType::Bar => SeriesOption::Bar(BarSeriesOption {
             name: Some(s.name.clone()),
             data,
@@ -280,6 +312,18 @@ fn dataframe_to_datapoints(
     }
 }
 
+/// 将 PositionOption 解析为像素值
+fn resolve_position_option(pos: &PositionOption, total: f64) -> f64 {
+    match pos {
+        PositionOption::Pixel(v) => *v,
+        PositionOption::Percent(p) => total * p / 100.0,
+        PositionOption::Preset(PositionPreset::Auto) => total * 0.1,  // fallback: 10%
+        PositionOption::Preset(PositionPreset::Center) => total / 2.0,
+        PositionOption::Preset(PositionPreset::Left) | PositionOption::Preset(PositionPreset::Top) => 0.0,
+        PositionOption::Preset(PositionPreset::Right) | PositionOption::Preset(PositionPreset::Bottom) => total,
+    }
+}
+
 /// 将旧的 ChartOption 转换为新的 ChartSpec（反向兼容）
 pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32) -> ChartSpec {
     use crate::pipeline::{
@@ -290,27 +334,18 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         },
     };
 
+    let total_w = width as f64;
+    let total_h = height as f64;
+
     // Grids
     let grids: Vec<GridSpec> = option
         .grid
         .iter()
         .map(|g| {
-            let left = g.left.as_ref().and_then(|p| match p {
-                PositionOption::Pixel(v) => Some(*v),
-                _ => None,
-            });
-            let right = g.right.as_ref().and_then(|p| match p {
-                PositionOption::Pixel(v) => Some(*v),
-                _ => None,
-            });
-            let top = g.top.as_ref().and_then(|p| match p {
-                PositionOption::Pixel(v) => Some(*v),
-                _ => None,
-            });
-            let bottom = g.bottom.as_ref().and_then(|p| match p {
-                PositionOption::Pixel(v) => Some(*v),
-                _ => None,
-            });
+            let left = g.left.as_ref().map(|p| resolve_position_option(p, total_w));
+            let right = g.right.as_ref().map(|p| resolve_position_option(p, total_w));
+            let top = g.top.as_ref().map(|p| resolve_position_option(p, total_h));
+            let bottom = g.bottom.as_ref().map(|p| resolve_position_option(p, total_h));
             GridSpec {
                 left,
                 right,
@@ -386,49 +421,6 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         .series
         .iter()
         .map(|s| {
-            let (chart_type, data, x_col, y_col, stack, group_index) = match s {
-                SeriesOption::Line(ls) => (
-                    ChartType::Line,
-                    datapoints_to_dataframe(&ls.data, "x", "y"),
-                    "x".into(),
-                    "y".into(),
-                    ls.stack.clone(),
-                    0,
-                ),
-                SeriesOption::Bar(bs) => (
-                    ChartType::Bar,
-                    datapoints_to_dataframe(&bs.data, "x", "y"),
-                    "x".into(),
-                    "y".into(),
-                    bs.stack.clone(),
-                    bs.group_index.unwrap_or(0),
-                ),
-                SeriesOption::Pie(ps) => (
-                    ChartType::Pie,
-                    datapoints_to_dataframe(&ps.data, "name", "value"),
-                    "name".into(),
-                    "value".into(),
-                    None,
-                    0,
-                ),
-                SeriesOption::Scatter(ss) => (
-                    ChartType::Scatter,
-                    datapoints_to_dataframe(&ss.data, "x", "y"),
-                    "x".into(),
-                    "y".into(),
-                    None,
-                    0,
-                ),
-                _ => (
-                    ChartType::Line,
-                    DataFrame::new(),
-                    "x".into(),
-                    "y".into(),
-                    None,
-                    0,
-                ),
-            };
-
             let name = match s {
                 SeriesOption::Line(ls) => ls.name.clone().unwrap_or_default(),
                 SeriesOption::Bar(bs) => bs.name.clone().unwrap_or_default(),
@@ -465,102 +457,156 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 _ => None,
             };
 
-            SeriesSpec {
-                name,
-                chart_type,
-                data,
-                x_col,
-                y_col,
-                grid_index: match s {
-                    SeriesOption::Line(ls) => ls.grid_index.unwrap_or(0),
-                    SeriesOption::Bar(bs) => bs.grid_index.unwrap_or(0),
-                    SeriesOption::Pie(ps) => ps.grid_index.unwrap_or(0),
-                    _ => 0,
-                },
-                x_axis_index: 0,
-                y_axis_index: match s {
-                    SeriesOption::Line(ls) => ls.y_axis_index.unwrap_or(0),
-                    SeriesOption::Bar(bs) => bs.y_axis_index.unwrap_or(0),
-                    _ => 0,
-                },
-                stack,
-                group_index,
-                sampling,
-                smooth: match s {
-                    SeriesOption::Line(ls) => ls.smooth.unwrap_or(false),
-                    _ => false,
-                },
-                item_style: ItemStyleSpec::default(),
-                // === Chart-type-specific config fields ===
-                bar_width: match s {
-                    SeriesOption::Bar(bs) => bs
-                        .bar_width
-                        .as_ref()
+            match s {
+                SeriesOption::Line(ls) => {
+                    let data = datapoints_to_dataframe(&ls.data, "x", "y");
+                    let config = LineConfig {
+                        x_col: "x".into(),
+                        y_col: "y".into(),
+                        smooth: ls.smooth.unwrap_or(false),
+                        line_width: ls.line_style.as_ref().and_then(|l| l.width).unwrap_or(2.0),
+                        area_color: ls.area_style.as_ref().and_then(|a| a.color)
+                            .map(|c| crate::visual::Color::new(c.r, c.g, c.b)),
+                        area_opacity: ls.area_style.as_ref().and_then(|a| a.opacity).unwrap_or(0.5),
+                        symbol_type: ls.symbol.as_ref().map(|s| match s {
+                            crate::option::SymbolType::Circle => SymbolType::Circle,
+                            crate::option::SymbolType::Rect => SymbolType::Rect,
+                            crate::option::SymbolType::RoundRect => SymbolType::RoundRect,
+                            crate::option::SymbolType::Triangle => SymbolType::Triangle,
+                            crate::option::SymbolType::Diamond => SymbolType::Diamond,
+                            crate::option::SymbolType::Pin => SymbolType::Pin,
+                            crate::option::SymbolType::Arrow => SymbolType::Arrow,
+                            crate::option::SymbolType::None => SymbolType::None,
+                        }).unwrap_or_default(),
+                        symbol_size: ls.symbol_size.unwrap_or(4.0),
+                    };
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Line,
+                        data,
+                        grid_index: ls.grid_index.unwrap_or(0),
+                        x_axis_index: 0,
+                        y_axis_index: ls.y_axis_index.unwrap_or(0),
+                        stack: ls.stack.clone(),
+                        group_index: 0,
+                        sampling,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Line(config),
+                    }
+                }
+                SeriesOption::Bar(bs) => {
+                    let data = datapoints_to_dataframe(&bs.data, "x", "y");
+                    let bar_width = bs.bar_width.as_ref()
                         .and_then(|bw| bw.strip_suffix('%'))
                         .and_then(|pct| pct.parse::<f64>().ok())
-                        .map(|v| v / 100.0),
-                    _ => None,
-                },
-                line_width: match s {
-                    SeriesOption::Line(ls) => ls.line_style.as_ref().and_then(|ls| ls.width),
-                    _ => None,
-                },
-                area_color: match s {
-                    SeriesOption::Line(ls) => ls
-                        .area_style
-                        .as_ref()
-                        .and_then(|a| a.color)
-                        .map(|c| crate::visual::Color::new(c.r, c.g, c.b)),
-                    _ => None,
-                },
-                area_opacity: match s {
-                    SeriesOption::Line(ls) => ls.area_style.as_ref().and_then(|a| a.opacity),
-                    _ => None,
-                },
-                symbol_type: match s {
-                    SeriesOption::Line(ls) => ls
-                        .symbol
-                        .as_ref()
-                        .map(|s| format!("{:?}", s).to_lowercase()),
-                    _ => None,
-                },
-                symbol_size: match s {
-                    SeriesOption::Line(ls) => ls.symbol_size,
-                    _ => None,
-                },
-                pie_center: match s {
-                    SeriesOption::Pie(ps) => ps.center.clone(),
-                    _ => None,
-                },
-                pie_radius: match s {
-                    SeriesOption::Pie(ps) => ps.radius.clone(),
-                    _ => None,
-                },
-                label_show: match s {
-                    SeriesOption::Pie(ps) => ps.label.as_ref().and_then(|l| l.show),
-                    _ => None,
-                },
-                label_position: match s {
-                    SeriesOption::Pie(ps) => ps
-                        .label
-                        .as_ref()
-                        .and_then(|l| l.position)
-                        .map(|p| format!("{:?}", p).to_lowercase()),
-                    _ => None,
-                },
-                label_font_size: match s {
-                    SeriesOption::Pie(ps) => ps.label.as_ref().and_then(|l| l.font_size),
-                    _ => None,
-                },
-                pad_angle: match s {
-                    SeriesOption::PolarBar(pb) => pb.pad_angle,
-                    _ => None,
-                },
-                start_angle: match s {
-                    SeriesOption::PolarBar(pb) => pb.start_angle,
-                    _ => None,
-                },
-                ..Default::default()
+                        .map(|v| v / 100.0)
+                        .unwrap_or(0.6);
+                    let config = BarConfig {
+                        x_col: "x".into(),
+                        y_col: "y".into(),
+                        bar_width,
+                    };
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Bar,
+                        data,
+                        grid_index: bs.grid_index.unwrap_or(0),
+                        x_axis_index: 0,
+                        y_axis_index: bs.y_axis_index.unwrap_or(0),
+                        stack: bs.stack.clone(),
+                        group_index: bs.group_index.unwrap_or(0),
+                        sampling,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Bar(config),
+                    }
+                }
+                SeriesOption::Pie(ps) => {
+                    let data = datapoints_to_dataframe(&ps.data, "name", "value");
+                    let label = ps.label.as_ref();
+                    // 解析 center 和 radius (从 Vec<String> 转换为 (f64, f64))
+                    let center = ps.center.as_ref().and_then(|c| {
+                        if c.len() >= 2 {
+                            let x = c[0].trim_end_matches('%').parse::<f64>().ok()?;
+                            let y = c[1].trim_end_matches('%').parse::<f64>().ok()?;
+                            Some((x, y))
+                        } else {
+                            None
+                        }
+                    }).unwrap_or((50.0, 50.0));
+                    let radius = ps.radius.as_ref().and_then(|r| {
+                        if r.len() >= 2 {
+                            let inner = r[0].trim_end_matches('%').parse::<f64>().ok()?;
+                            let outer = r[1].trim_end_matches('%').parse::<f64>().ok()?;
+                            Some((inner, outer))
+                        } else {
+                            None
+                        }
+                    }).unwrap_or((0.0, 75.0));
+                    let config = PieConfig {
+                        category_col: "name".into(),
+                        value_col: "value".into(),
+                        center,
+                        radius,
+                        label_show: label.and_then(|l| l.show).unwrap_or(false),
+                        label_position: label.and_then(|l| l.position)
+                            .map(|p| match p {
+                                crate::option::LabelPosition::Outside => crate::pipeline::types::LabelPosition::Outside,
+                                crate::option::LabelPosition::Inside => crate::pipeline::types::LabelPosition::Inside,
+                                _ => crate::pipeline::types::LabelPosition::Outside,
+                            }).unwrap_or(crate::pipeline::types::LabelPosition::Outside),
+                        label_font_size: label.and_then(|l| l.font_size).unwrap_or(12.0),
+                    };
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Pie,
+                        data,
+                        grid_index: ps.grid_index.unwrap_or(0),
+                        x_axis_index: 0,
+                        y_axis_index: 0,
+                        stack: None,
+                        group_index: 0,
+                        sampling,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Pie(config),
+                    }
+                }
+                SeriesOption::Scatter(ss) => {
+                    let data = datapoints_to_dataframe(&ss.data, "x", "y");
+                    let config = ScatterConfig {
+                        x_col: "x".into(),
+                        y_col: "y".into(),
+                        symbol_size: 10.0,
+                    };
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Scatter,
+                        data,
+                        grid_index: ss.grid_index.unwrap_or(0),
+                        x_axis_index: 0,
+                        y_axis_index: ss.y_axis_index.unwrap_or(0),
+                        stack: None,
+                        group_index: 0,
+                        sampling,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Scatter(config),
+                    }
+                }
+                _ => {
+                    // 其他类型暂时用默认配置
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Line,
+                        data: DataFrame::new(),
+                        grid_index: 0,
+                        x_axis_index: 0,
+                        y_axis_index: 0,
+                        stack: None,
+                        group_index: 0,
+                        sampling,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Line(LineConfig::default()),
+                    }
+                }
             }
         })
         .collect();

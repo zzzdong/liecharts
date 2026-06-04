@@ -1,3 +1,8 @@
+//! 笛卡尔坐标轴渲染器
+//!
+//! 处理 X/Y 轴线和网格线的生成。内部根据轴类型（Value / Category）分支
+//! 处理不同的刻度计算和标签生成策略。
+
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
@@ -9,30 +14,32 @@ use crate::{
     },
 };
 
-/// 在新管线中为单个 subplot 生成坐标轴和网格线视觉元素
-pub struct AxisRenderer;
+use super::compute_nice_ticks;
 
-impl AxisRenderer {
+/// 笛卡尔坐标轴渲染器
+///
+/// 用于折线、柱状、散点等标准 X/Y 坐标轴图表的轴线和网格线渲染。
+pub struct CartesianAxisRenderer;
+
+impl CartesianAxisRenderer {
     /// 为指定 subplot 生成 X/Y 轴线和网格线
     pub fn render(
-        spec: &SubplotSpec,
+        subplot: &SubplotSpec,
         option: &ChartOption,
         axis_ranges: &ResolvedAxisRanges,
         colors: &ColorContext,
         text_measurer: &mut TextMeasurer,
     ) -> Vec<VisualElement> {
         let mut elements = Vec::new();
-
-        let bounds = spec.bounds;
-        if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
-            return elements;
-        }
+        let bounds = subplot.bounds;
 
         // ── X 轴线 ──
-        for &x_axis_idx in &spec.x_axis_indices {
+        eprintln!("DEBUG CartesianAxisRenderer: subplot.series_indices={:?}, axis_ranges.ranges={:?}", subplot.series_indices, axis_ranges.ranges);
+        for &x_axis_idx in &subplot.x_axis_indices {
             let axis_config = option.x_axis.get(x_axis_idx);
             if let Some(axis_cfg) = axis_config {
                 let x_range = axis_ranges.get_x_range(x_axis_idx);
+                eprintln!("DEBUG CartesianAxisRenderer: x_axis_idx={}, x_range={:?}", x_axis_idx, x_range);
                 let (x_min, x_max) = x_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 1.0));
 
                 // 轴线（底部）
@@ -61,7 +68,7 @@ impl AxisRenderer {
         }
 
         // ── Y 轴线 ──
-        for &y_axis_idx in &spec.y_axis_indices {
+        for &y_axis_idx in &subplot.y_axis_indices {
             let axis_config = option.y_axis.get(y_axis_idx);
             if let Some(axis_cfg) = axis_config {
                 let y_range = axis_ranges.get_y_range(y_axis_idx);
@@ -80,7 +87,14 @@ impl AxisRenderer {
                 );
 
                 if !is_right {
-                    Self::draw_y_grid_lines(&mut elements, bounds, axis_cfg, y_min, y_max, colors);
+                    Self::draw_y_grid_lines(
+                        &mut elements,
+                        bounds,
+                        axis_cfg,
+                        y_min,
+                        y_max,
+                        colors,
+                    );
                 }
 
                 Self::draw_y_tick_labels_side(
@@ -99,7 +113,12 @@ impl AxisRenderer {
         elements
     }
 
-    fn draw_axis_line(elements: &mut Vec<VisualElement>, start: Point, end: Point, color: Color) {
+    fn draw_axis_line(
+        elements: &mut Vec<VisualElement>,
+        start: Point,
+        end: Point,
+        color: Color,
+    ) {
         elements.push(VisualElement::Line {
             start,
             end,
@@ -116,7 +135,6 @@ impl AxisRenderer {
         _x_max: f64,
         colors: &ColorContext,
     ) {
-        // 为 Category 轴生成网格线
         if axis_cfg.axis_type == Some(AxisType::Category) {
             if let Some(data) = &axis_cfg.data {
                 let n = data.len();
@@ -137,7 +155,6 @@ impl AxisRenderer {
                 }
             }
         } else {
-            // Value 轴：生成 5 根网格线
             for i in 0..6 {
                 let t = i as f64 / 5.0;
                 let x = bounds.x0 + t * bounds.width();
@@ -223,7 +240,6 @@ impl AxisRenderer {
                 }
             }
         } else {
-            // Value X axis
             let ticks = compute_nice_ticks(_x_min, _x_max, 5);
             let range = _x_max - _x_min;
             for &v in &ticks {
@@ -340,46 +356,5 @@ impl AxisRenderer {
                 z_index: Z_LABEL,
             });
         }
-    }
-}
-
-/// 计算"美观"的刻度值序列
-fn compute_nice_ticks(min: f64, max: f64, max_ticks: usize) -> Vec<f64> {
-    if max <= min || max_ticks == 0 {
-        return vec![min];
-    }
-
-    let range = max - min;
-    let rough_step = range / max_ticks as f64;
-
-    // 取整到"美观"的步长
-    let magnitude = 10_f64.powf(rough_step.log10().floor());
-    let residual = rough_step / magnitude;
-    let nice_step = if residual <= 1.5 {
-        1.0
-    } else if residual <= 3.5 {
-        2.0
-    } else if residual <= 7.5 {
-        5.0
-    } else {
-        10.0
-    } * magnitude;
-
-    let nice_min = (min / nice_step).floor() * nice_step;
-    let nice_max = (max / nice_step).ceil() * nice_step;
-
-    let mut ticks = Vec::new();
-    let mut v = nice_min;
-    while v <= nice_max + nice_step * 1e-10 {
-        if v >= min - nice_step * 1e-10 && v <= max + nice_step * 1e-10 {
-            ticks.push(v);
-        }
-        v += nice_step;
-    }
-
-    if ticks.is_empty() {
-        vec![min, max]
-    } else {
-        ticks
     }
 }
