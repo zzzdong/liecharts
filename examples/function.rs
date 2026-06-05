@@ -1,16 +1,23 @@
-use liecharts::prelude::*;
+use liecharts::api::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    ChartBuilder::new()
-        .with_title(TitleOption::new("y = x²"))
-        .with_x_axis(AxisOption::value().min(-1.0).max(1.0))
-        .with_y_axis(AxisOption::value().min(-0.1).max(1.0))
-        .with_series(SeriesOption::Line(
-            LineSeriesOption::new("y = x²", function_data(-1.0..=1.0, 10_000, |x| x * x))
+    // Generate y = x² curve data using DataFrame::from_function
+    let df = DataFrame::from_function("x", "y", -1.0..=1.0, 10_000, |x| x * x);
+
+    Chart::new(800, 480)
+        .data(df)
+        .title(Title::new("y = x²"))
+        .x_axis(Axis::value().min(-1.0).max(1.0))
+        .y_axis(Axis::value().min(-0.1).max(1.0))
+        .add_line(
+            Line::new()
+                .x("x")
+                .y("y")
+                .name("y = x²")
                 .smooth(true)
-                .sampling(SamplingOption::lttb(50)),
-        ))
-        .render_to_svg(800, 480, "function.svg")?;
+                .sampling(Sampling::Lttb(50)),
+        )
+        .render_to_svg("function.svg")?;
 
     println!("generated function.svg (10_000 points sampled to 50 via LTTB)");
 

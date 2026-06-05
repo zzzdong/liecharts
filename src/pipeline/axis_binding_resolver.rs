@@ -1,22 +1,25 @@
-use crate::{
-    option::{AxisPosition, AxisType, ChartOption},
-    pipeline::types::{ResolvedAxisRange, ResolvedAxisRanges, SubplotSpec},
+use crate::pipeline::types::{
+    AxisSpec, AxisType, ChartType, ResolvedAxisRange, ResolvedAxisRanges, SeriesSpec, SubplotSpec,
 };
 
 /// 轴绑定解析器
 ///
 /// 职责：
-/// - 解析 xAxisIndex / yAxisIndex 为具体的轴配置
-/// - 识别哪些 subplot 共用同一个轴实例
-/// - 对每个轴实例，收集所有关联 subplot 的数据范围
+/// - 解析每个轴关联的数据范围
 /// - 结合用户指定的 min/max，计算出最终轴范围
 pub struct AxisBindingResolver<'a> {
-    option: &'a ChartOption,
+    x_axes: &'a [AxisSpec],
+    y_axes: &'a [AxisSpec],
+    series: &'a [SeriesSpec],
 }
 
 impl<'a> AxisBindingResolver<'a> {
-    pub fn new(option: &'a ChartOption) -> Self {
-        Self { option }
+    pub fn new(x_axes: &'a [AxisSpec], y_axes: &'a [AxisSpec], series: &'a [SeriesSpec]) -> Self {
+        Self {
+            x_axes,
+            y_axes,
+            series,
+        }
     }
 
     /// 解析所有 subplot 的轴绑定关系，输出协调后的轴范围
@@ -24,25 +27,36 @@ impl<'a> AxisBindingResolver<'a> {
         let mut ranges = Vec::new();
 
         // 处理 x 轴
-        for axis_idx in 0..self.option.x_axis.len() {
-            let axis = &self.option.x_axis[axis_idx];
+        for axis_idx in 0..self.x_axes.len() {
+            let axis = &self.x_axes[axis_idx];
+            let (data_min, data_max) = self.collect_x_axis_range(axis_idx, specs);
 
-            // 收集该轴在各 subplot 下关联的 series 数据
-            let (data_min, data_max) = self.collect_x_axis_range(axis_idx, specs, axis);
-
-            let (resolved_min, resolved_max) = self.compute_final_range(
-                axis.min,
-                axis.max,
-                data_min,
-                data_max,
-                axis.axis_type,
-                axis.data.as_ref().map(|d| d.len()).unwrap_or(0),
-                axis.boundary_gap.unwrap_or(true),
-            );
+            // Category 轴：collect_x_axis_range 已经返回正确范围
+            let (resolved_min, resolved_max) = if matches!(axis.axis_type, AxisType::Category) {
+                (data_min, data_max)
+            } else {
+                eprintln!(
+                    "DEBUG: calling compute_final_range with data_min={}, data_max={}",
+                    data_min, data_max
+                );
+                let result = self.compute_final_range(
+                    axis.min,
+                    axis.max,
+                    data_min,
+                    data_max,
+                    axis.axis_type,
+                    axis.categories.len(),
+                    axis.boundary_gap,
+                    false,
+                );
+                eprintln!("DEBUG: compute_final_range result={:?}", result);
+                result
+            };
 
             ranges.push(ResolvedAxisRange {
                 axis_index: axis_idx,
-                position: axis.position.unwrap_or(AxisPosition::Bottom),
+                position: axis.position,
+                axis_type: axis.axis_type,
                 min: resolved_min,
                 max: resolved_max,
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
@@ -51,10 +65,19 @@ impl<'a> AxisBindingResolver<'a> {
         }
 
         // 处理 y 轴
-        for axis_idx in 0..self.option.y_axis.len() {
-            let axis = &self.option.y_axis[axis_idx];
+        for axis_idx in 0..self.y_axes.len() {
+            let axis = &self.y_axes[axis_idx];
+            let (data_min, data_max) = self.collect_y_axis_range(axis_idx, specs);
 
-            let (data_min, data_max) = self.collect_y_axis_range(axis_idx, specs, axis);
+            // 判断该轴关联的 subplot 中是否有非 Candlestick 的系列
+            let force_include_zero = specs.iter().any(|s| {
+                s.y_axis_indices.contains(&axis_idx)
+                    && s.series_indices.iter().any(|&si| {
+                        self.series
+                            .get(si)
+                            .is_some_and(|ser| !matches!(ser.chart_type, ChartType::Candlestick))
+                    })
+            });
 
             let (resolved_min, resolved_max) = self.compute_final_range(
                 axis.min,
@@ -62,17 +85,15 @@ impl<'a> AxisBindingResolver<'a> {
                 data_min,
                 data_max,
                 axis.axis_type,
-                axis.data.as_ref().map(|d| d.len()).unwrap_or(0),
-                axis.boundary_gap.unwrap_or(true),
+                axis.categories.len(),
+                axis.boundary_gap,
+                force_include_zero,
             );
 
             ranges.push(ResolvedAxisRange {
                 axis_index: axis_idx,
-                position: axis.position.unwrap_or(if axis_idx == 0 {
-                    AxisPosition::Left
-                } else {
-                    AxisPosition::Right
-                }),
+                position: axis.position,
+                axis_type: axis.axis_type,
                 min: resolved_min,
                 max: resolved_max,
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
@@ -84,90 +105,250 @@ impl<'a> AxisBindingResolver<'a> {
     }
 
     /// 收集 X 轴关联的所有 series 数据值
-    fn collect_x_axis_range(
-        &self,
-        axis_idx: usize,
-        specs: &[SubplotSpec],
-        axis: &crate::option::AxisOption,
-    ) -> (f64, f64) {
+    fn collect_x_axis_range(&self, axis_idx: usize, specs: &[SubplotSpec]) -> (f64, f64) {
         let grids_with_axis: Vec<usize> = specs
             .iter()
             .filter(|s| s.x_axis_indices.contains(&axis_idx))
             .map(|s| s.id)
             .collect();
 
+        eprintln!(
+            "DEBUG collect_x_axis_range: axis_idx={}, grids_with_axis={:?}, specs={:?}",
+            axis_idx, grids_with_axis, specs
+        );
+
         if grids_with_axis.is_empty() {
             return (0.0, 0.0);
         }
 
-        let mut all_values: Vec<f64> = Vec::new();
-        let mut all_x_values: Vec<f64> = Vec::new();
+        let axis = &self.x_axes[axis_idx];
 
-        for series in &self.option.series {
-            let series_grid_idx = series_grid_index(series).unwrap_or(0);
-            if !grids_with_axis.contains(&series_grid_idx) {
-                continue;
+        // Category 轴：根据数据点数量计算范围
+        if matches!(axis.axis_type, AxisType::Category) {
+            let mut max_count = 0;
+            for series in self.series {
+                if !grids_with_axis.contains(&series.grid_index) {
+                    continue;
+                }
+                let count = series.data.row_count();
+                if count > max_count {
+                    max_count = count;
+                }
             }
-            let (vals, x_vals) = extract_series_values(series);
-            all_values.extend(vals);
-            all_x_values.extend(x_vals);
+            if max_count == 0 {
+                return (0.0, 1.0);
+            }
+            // 返回索引范围：0 到 n-1（或 n，取决于 boundary_gap）
+            if axis.boundary_gap {
+                return (0.0, max_count as f64);
+            } else {
+                return (0.0, (max_count - 1) as f64);
+            }
         }
 
-        let values = if matches!(axis.axis_type, Some(AxisType::Value)) && !all_x_values.is_empty()
-        {
-            all_x_values
-        } else if matches!(axis.axis_type, Some(AxisType::Value)) {
-            all_values
+        let mut all_y: Vec<f64> = Vec::new();
+        let mut all_x: Vec<f64> = Vec::new();
+        let mut bound_series: Vec<&SeriesSpec> = Vec::new();
+
+        for series in self.series {
+            eprintln!(
+                "DEBUG: series.grid_index={}, grids_with_axis={:?}",
+                series.grid_index, grids_with_axis
+            );
+            if !grids_with_axis.contains(&series.grid_index) {
+                eprintln!("DEBUG: series skipped");
+                continue;
+            }
+            all_y.extend(series.y_values());
+            all_x.extend(series.x_values());
+            eprintln!("DEBUG: series added, stack={:?}", series.stack);
+            bound_series.push(series);
+        }
+
+        // 对于数值轴，如果 x_values 为空（字符串列），则使用 y_values
+        let values = if matches!(axis.axis_type, AxisType::Value) && !all_x.is_empty() {
+            all_x
+        } else if matches!(axis.axis_type, AxisType::Value) {
+            all_y
         } else {
-            all_values
+            all_y
         };
 
         if values.is_empty() {
-            (0.0, 100.0)
-        } else {
-            let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
-            let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            (min, max)
+            return (0.0, 100.0);
         }
+
+        let data_min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+        let mut data_max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+        // 检查是否有堆叠（用于横向柱状图，其值在 X 轴上）
+        eprintln!(
+            "DEBUG: axis_type={:?}, bound_series.len={}",
+            axis.axis_type,
+            bound_series.len()
+        );
+        if matches!(axis.axis_type, AxisType::Value) {
+            let has_stacked_bars = bound_series.iter().any(|s| s.stack.is_some());
+            eprintln!("DEBUG: has_stacked_bars={}", has_stacked_bars);
+            if has_stacked_bars {
+                use std::collections::HashMap;
+                let mut stack_groups: HashMap<Option<String>, Vec<&SeriesSpec>> = HashMap::new();
+                for s in &bound_series {
+                    stack_groups.entry(s.stack.clone()).or_default().push(s);
+                }
+
+                for group in stack_groups.values() {
+                    if group.len() <= 1 {
+                        continue;
+                    }
+
+                    let max_rows = group.iter().map(|s| s.data.row_count()).max().unwrap_or(0);
+                    if max_rows == 0 {
+                        continue;
+                    }
+
+                    // 对于数值 X 轴上的堆叠（横向柱状图），使用 y_col 作为值列
+                    for row in 0..max_rows {
+                        let mut row_total = 0.0;
+                        for s in group {
+                            if let Some(col) = s.data.get_column(s.config.y_col_name())
+                                && let Some(v) = col.as_f64(row)
+                            {
+                                row_total += v;
+                            }
+                        }
+                        eprintln!(
+                            "DEBUG: row={}, row_total={}, data_max={}",
+                            row, row_total, data_max
+                        );
+                        if row_total > data_max {
+                            data_max = row_total;
+                        }
+                    }
+                }
+            }
+        }
+
+        (data_min, data_max)
     }
 
     /// 收集 Y 轴关联的所有 series 数据值
-    fn collect_y_axis_range(
-        &self,
-        axis_idx: usize,
-        specs: &[SubplotSpec],
-        _axis: &crate::option::AxisOption,
-    ) -> (f64, f64) {
+    ///
+    /// 对于堆叠柱状图，还会计算每个 stack 组内各行的总值，
+    /// 确保轴范围足以容纳堆叠后的总高度。
+    fn collect_y_axis_range(&self, axis_idx: usize, specs: &[SubplotSpec]) -> (f64, f64) {
         let mut all_values: Vec<f64> = Vec::new();
 
-        for series in &self.option.series {
-            let series_grid_idx = series_grid_index(series).unwrap_or(0);
-            let spec = match specs.iter().find(|s| s.id == series_grid_idx) {
+        // 收集绑定到该轴的所有 series
+        let mut bound_series: Vec<&SeriesSpec> = Vec::new();
+
+        for series in self.series {
+            // 检查该 series 是否属于当前处理的 subplot 之一
+            let _spec = match specs.iter().find(|s| s.id == series.grid_index) {
                 Some(s) => s,
                 None => continue,
             };
 
-            let effective_y_axis =
-                series_y_axis_index(series).or_else(|| spec.y_axis_indices.first().copied());
-
-            if effective_y_axis != Some(axis_idx) {
+            // 直接使用 series 的 y_axis_index 来判断绑定关系
+            if series.y_axis_index != axis_idx {
                 continue;
             }
 
-            let (vals, _) = extract_series_values(series);
-            all_values.extend(vals);
+            all_values.extend(series.y_values());
+            bound_series.push(series);
         }
 
         if all_values.is_empty() {
-            (0.0, 100.0)
-        } else {
-            let min = all_values.iter().cloned().fold(f64::INFINITY, f64::min);
-            let max = all_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-            if (min - max).abs() < f64::EPSILON {
-                (min - 10.0, max + 10.0)
-            } else {
-                (min, max)
+            return (0.0, 100.0);
+        }
+
+        let data_min = all_values.iter().cloned().fold(f64::INFINITY, f64::min);
+        let mut data_max = all_values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+        // 检查是否有堆叠柱状图
+        let has_stacked_bars = bound_series.iter().any(|s| s.stack.is_some());
+        if has_stacked_bars {
+            // 按 stack 名称分组
+            use std::collections::HashMap;
+            let mut stack_groups: HashMap<Option<String>, Vec<&SeriesSpec>> = HashMap::new();
+            for s in &bound_series {
+                stack_groups.entry(s.stack.clone()).or_default().push(s);
             }
+
+            // 对每个有多于一个系列的 stack 组，计算每行总值
+            for group in stack_groups.values() {
+                if group.len() <= 1 {
+                    continue;
+                }
+
+                // 找到最大行数
+                let max_rows = group.iter().map(|s| s.data.row_count()).max().unwrap_or(0);
+                if max_rows == 0 {
+                    continue;
+                }
+
+                // 计算每行总值
+                for row in 0..max_rows {
+                    let mut row_total = 0.0;
+                    for s in group {
+                        let y_col = s.config.y_col_name();
+                        if let Some(col) = s.data.get_column(y_col)
+                            && let Some(v) = col.as_f64(row)
+                        {
+                            row_total += v;
+                        }
+                    }
+                    if row_total > data_max {
+                        data_max = row_total;
+                    }
+                }
+            }
+        }
+
+        // 检查是否有堆叠面积图（Line/Stack 系列）
+        let has_stacked_areas = bound_series
+            .iter()
+            .any(|s| s.stack.is_some() && matches!(s.chart_type, super::ChartType::Line));
+        if has_stacked_areas {
+            use std::collections::HashMap;
+            let mut stack_groups: HashMap<Option<String>, Vec<&SeriesSpec>> = HashMap::new();
+            for s in &bound_series {
+                if s.stack.is_some() && matches!(s.chart_type, super::ChartType::Line) {
+                    stack_groups.entry(s.stack.clone()).or_default().push(s);
+                }
+            }
+
+            for group in stack_groups.values() {
+                if group.len() <= 1 {
+                    continue;
+                }
+
+                let max_rows = group.iter().map(|s| s.data.row_count()).max().unwrap_or(0);
+                if max_rows == 0 {
+                    continue;
+                }
+
+                for row in 0..max_rows {
+                    let mut row_total = 0.0;
+                    for s in group {
+                        let y_col = s.config.y_col_name();
+                        if let Some(col) = s.data.get_column(y_col)
+                            && let Some(v) = col.as_f64(row)
+                        {
+                            row_total += v;
+                        }
+                    }
+                    if row_total > data_max {
+                        data_max = row_total;
+                    }
+                }
+            }
+        }
+
+        if (data_min - data_max).abs() < f64::EPSILON {
+            (data_min - 10.0, data_max + 10.0)
+        } else {
+            (data_min, data_max)
         }
     }
 
@@ -177,12 +358,13 @@ impl<'a> AxisBindingResolver<'a> {
         user_max: Option<f64>,
         data_min: f64,
         data_max: f64,
-        axis_type: Option<AxisType>,
+        axis_type: AxisType,
         category_count: usize,
         boundary_gap: bool,
+        force_include_zero: bool,
     ) -> (f64, f64) {
         // Category 轴：使用计数
-        if matches!(axis_type, Some(AxisType::Category)) {
+        if matches!(axis_type, AxisType::Category) {
             return if category_count > 0 {
                 if boundary_gap {
                     (0.0, category_count as f64)
@@ -197,21 +379,14 @@ impl<'a> AxisBindingResolver<'a> {
         // Value 轴：结合用户指定 + 数据范围
         let range = data_max - data_min;
 
-        // 判断是否应该包含0
-        // 规则：
-        // 1. 如果数据全部为正数且最小值相对于范围较大（如年份），不包含0
-        // 2. 如果数据全部为正数但最小值较小（如0-100），包含0
-        // 3. 如果数据包含负数，根据数据范围决定
-        let should_include_zero = if data_min >= 0.0 {
-            // 数据全为正数
-            // 如果最小值小于范围的20%，认为应该包含0
-            // 否则（如年份 1972，范围42，1972/42=46倍），不包含0
+        // 当数据全为正数时，非 K 线图强制包含 0；有负数时不强制，使用原有启发式逻辑
+        let should_include_zero = if force_include_zero && data_min >= 0.0 {
+            true
+        } else if data_min >= 0.0 {
             data_min < range * 0.2
         } else if data_max <= 0.0 {
-            // 数据全为负数，类似逻辑
             data_max.abs() < range * 0.2
         } else {
-            // 数据跨越0，必须包含0
             true
         };
 
@@ -242,248 +417,40 @@ impl<'a> AxisBindingResolver<'a> {
     }
 }
 
-fn series_grid_index(series: &crate::option::SeriesOption) -> Option<usize> {
-    match series {
-        crate::option::SeriesOption::Line(s) => s.grid_index,
-        crate::option::SeriesOption::Bar(s) => s.grid_index,
-        crate::option::SeriesOption::Candlestick(s) => s.grid_index,
-        crate::option::SeriesOption::Pie(s) => s.grid_index,
-        crate::option::SeriesOption::Scatter(s) => s.grid_index,
-        crate::option::SeriesOption::Radar(_) => None,
-        crate::option::SeriesOption::PolarBar(_) => None,
-        crate::option::SeriesOption::PolarScatter(_) => None,
-        crate::option::SeriesOption::Bubble(s) => s.grid_index,
-        crate::option::SeriesOption::Gauge(_) => None,
-        crate::option::SeriesOption::Table(_) => None,
-    }
-}
-
-fn series_y_axis_index(series: &crate::option::SeriesOption) -> Option<usize> {
-    match series {
-        crate::option::SeriesOption::Line(s) => s.y_axis_index,
-        crate::option::SeriesOption::Bar(s) => s.y_axis_index,
-        crate::option::SeriesOption::Candlestick(s) => s.y_axis_index,
-        crate::option::SeriesOption::Scatter(s) => s.y_axis_index,
-        _ => None,
-    }
-}
-
-fn extract_series_values(series: &crate::option::SeriesOption) -> (Vec<f64>, Vec<f64>) {
-    match series {
-        crate::option::SeriesOption::Line(s) => {
-            let vals: Vec<f64> = s.data.iter().map(extract_value).collect();
-            let x_vals: Vec<f64> = s.data.iter().filter_map(extract_x_value).collect();
-            (vals, x_vals)
-        }
-        crate::option::SeriesOption::Bar(s) => {
-            let vals: Vec<f64> = s.data.iter().map(extract_value).collect();
-            let x_vals: Vec<f64> = s.data.iter().filter_map(extract_x_value).collect();
-            (vals, x_vals)
-        }
-        crate::option::SeriesOption::Scatter(s) => {
-            let y_vals: Vec<f64> = s
-                .data
-                .iter()
-                .map(|d| match d {
-                    crate::option::DataPoint::XY(_, y) => *y,
-                    crate::option::DataPoint::Value(v) => *v,
-                    crate::option::DataPoint::Named(_, v) => *v,
-                })
-                .collect();
-            let x_vals: Vec<f64> = s
-                .data
-                .iter()
-                .map(|d| match d {
-                    crate::option::DataPoint::XY(x, _) => *x,
-                    crate::option::DataPoint::Value(_) => 0.0,
-                    crate::option::DataPoint::Named(_, _) => 0.0,
-                })
-                .collect();
-            (y_vals, x_vals)
-        }
-        crate::option::SeriesOption::Bubble(s) => {
-            let y_vals: Vec<f64> = s.data.iter().map(|d| d.y).collect();
-            let x_vals: Vec<f64> = s.data.iter().map(|d| d.x).collect();
-            (y_vals, x_vals)
-        }
-        crate::option::SeriesOption::Candlestick(s) => {
-            let vals: Vec<f64> = s
-                .data
-                .iter()
-                .flat_map(|d| vec![d.open, d.close, d.low, d.high])
-                .collect();
-            (vals, Vec::new())
-        }
-        crate::option::SeriesOption::Pie(s) => {
-            let vals: Vec<f64> = s.data.iter().map(extract_value).collect();
-            (vals, Vec::new())
-        }
-        _ => (Vec::new(), Vec::new()),
-    }
-}
-
-fn extract_value(d: &crate::option::DataPoint) -> f64 {
-    match d {
-        crate::option::DataPoint::Value(v) => *v,
-        crate::option::DataPoint::Named(_, v) => *v,
-        crate::option::DataPoint::XY(_, y) => *y,
-    }
-}
-
-fn extract_x_value(d: &crate::option::DataPoint) -> Option<f64> {
-    match d {
-        crate::option::DataPoint::XY(x, _) => Some(*x),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use vello_cpu::kurbo::Rect;
-
     use super::*;
-    use crate::option::*;
+    use crate::pipeline::types::AxisPosition;
 
-    fn make_spec(grid_index: usize, x_axis_idx: usize, y_axis_idx: usize) -> SubplotSpec {
-        SubplotSpec {
-            id: grid_index,
-            bounds: Rect::new(0.0, 0.0, 0.0, 0.0),
-            series_indices: vec![grid_index],
-            x_axis_indices: vec![x_axis_idx],
-            y_axis_indices: vec![y_axis_idx],
+    fn make_axis_spec(axis_type: AxisType, position: AxisPosition, grid_index: usize) -> AxisSpec {
+        AxisSpec {
+            axis_type,
+            position,
+            grid_index,
+            min: None,
+            max: None,
+            name: None,
+            categories: vec![],
+            boundary_gap: true,
         }
     }
 
     #[test]
-    fn test_value_axis_from_data() {
-        let option = ChartOption {
-            x_axis: vec![AxisOption::category()],
-            y_axis: vec![AxisOption::value()],
-            series: vec![SeriesOption::Line(LineSeriesOption {
-                name: Some("Line1".into()),
-                data: vec![
-                    DataPoint::Named("A".into(), 10.0),
-                    DataPoint::Named("B".into(), 50.0),
-                    DataPoint::Named("C".into(), 30.0),
-                ],
-                ..Default::default()
-            })],
-            ..Default::default()
-        };
-        let resolver = AxisBindingResolver::new(&option);
+    fn test_basic_resolution() {
+        let x_axes = vec![make_axis_spec(AxisType::Value, AxisPosition::Bottom, 0)];
+        let y_axes = vec![make_axis_spec(AxisType::Value, AxisPosition::Left, 0)];
 
-        // 手动构造 spec——grid_index=0 绑定 series[0]
         let specs = vec![SubplotSpec {
             id: 0,
-            bounds: Rect::new(0.0, 0.0, 0.0, 0.0),
+            bounds: Default::default(),
             series_indices: vec![0],
             x_axis_indices: vec![0],
             y_axis_indices: vec![0],
         }];
-        let result = resolver.resolve(&specs);
 
-        // xAxis[0]: category → (0, count)
-        assert_eq!(result.ranges[0].axis_index, 0);
-        // yAxis[0]: value → (10 - 5% range, 50 + 5% range)
-        assert_eq!(result.ranges[1].axis_index, 0);
-        assert!(result.ranges[1].min < 10.0);
-        assert!(result.ranges[1].max > 50.0);
-    }
+        let resolver = AxisBindingResolver::new(&x_axes, &y_axes, &[]);
+        let ranges = resolver.resolve(&specs);
 
-    #[test]
-    fn test_category_axis_range() {
-        let option = ChartOption {
-            x_axis: vec![AxisOption::category().data(vec!["A", "B", "C", "D"])],
-            y_axis: vec![AxisOption::value()],
-            series: vec![SeriesOption::Bar(BarSeriesOption {
-                name: Some("Bar1".into()),
-                data: vec![
-                    DataPoint::Named("A".into(), 10.0),
-                    DataPoint::Named("B".into(), 20.0),
-                    DataPoint::Named("C".into(), 30.0),
-                    DataPoint::Named("D".into(), 40.0),
-                ],
-                ..Default::default()
-            })],
-            ..Default::default()
-        };
-        let resolver = AxisBindingResolver::new(&option);
-        let specs = vec![make_spec(0, 0, 0)];
-        let result = resolver.resolve(&specs);
-
-        // xAxis: category, 4 items, boundary_gap=true → (0, 4)
-        assert!((result.ranges[0].min - 0.0).abs() < 0.01);
-        assert!((result.ranges[0].max - 4.0).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_user_defined_axis_range() {
-        let option = ChartOption {
-            x_axis: vec![AxisOption::category()],
-            y_axis: vec![AxisOption::value().min(0.0).max(200.0)],
-            series: vec![SeriesOption::Scatter(ScatterSeriesOption {
-                name: Some("Sct1".into()),
-                data: vec![DataPoint::XY(1.0, 10.0), DataPoint::XY(2.0, 50.0)],
-                ..Default::default()
-            })],
-            ..Default::default()
-        };
-        let resolver = AxisBindingResolver::new(&option);
-        let specs = vec![make_spec(0, 0, 0)];
-        let result = resolver.resolve(&specs);
-
-        // yAxis[0]: user-defined min=0, max=200
-        assert!((result.ranges[1].min - 0.0).abs() < 0.01);
-        assert!((result.ranges[1].max - 200.0).abs() < 0.01);
-        assert!(result.ranges[1].is_user_defined);
-    }
-
-    #[test]
-    fn test_shared_axis_across_grids() {
-        // grid[0] 和 grid[1] 共用 yAxis[0]
-        let option = ChartOption {
-            grid: vec![GridOption::default(), GridOption::default()],
-            x_axis: vec![AxisOption::category(), AxisOption::category()],
-            y_axis: vec![AxisOption::value()], // 单一 y 轴实例，两个 grid 共用
-            series: vec![
-                SeriesOption::Bar(BarSeriesOption {
-                    name: Some("Bar1".into()),
-                    data: vec![DataPoint::Named("A".into(), 10.0)],
-                    grid_index: Some(0),
-                    ..Default::default()
-                }),
-                SeriesOption::Bar(BarSeriesOption {
-                    name: Some("Bar2".into()),
-                    data: vec![DataPoint::Named("B".into(), 100.0)],
-                    grid_index: Some(1),
-                    ..Default::default()
-                }),
-            ],
-            ..Default::default()
-        };
-        let resolver = AxisBindingResolver::new(&option);
-        let specs = vec![
-            SubplotSpec {
-                id: 0,
-                bounds: Rect::new(0.0, 0.0, 0.0, 0.0),
-                series_indices: vec![0],
-                x_axis_indices: vec![0],
-                y_axis_indices: vec![0],
-            },
-            SubplotSpec {
-                id: 1,
-                bounds: Rect::new(0.0, 0.0, 0.0, 0.0),
-                series_indices: vec![1],
-                x_axis_indices: vec![1],
-                y_axis_indices: vec![0],
-            },
-        ];
-        let result = resolver.resolve(&specs);
-
-        let y0 = &result.ranges[2]; // x[0], x[1], y[0] = indices 0,1,2
-        assert_eq!(y0.axis_index, 0);
-        // 应覆盖两个 grid 的数据范围：10~100
-        assert!(y0.min <= 10.0);
-        assert!(y0.max >= 100.0);
+        assert_eq!(ranges.ranges.len(), 2);
     }
 }

@@ -9,6 +9,7 @@ use crate::{
         dataframe::{DataFrame, DataValue, Series},
         mapper::{CartesianMapper, CoordinateMapper},
         sampling::SamplingProcessor,
+        types::SeriesSpec,
     },
     visual::{
         Color, FillStrokeStyle, Stroke, StrokeStyle, VisualElement, Z_SERIES_FILL, Z_SERIES_LINE,
@@ -266,6 +267,129 @@ impl DataProcessor for LineProcessor {
             .unwrap_or(true);
         let symbol_size = line.symbol_size.unwrap_or(8.0);
 
+        if show_symbol {
+            for pt in &points {
+                elements.push(VisualElement::Circle {
+                    center: *pt,
+                    radius: symbol_size / 2.0,
+                    style: FillStrokeStyle {
+                        fill: Some(input.colors.border_color),
+                        stroke: Some(Stroke {
+                            color: series_color,
+                            width: 2.0,
+                        }),
+                    },
+                    z_index: Z_SERIES_POINT,
+                });
+            }
+        }
+
+        Ok(elements)
+    }
+
+    /// 从 SeriesSpec 直接处理（跳过 to_dataframe，数据已在 DataFrame 中）
+    fn process_from_spec(
+        &self,
+        series: &SeriesSpec,
+        input: &DataProcessorInput,
+    ) -> Result<Vec<VisualElement>> {
+        let mut df = series.data.clone();
+
+        // 应用采样（如果配置了）
+        if let Some((sampling_type, threshold)) = &series.sampling {
+            df = SamplingProcessor::sample(&df, *threshold, *sampling_type);
+        }
+
+        // 添加颜色列
+        if df.get_column("color").is_none() {
+            let series_color = input.colors.get_series_color(input.series_idx);
+            df.add_column(Series::new_constant(
+                "color",
+                DataValue::Color(series_color),
+                df.row_count(),
+            ));
+        }
+
+        // 坐标系映射
+        self.mapper()
+            .map_coordinates(&mut df, input, series.x_axis_index, series.y_axis_index);
+
+        // 读取 SeriesSpec 中的配置（从 config 字段获取）
+        let (line_width, smooth, area_color, area_opacity, show_symbol, symbol_size) = match &series
+            .config
+        {
+            crate::pipeline::types::SeriesConfig::Line(cfg) => {
+                let show_sym = !matches!(cfg.symbol_type, crate::pipeline::types::SymbolType::None);
+                (
+                    cfg.line_width,
+                    cfg.smooth,
+                    cfg.area_color,
+                    cfg.area_opacity,
+                    show_sym,
+                    cfg.symbol_size,
+                )
+            }
+            _ => (2.0, false, None, 0.5, true, 8.0),
+        };
+
+        let geom = CartesianGeometry::from_df(&df)?;
+        let style = StyleAccess::from_df(&df, input.colors.get_default_color());
+
+        let points = geom.collect_points();
+        if points.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let series_color = style.color(0);
+        let mut elements = Vec::new();
+
+        // 面积填充
+        if points.len() >= 2
+            && let Some(ac) = area_color
+        {
+            let alpha = (255.0 * area_opacity).clamp(0.0, 255.0) as u8;
+            let mut fill_color = ac;
+            fill_color.a = alpha;
+
+            let path = Self::build_area_path(&points, input.spec.bounds.y1);
+            elements.push(VisualElement::Path {
+                path,
+                style: FillStrokeStyle {
+                    fill: Some(fill_color),
+                    stroke: None,
+                },
+                z_index: Z_SERIES_FILL,
+            });
+        }
+
+        // 折线
+        if points.len() >= 2 {
+            if smooth {
+                let path = Self::build_smooth_path(&points);
+                elements.push(VisualElement::Path {
+                    path,
+                    style: FillStrokeStyle {
+                        fill: None,
+                        stroke: Some(Stroke {
+                            color: series_color,
+                            width: line_width,
+                        }),
+                    },
+                    z_index: Z_SERIES_LINE,
+                });
+            } else {
+                elements.push(VisualElement::Polyline {
+                    points: points.clone(),
+                    style: StrokeStyle {
+                        color: series_color,
+                        width: line_width,
+                    },
+                    z_index: Z_SERIES_LINE,
+                });
+            }
+        }
+
+        // 标记点
         if show_symbol {
             for pt in &points {
                 elements.push(VisualElement::Circle {

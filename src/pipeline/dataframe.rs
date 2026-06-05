@@ -186,9 +186,20 @@ impl DataFrame {
         self.columns.len()
     }
 
-    /// 获取所有列名（按添加顺序）
+    /// 获取列名列表（按添加顺序）
     pub fn column_names(&self) -> &[String] {
         &self.column_order
+    }
+
+    /// 重命名列
+    pub fn rename_column(&mut self, old: &str, new: &str) -> Option<()> {
+        let mut series = self.columns.remove(old)?;
+        series.name = new.to_string();
+        self.columns.insert(new.to_string(), series);
+        if let Some(pos) = self.column_order.iter().position(|n| n == old) {
+            self.column_order[pos] = new.to_string();
+        }
+        Some(())
     }
 
     /// 获取某行某列的值
@@ -204,6 +215,52 @@ impl DataFrame {
         let name = name.into();
         let data: Vec<DataValue> = (0..self.row_count).map(|i| compute(i, self)).collect();
         self.add_column(Series::new(name, data));
+    }
+
+    /// 从函数创建 DataFrame（用于函数曲线演示）
+    ///
+    /// 生成两个列：`x_col` 和 `y_col`，其中 x 在 `range` 内均匀取 `steps` 个点，
+    /// y = f(x)。
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use liecharts::pipeline::dataframe::DataFrame;
+    ///
+    /// let df = DataFrame::from_function("x", "y", 0.0..=1.0, 100, |x| x * x);
+    /// assert_eq!(df.row_count(), 101);
+    /// assert!((df.get_column("x").unwrap().as_f64(0).unwrap() - 0.0).abs() < 1e-6);
+    /// assert!((df.get_column("y").unwrap().as_f64(50).unwrap() - 0.25).abs() < 1e-2);
+    /// ```
+    pub fn from_function(
+        x_col: &str,
+        y_col: &str,
+        range: std::ops::RangeInclusive<f64>,
+        steps: usize,
+        f: impl Fn(f64) -> f64,
+    ) -> Self {
+        let start = *range.start();
+        let end = *range.end();
+        let step = if steps > 0 {
+            (end - start) / steps as f64
+        } else {
+            end - start
+        };
+
+        let mut df = DataFrame::new();
+        let mut x_data = Vec::with_capacity(steps + 1);
+        let mut y_data = Vec::with_capacity(steps + 1);
+
+        for i in 0..=steps {
+            let x = start + i as f64 * step;
+            let y = f(x);
+            x_data.push(DataValue::Float(x));
+            y_data.push(DataValue::Float(y));
+        }
+
+        df.add_column(Series::new(x_col, x_data));
+        df.add_column(Series::new(y_col, y_data));
+        df
     }
 }
 

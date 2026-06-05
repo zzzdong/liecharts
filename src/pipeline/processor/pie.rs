@@ -7,6 +7,7 @@ use crate::{
         accessors::StyleAccess,
         data_processor::{DataProcessor, DataProcessorInput},
         dataframe::{DataFrame, DataValue, PieDataTransformer, Series},
+        types::SeriesSpec,
     },
     visual::{
         Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, VisualElement,
@@ -124,6 +125,49 @@ impl PieProcessor {
 
         path.close_path();
         path
+    }
+
+    fn resolve_center_from_spec(
+        center: &Option<Vec<String>>,
+        bounds: &vello_cpu::kurbo::Rect,
+    ) -> Point {
+        let default_center = vec!["50%".to_string(), "50%".to_string()];
+        let center = center.as_ref().unwrap_or(&default_center);
+
+        let cx = if !center.is_empty() {
+            Self::parse_percent_or_value(&center[0], bounds.width())
+        } else {
+            bounds.width() * 0.5
+        };
+        let cy = if center.len() > 1 {
+            Self::parse_percent_or_value(&center[1], bounds.height())
+        } else {
+            bounds.height() * 0.5
+        };
+
+        Point::new(bounds.x0 + cx, bounds.y0 + cy)
+    }
+
+    fn resolve_radius_from_spec(
+        radius: &Option<Vec<String>>,
+        bounds: &vello_cpu::kurbo::Rect,
+    ) -> (f64, f64) {
+        let default_radius = vec!["0%".to_string(), "75%".to_string()];
+        let radius = radius.as_ref().unwrap_or(&default_radius);
+        let max_r = bounds.width().min(bounds.height()) * 0.5;
+
+        let inner = if !radius.is_empty() {
+            Self::parse_percent_or_value(&radius[0], max_r)
+        } else {
+            0.0
+        };
+        let outer = if radius.len() > 1 {
+            Self::parse_percent_or_value(&radius[1], max_r)
+        } else {
+            max_r
+        };
+
+        (inner, outer)
     }
 }
 
@@ -308,6 +352,175 @@ impl DataProcessor for PieProcessor {
                         position: Point::new(lx, ly),
                         style: crate::visual::TextStyle {
                             font_size: pie.label.as_ref().and_then(|l| l.font_size).unwrap_or(12.0),
+                            color,
+                            align: TextAlign::Center,
+                            vertical_align: TextBaseline::Middle,
+                            ..Default::default()
+                        },
+                        rotation: 0.0,
+                        max_width: None,
+                        layout: None,
+                        z_index: Z_LABEL,
+                    });
+                }
+            }
+        }
+
+        elements.extend(label_elements);
+        Ok(elements)
+    }
+
+    /// 从 SeriesSpec 直接处理
+    fn process_from_spec(
+        &self,
+        series: &SeriesSpec,
+        input: &DataProcessorInput,
+    ) -> Result<Vec<VisualElement>> {
+        let mut df = series.data.clone();
+
+        // PieDataTransformer 需要 category/value 列和调色板
+        df = PieDataTransformer::transform(&df, &input.colors.palette);
+
+        let bounds = input.bounds;
+        // 从 config 获取 Pie 配置
+        let (
+            (center_x, center_y),
+            (inner_r_pct, outer_r_pct),
+            label_show,
+            label_font_size,
+            label_position,
+        ) = match &series.config {
+            crate::pipeline::types::SeriesConfig::Pie(cfg) => {
+                let pos_str = match cfg.label_position {
+                    crate::pipeline::types::LabelPosition::Outside => "outside",
+                    crate::pipeline::types::LabelPosition::Inside => "inside",
+                };
+                (
+                    cfg.center,
+                    cfg.radius,
+                    cfg.label_show,
+                    cfg.label_font_size,
+                    pos_str,
+                )
+            }
+            _ => ((50.0, 50.0), (0.0, 75.0), false, 12.0, "outside"),
+        };
+        // 将百分比转换为像素值
+        let center = Point::new(
+            bounds.x0 + bounds.width() * center_x / 100.0,
+            bounds.y0 + bounds.height() * center_y / 100.0,
+        );
+        let max_r = bounds.width().min(bounds.height()) * 0.5;
+        let inner_radius = max_r * inner_r_pct / 100.0;
+        let outer_radius = max_r * outer_r_pct / 100.0;
+        let style = StyleAccess::from_df(&df, input.colors.get_default_color());
+
+        let mut elements = Vec::new();
+        let mut label_elements = Vec::new();
+
+        for i in 0..df.row_count() {
+            let value = df
+                .get_column("value")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            if value <= 0.0 {
+                continue;
+            }
+
+            let category = df
+                .get_column("category")
+                .and_then(|c| c.as_string(i))
+                .unwrap_or_default();
+            let color = style.color(i);
+            let start_angle = df
+                .get_column("start_angle")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            let end_angle = df
+                .get_column("end_angle")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+
+            let path =
+                Self::build_sector_path(center, inner_radius, outer_radius, start_angle, end_angle);
+
+            elements.push(VisualElement::Path {
+                path,
+                style: FillStrokeStyle {
+                    fill: Some(color),
+                    stroke: Some(Stroke {
+                        color: input.colors.border_color,
+                        width: 1.0,
+                    }),
+                },
+                z_index: Z_SERIES_FILL,
+            });
+
+            if label_show {
+                let mid_angle = (start_angle + end_angle) / 2.0;
+                let is_right_side = mid_angle.cos() >= 0.0;
+                let is_outside = label_position == "outside";
+
+                if is_outside {
+                    let arc_radius = outer_radius * 1.0;
+                    let extend_radius = outer_radius * 1.15;
+                    let label_offset = 20.0;
+
+                    let arc_x = center.x + arc_radius * mid_angle.cos();
+                    let arc_y = center.y + arc_radius * mid_angle.sin();
+                    let elbow_x = center.x + extend_radius * mid_angle.cos();
+                    let elbow_y = center.y + extend_radius * mid_angle.sin();
+
+                    elements.push(VisualElement::Line {
+                        start: Point::new(arc_x, arc_y),
+                        end: Point::new(elbow_x, elbow_y),
+                        style: StrokeStyle::new(input.colors.axis_line_color, 1.0),
+                        z_index: Z_LABEL,
+                    });
+
+                    let label_line_end_x = elbow_x
+                        + if is_right_side {
+                            label_offset
+                        } else {
+                            -label_offset
+                        };
+                    elements.push(VisualElement::Line {
+                        start: Point::new(elbow_x, elbow_y),
+                        end: Point::new(label_line_end_x, elbow_y),
+                        style: StrokeStyle::new(input.colors.axis_line_color, 1.0),
+                        z_index: Z_LABEL,
+                    });
+
+                    let text_x = label_line_end_x + if is_right_side { 4.0 } else { -4.0 };
+                    label_elements.push(VisualElement::TextRun {
+                        text: format!("{}: {}", category, value as i64),
+                        position: Point::new(text_x, elbow_y),
+                        style: crate::visual::TextStyle {
+                            font_size: label_font_size,
+                            color: input.colors.text_color,
+                            align: if is_right_side {
+                                TextAlign::Left
+                            } else {
+                                TextAlign::Right
+                            },
+                            vertical_align: TextBaseline::Middle,
+                            ..Default::default()
+                        },
+                        rotation: 0.0,
+                        max_width: None,
+                        layout: None,
+                        z_index: Z_LABEL,
+                    });
+                } else {
+                    let label_radius = outer_radius * 0.7;
+                    let lx = center.x + label_radius * mid_angle.cos();
+                    let ly = center.y + label_radius * mid_angle.sin();
+
+                    label_elements.push(VisualElement::TextRun {
+                        text: category,
+                        position: Point::new(lx, ly),
+                        style: crate::visual::TextStyle {
+                            font_size: label_font_size,
                             color,
                             align: TextAlign::Center,
                             vertical_align: TextBaseline::Middle,

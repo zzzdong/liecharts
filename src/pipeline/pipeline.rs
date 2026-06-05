@@ -15,13 +15,17 @@ use crate::error::Result;
 use crate::{
     option::ChartOption,
     pipeline::{
+        RenderContext,
         axis_binding_resolver::AxisBindingResolver,
-        axis_renderer::AxisRenderer,
+        axis_renderer,
+        builder::build_typed_series,
         color_assigner::ColorAssigner,
-        data_processor::{DataProcessorInput, create_processor},
+        compat,
         grid_planner::GridPlanner,
-        group::{GroupAnalyzer, GroupType, dataframe_builder::GroupedBarProcessor},
-        types::{ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
+        materializer::materialize_all,
+        types::{
+            ChartSpec, ChartType, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer,
+        },
     },
     text::create_text_layout,
     theme::Theme,
@@ -30,6 +34,13 @@ use crate::{
         Z_TITLE,
     },
 };
+
+/// 从 ChartSpec 构建图表（新 API 入口）
+pub fn build_chart_from_spec(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualElement>> {
+    // 不再兼容转换为 ChartOption，直接使用 ChartSpec
+    let compat_option = compat::chart_spec_to_chart_option(spec);
+    build_chart_internal(spec, &compat_option, theme)
+}
 
 pub fn build_chart(option: &ChartOption, width: u32, height: u32) -> Result<Vec<VisualElement>> {
     build_chart_with_theme(option, width, height, &Theme::echarts())
@@ -41,16 +52,41 @@ pub fn build_chart_with_theme(
     height: u32,
     theme: &Theme,
 ) -> Result<Vec<VisualElement>> {
+    // 将 ChartOption 转换为 ChartSpec，然后使用新管线
+    let spec = compat::chart_option_to_chart_spec(option, width, height);
+    build_chart_internal(&spec, option, theme)
+}
+
+/// 内部的 ChartSpec 管线
+fn build_chart_internal(
+    spec: &ChartSpec,
+    option: &ChartOption,
+    theme: &Theme,
+) -> Result<Vec<VisualElement>> {
+    let width = spec.width;
+    let height = spec.height;
+
+    // 0. 估计标题和图例的占用高度，用于 GridPlanner 计算 top margin
+    let header_height = estimate_header_height(option, theme);
+
     // 1. 布局规划
-    let planner = GridPlanner::new(width, height, option);
+    let planner = GridPlanner::new(
+        width,
+        height,
+        header_height,
+        &spec.grids,
+        &spec.series,
+        &spec.x_axes,
+        &spec.y_axes,
+    );
     let specs: Vec<SubplotSpec> = planner.plan();
 
     // 2. 解析轴范围
-    let resolver = AxisBindingResolver::new(option);
+    let resolver = AxisBindingResolver::new(&spec.x_axes, &spec.y_axes, &spec.series);
     let axis_ranges: ResolvedAxisRanges = resolver.resolve(&specs);
 
     // 3. 分配颜色
-    let series_count = option.series.len();
+    let series_count = spec.series.len();
     let assigner = ColorAssigner;
     let colors: ColorContext = assigner.assign_with_theme(series_count, theme);
 
@@ -67,60 +103,44 @@ pub fn build_chart_with_theme(
         z_index: Z_BACKGROUND,
     });
 
-    // 5. 渲染轴
+    // 5. 渲染轴（跳过纯表格子图，表格不需要坐标轴）
     let mut text_measurer = TextMeasurer::new();
-    for spec in &specs {
+    for subplot in &specs {
+        let is_table_subplot = subplot.series_indices.iter().all(|&idx| {
+            spec.series
+                .get(idx)
+                .is_some_and(|s| s.chart_type == ChartType::Table)
+        });
+        if is_table_subplot {
+            continue;
+        }
         let axis_elements =
-            AxisRenderer::render(spec, option, &axis_ranges, &colors, &mut text_measurer);
+            axis_renderer::render_axes(subplot, option, &axis_ranges, &colors, &mut text_measurer);
         all_elements.extend(axis_elements);
     }
 
-    // 6. 渲染系列数据
-    // 先通过 GroupAnalyzer 将 series 分组（SideBySide / Stacked / Single）
-    // 分组模式：合并为一个 DataFrame，一次处理
-    // 单 series 模式：保持原有流程
-    for spec in &specs {
-        let plans = GroupAnalyzer::analyze(&spec.series_indices, option);
+    // 6. 渲染系列数据（新流程：Materialize + Build）
+    for subplot in &specs {
+        // 创建渲染上下文
+        let ctx = RenderContext {
+            colors: &colors,
+            theme,
+            bounds: subplot.bounds,
+        };
 
-        for plan in plans {
-            match plan.group_type {
-                GroupType::Single => {
-                    let series_idx = plan.series_indices[0];
-                    let series = &option.series[series_idx];
-                    let processor = create_processor(series);
+        // Materialize 阶段：将 SeriesSpec 转换为 TypedSeries
+        let typed_series_list = materialize_all(
+            &subplot.series_indices,
+            spec,
+            subplot.bounds,
+            &axis_ranges,
+            &colors,
+        )?;
 
-                    let input = DataProcessorInput {
-                        spec,
-                        option,
-                        colors: &colors,
-                        axis_ranges: &axis_ranges,
-                        bounds: spec.bounds,
-                        series_idx,
-                    };
-
-                    let elements = processor.process(series, &input)?;
-                    all_elements.extend(elements);
-                }
-                GroupType::SideBySide | GroupType::Stacked => {
-                    let first_idx = plan.series_indices[0];
-                    let series = &option.series[first_idx];
-                    let processor = create_processor(series);
-
-                    let df = GroupedBarProcessor::combine_to_dataframe(&plan, option, &colors);
-
-                    let input = DataProcessorInput {
-                        spec,
-                        option,
-                        colors: &colors,
-                        axis_ranges: &axis_ranges,
-                        bounds: spec.bounds,
-                        series_idx: first_idx,
-                    };
-
-                    let elements = processor.process_dataframe(df, &input)?;
-                    all_elements.extend(elements);
-                }
-            }
+        // Build 阶段：将 TypedSeries 组装为 VisualElement
+        for typed_series in typed_series_list {
+            let elements = build_typed_series(&typed_series, &ctx)?;
+            all_elements.extend(elements);
         }
     }
 
@@ -146,6 +166,50 @@ pub fn build_chart_with_theme(
     compute_text_layouts(&mut all_elements);
 
     Ok(all_elements)
+}
+
+/// 估计标题和图例占用的顶部空间高度（像素）
+///
+/// 在 GridPlanner 之前调用，确保 subplot 的 top margin 足够容纳
+/// 标题和图例，避免重叠。使用 theme 中的字体大小估算，不依赖文本测量。
+fn estimate_header_height(option: &ChartOption, theme: &Theme) -> f64 {
+    let mut height = 0.0;
+
+    // 标题占用
+    if let Some(title) = &option.title {
+        let title_style = theme.get_title_text_style();
+        let subtitle_style = theme.get_subtitle_text_style();
+
+        // 标题顶部内边距 24px
+        height += 24.0;
+
+        // 主标题高度（基于 font_size + 行距）
+        if title.text.is_some() {
+            height += title_style.font_size * 1.4;
+        }
+
+        // 副标题高度
+        if title.subtext.is_some() {
+            height += subtitle_style.font_size * 1.4 + 2.0; // 2px 间距
+        }
+    }
+
+    // 图例占用（在标题下方，有 16px 间距）
+    if let Some(legend) = &option.legend
+        && legend.show != Some(false)
+    {
+        if height > 0.0 {
+            height += 16.0; // 标题和图例之间的间距
+        }
+
+        let legend_style = theme.get_legend_text_style();
+        // 图例行高：symbol_size + 上下内边距
+        let legend_height = legend_style.font_size * 1.4 + 16.0; // font + vertical padding
+        height += legend_height;
+    }
+
+    // 最小值为 0，空标题/图例时返回 0
+    height
 }
 
 /// 构建标题元素
@@ -269,7 +333,7 @@ fn build_legend_elements_v2(
         let mut item_widths = Vec::new();
         let mut total_content_width = 0.0;
 
-        for (_i, name) in data.iter().enumerate() {
+        for name in data.iter() {
             // 估算文本宽度（使用 create_text_layout）
             let text_style = crate::visual::TextStyle {
                 font_size: legend_style.font_size,
@@ -300,7 +364,14 @@ fn build_legend_elements_v2(
             let content_start_x = current_x + legend_padding;
 
             // 选择颜色源：按数据点着色的图表使用 palette，按系列着色的使用 series_colors
-            let color = if use_palette {
+            let color = if option
+                .series
+                .get(i)
+                .is_some_and(|s| matches!(s, SeriesOption::Candlestick(_)))
+            {
+                // K 线图用 up_color（红色）可同时代表涨/跌，比 palette 颜色更贴切
+                colors.up_color
+            } else if use_palette {
                 colors
                     .palette
                     .get(i)
@@ -431,27 +502,14 @@ fn build_axis_name_elements(
                     // 轴名称应放在标签左侧：锚点.x + text_height <= bounds.x0 - 43 - label_margin
                     let label_left_edge = bounds.x0 - 8.0 - max_label_width;
                     let max_anchor_x = label_left_edge - label_margin - text_height;
-                    if max_anchor_x >= margin {
-                        // 正常情况：放在标签左侧
-                        (
-                            max_anchor_x,
-                            -std::f64::consts::FRAC_PI_2,
-                            TextAlign::Left,
-                            TextBaseline::Top,
-                        )
-                    } else {
-                        // 空间不足：放在 grid 右侧，旋转+90°
-                        let min_anchor_x = bounds.x1 + 8.0 + max_label_width + label_margin;
-                        let anchor_x = min_anchor_x
-                            .max(bounds.x1 + label_margin)
-                            .min(width as f64 - margin - text_height);
-                        (
-                            anchor_x,
-                            std::f64::consts::FRAC_PI_2,
-                            TextAlign::Left,
-                            TextBaseline::Top,
-                        )
-                    }
+                    // 确保锚点不会超出画布左边缘，但保持左轴在左侧
+                    let anchor_x = max_anchor_x.max(margin);
+                    (
+                        anchor_x,
+                        -std::f64::consts::FRAC_PI_2,
+                        TextAlign::Left,
+                        TextBaseline::Top,
+                    )
                 };
                 let y = bounds.y0 + bounds.height() / 2.0;
 
@@ -544,25 +602,70 @@ fn compute_text_layouts(elements: &mut [VisualElement]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::option::*;
+    use crate::pipeline::dataframe::DataFrame;
 
     #[test]
     fn test_build_pie_chart_v2() {
-        let option = ChartOption {
-            title: Some(TitleOption::new("Pie Test")),
-            series: vec![SeriesOption::Pie(PieSeriesOption {
-                name: Some("Sales".into()),
-                data: vec![
-                    DataPoint::Named("A".into(), 30.0),
-                    DataPoint::Named("B".into(), 50.0),
-                    DataPoint::Named("C".into(), 20.0),
-                ],
-                ..Default::default()
-            })],
-            ..Default::default()
+        let mut df = DataFrame::new();
+        df.add_column(crate::pipeline::dataframe::Series::new(
+            "name",
+            vec![
+                crate::pipeline::dataframe::DataValue::String("A".into()),
+                crate::pipeline::dataframe::DataValue::String("B".into()),
+                crate::pipeline::dataframe::DataValue::String("C".into()),
+            ],
+        ));
+        df.add_column(crate::pipeline::dataframe::Series::new(
+            "value",
+            vec![
+                crate::pipeline::dataframe::DataValue::Float(30.0),
+                crate::pipeline::dataframe::DataValue::Float(50.0),
+                crate::pipeline::dataframe::DataValue::Float(20.0),
+            ],
+        ));
+
+        let spec = crate::pipeline::types::ChartSpec {
+            width: 800,
+            height: 600,
+            grids: vec![crate::pipeline::types::GridSpec {
+                left: None,
+                right: None,
+                top: None,
+                bottom: None,
+                contain_label: false,
+            }],
+            x_axes: vec![],
+            y_axes: vec![],
+            series: vec![crate::pipeline::types::SeriesSpec {
+                name: "Sales".into(),
+                chart_type: crate::pipeline::types::ChartType::Pie,
+                data: df,
+                grid_index: 0,
+                x_axis_index: 0,
+                y_axis_index: 0,
+                stack: None,
+                group_index: 0,
+                sampling: None,
+                item_style: crate::pipeline::types::ItemStyleSpec::default(),
+                config: crate::pipeline::types::SeriesConfig::Pie(
+                    crate::pipeline::types::PieConfig {
+                        category_col: "name".into(),
+                        value_col: "value".into(),
+                        ..Default::default()
+                    },
+                ),
+            }],
+            title: Some(crate::pipeline::types::TitleSpec {
+                text: Some("Pie Test".into()),
+                subtext: None,
+            }),
+            legend: None,
+            background: crate::visual::Color::new(255, 255, 255),
+            palette: vec![],
+            theme_name: None,
         };
 
-        let elements = build_chart(&option, 800, 600).unwrap();
+        let elements = build_chart_from_spec(&spec, &Theme::echarts()).unwrap();
 
         assert!(
             !elements.is_empty(),

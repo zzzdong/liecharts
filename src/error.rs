@@ -42,6 +42,18 @@ pub enum ChartError {
     /// Image encoding/decoding error.
     #[error("Image error: {0}")]
     ImageError(#[from] image::ImageError),
+
+    /// Invalid configuration error.
+    #[error("Invalid config: {0}")]
+    InvalidConfig(String),
+
+    /// Invalid axis binding error.
+    #[error("Invalid axis binding: {0}")]
+    InvalidAxisBinding(String),
+
+    /// Missing column in dataframe.
+    #[error("Missing column: {0}")]
+    MissingColumn(String),
 }
 
 pub type Result<T> = std::result::Result<T, ChartError>;

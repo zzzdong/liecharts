@@ -1,4 +1,38 @@
-use crate::{pipeline::dataframe::DataFrame, visual::Color};
+use crate::{
+    pipeline::{dataframe::DataFrame, types::LabelPosition},
+    visual::Color,
+};
+
+// ── Sampling ──
+
+/// Data sampling strategy for reducing the number of data points
+/// while preserving visual features.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Sampling {
+    Lttb(usize),
+    Average(usize),
+    Max(usize),
+    Min(usize),
+}
+
+impl Sampling {
+    pub fn threshold(&self) -> usize {
+        match self {
+            Sampling::Lttb(n) | Sampling::Average(n) | Sampling::Max(n) | Sampling::Min(n) => *n,
+        }
+    }
+}
+
+impl From<Sampling> for (crate::sampling::SamplingType, usize) {
+    fn from(s: Sampling) -> Self {
+        match s {
+            Sampling::Lttb(n) => (crate::sampling::SamplingType::Lttb, n),
+            Sampling::Average(n) => (crate::sampling::SamplingType::Average, n),
+            Sampling::Max(n) => (crate::sampling::SamplingType::Max, n),
+            Sampling::Min(n) => (crate::sampling::SamplingType::Min, n),
+        }
+    }
+}
 
 /// A chart layer that maps a DataFrame to visual elements.
 #[derive(Debug, Clone)]
@@ -45,6 +79,9 @@ pub struct Line {
     pub color: Option<Color>,
     pub y_axis_index: usize,
     pub grid_index: usize,
+    pub sampling: Option<Sampling>,
+    pub label_show: bool,
+    pub label_font_size: f64,
 }
 
 impl Line {
@@ -62,6 +99,9 @@ impl Line {
             color: None,
             y_axis_index: 0,
             grid_index: 0,
+            sampling: None,
+            label_show: false,
+            label_font_size: 12.0,
         }
     }
     pub fn data(mut self, data: DataFrame) -> Self {
@@ -117,6 +157,19 @@ impl Line {
         self.y_axis_index = 1;
         self
     }
+    /// Set data sampling strategy for large datasets.
+    pub fn sampling(mut self, sampling: Sampling) -> Self {
+        self.sampling = Some(sampling);
+        self
+    }
+    pub fn label_show(mut self, val: bool) -> Self {
+        self.label_show = val;
+        self
+    }
+    pub fn label_font_size(mut self, size: f64) -> Self {
+        self.label_font_size = size;
+        self
+    }
 }
 
 impl Default for Line {
@@ -138,6 +191,8 @@ pub struct Bar {
     pub color: Option<Color>,
     pub y_axis_index: usize,
     pub grid_index: usize,
+    pub label_show: bool,
+    pub label_font_size: f64,
 }
 
 impl Bar {
@@ -152,6 +207,8 @@ impl Bar {
             color: None,
             y_axis_index: 0,
             grid_index: 0,
+            label_show: false,
+            label_font_size: 12.0,
         }
     }
     pub fn data(mut self, data: DataFrame) -> Self {
@@ -195,6 +252,14 @@ impl Bar {
         self.y_axis_index = 1;
         self
     }
+    pub fn label_show(mut self, val: bool) -> Self {
+        self.label_show = val;
+        self
+    }
+    pub fn label_font_size(mut self, size: f64) -> Self {
+        self.label_font_size = size;
+        self
+    }
 }
 
 impl Default for Bar {
@@ -213,6 +278,8 @@ pub struct Pie {
     pub value: String,
     pub radius: (f64, f64),
     pub center: (f64, f64),
+    pub label_show: bool,
+    pub label_position: LabelPosition,
 }
 
 impl Pie {
@@ -224,6 +291,8 @@ impl Pie {
             value: "value".into(),
             radius: (0.0, 75.0),
             center: (50.0, 50.0),
+            label_show: false,
+            label_position: LabelPosition::Outside,
         }
     }
     pub fn data(mut self, data: DataFrame) -> Self {
@@ -248,6 +317,14 @@ impl Pie {
     }
     pub fn center(mut self, x: f64, y: f64) -> Self {
         self.center = (x, y);
+        self
+    }
+    pub fn label(mut self, show: bool) -> Self {
+        self.label_show = show;
+        self
+    }
+    pub fn label_position(mut self, position: LabelPosition) -> Self {
+        self.label_position = position;
         self
     }
 }
@@ -336,6 +413,7 @@ impl Default for Scatter {
 pub struct Bubble {
     pub name: String,
     pub data: Option<DataFrame>,
+    pub size_col: Option<String>,
     pub name_col: Option<String>,
     pub color: Option<Color>,
     pub symbol_size_scale: f64,
@@ -348,6 +426,7 @@ impl Bubble {
         Self {
             name: String::new(),
             data: None,
+            size_col: None,
             name_col: None,
             color: None,
             symbol_size_scale: 1.0,
@@ -361,6 +440,10 @@ impl Bubble {
     }
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.name = name.into();
+        self
+    }
+    pub fn size_col(mut self, col: impl Into<String>) -> Self {
+        self.size_col = Some(col.into());
         self
     }
     pub fn name_col(mut self, col: impl Into<String>) -> Self {
