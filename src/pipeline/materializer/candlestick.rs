@@ -5,9 +5,9 @@ use vello_cpu::kurbo::{Point, Rect};
 use crate::{
     error::Result,
     pipeline::{
-        materializer::{map_x_to_pixel, map_y_to_pixel, SeriesMaterializer},
-        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
+        materializer::{SeriesMaterializer, map_y_to_pixel},
         typed_series::{CandleRect, CandlestickSeries, TypedSeries},
+        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
     visual::Color,
 };
@@ -28,17 +28,17 @@ impl SeriesMaterializer for CandlestickMaterializer {
             _ => {
                 return Err(crate::error::ChartError::InvalidConfig(
                     "Expected CandlestickConfig".into(),
-                ))
+                ));
             }
         };
 
         // 获取 X/Y 轴范围
-        let x_range = axis_ranges
-            .get_x_range(spec.x_axis_index)
-            .ok_or_else(|| crate::error::ChartError::InvalidAxisBinding("X axis not found".into()))?;
-        let y_range = axis_ranges
-            .get_y_range(spec.y_axis_index)
-            .ok_or_else(|| crate::error::ChartError::InvalidAxisBinding("Y axis not found".into()))?;
+        let x_range = axis_ranges.get_x_range(spec.x_axis_index).ok_or_else(|| {
+            crate::error::ChartError::InvalidAxisBinding("X axis not found".into())
+        })?;
+        let y_range = axis_ranges.get_y_range(spec.y_axis_index).ok_or_else(|| {
+            crate::error::ChartError::InvalidAxisBinding("Y axis not found".into())
+        })?;
 
         // 从 DataFrame 获取数据
         let category_col = spec
@@ -87,8 +87,14 @@ impl SeriesMaterializer for CandlestickMaterializer {
             let py_high = map_y_to_pixel(high, y_range, bounds);
 
             // 创建影线
-            let high_line = (Point::new(px, py_high), Point::new(px, py_open.max(py_close)));
-            let low_line = (Point::new(px, py_open.min(py_close)), Point::new(px, py_low));
+            let high_line = (
+                Point::new(px, py_high),
+                Point::new(px, py_open.max(py_close)),
+            );
+            let low_line = (
+                Point::new(px, py_open.min(py_close)),
+                Point::new(px, py_low),
+            );
 
             // 创建实体矩形
             let body_rect = Rect::new(

@@ -71,9 +71,7 @@ impl GroupedBarProcessor {
                             .get(cat_idx)
                             .cloned()
                             .unwrap_or(DataValue::Integer(cat_idx as i64));
-                        let raw_val = y_series
-                            .as_f64(cat_idx)
-                            .unwrap_or(0.0);
+                        let raw_val = y_series.as_f64(cat_idx).unwrap_or(0.0);
                         let base = stack_cums[cat_idx];
                         let cum_val = base + raw_val;
                         stack_cums[cat_idx] = cum_val;
@@ -111,11 +109,7 @@ impl GroupedBarProcessor {
                             .get(cat_idx)
                             .cloned()
                             .unwrap_or(DataValue::Integer(cat_idx as i64));
-                        let y_val = DataValue::Float(
-                            y_series
-                                .as_f64(cat_idx)
-                                .unwrap_or(0.0),
-                        );
+                        let y_val = DataValue::Float(y_series.as_f64(cat_idx).unwrap_or(0.0));
 
                         all_x.push(x_val);
                         all_y.push(y_val);

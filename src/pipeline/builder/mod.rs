@@ -11,31 +11,31 @@ use crate::{
     visual::VisualElement,
 };
 
-pub mod line;
 pub mod bar;
-pub mod scatter;
-pub mod pie;
 pub mod bubble;
 pub mod candlestick;
-pub mod radar;
+pub mod gauge;
+pub mod grouped_bar;
+pub mod line;
+pub mod pie;
 pub mod polar_bar;
 pub mod polar_scatter;
-pub mod gauge;
+pub mod radar;
+pub mod scatter;
 pub mod table;
-pub mod grouped_bar;
 
-pub use line::LineBuilder;
 pub use bar::BarBuilder;
-pub use scatter::ScatterBuilder;
-pub use pie::PieBuilder;
 pub use bubble::BubbleBuilder;
 pub use candlestick::CandlestickBuilder;
-pub use radar::RadarBuilder;
+pub use gauge::GaugeBuilder;
+pub use grouped_bar::GroupedBarBuilder;
+pub use line::LineBuilder;
+pub use pie::PieBuilder;
 pub use polar_bar::PolarBarBuilder;
 pub use polar_scatter::PolarScatterBuilder;
-pub use gauge::GaugeBuilder;
+pub use radar::RadarBuilder;
+pub use scatter::ScatterBuilder;
 pub use table::TableBuilder;
-pub use grouped_bar::GroupedBarBuilder;
 
 /// 每种 TypedSeries variant 有对应的 VisualElement 构建器
 pub trait SeriesBuilder<T> {

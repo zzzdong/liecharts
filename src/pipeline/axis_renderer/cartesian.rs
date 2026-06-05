@@ -5,6 +5,7 @@
 
 use vello_cpu::kurbo::{Point, Rect};
 
+use super::compute_nice_ticks;
 use crate::{
     option::{AxisOption, AxisType, ChartOption},
     pipeline::types::{AxisPosition, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
@@ -13,8 +14,6 @@ use crate::{
         Z_LABEL,
     },
 };
-
-use super::compute_nice_ticks;
 
 /// 笛卡尔坐标轴渲染器
 ///
@@ -34,12 +33,18 @@ impl CartesianAxisRenderer {
         let bounds = subplot.bounds;
 
         // ── X 轴线 ──
-        eprintln!("DEBUG CartesianAxisRenderer: subplot.series_indices={:?}, axis_ranges.ranges={:?}", subplot.series_indices, axis_ranges.ranges);
+        eprintln!(
+            "DEBUG CartesianAxisRenderer: subplot.series_indices={:?}, axis_ranges.ranges={:?}",
+            subplot.series_indices, axis_ranges.ranges
+        );
         for &x_axis_idx in &subplot.x_axis_indices {
             let axis_config = option.x_axis.get(x_axis_idx);
             if let Some(axis_cfg) = axis_config {
                 let x_range = axis_ranges.get_x_range(x_axis_idx);
-                eprintln!("DEBUG CartesianAxisRenderer: x_axis_idx={}, x_range={:?}", x_axis_idx, x_range);
+                eprintln!(
+                    "DEBUG CartesianAxisRenderer: x_axis_idx={}, x_range={:?}",
+                    x_axis_idx, x_range
+                );
                 let (x_min, x_max) = x_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 1.0));
 
                 // 轴线（底部）
@@ -87,14 +92,7 @@ impl CartesianAxisRenderer {
                 );
 
                 if !is_right {
-                    Self::draw_y_grid_lines(
-                        &mut elements,
-                        bounds,
-                        axis_cfg,
-                        y_min,
-                        y_max,
-                        colors,
-                    );
+                    Self::draw_y_grid_lines(&mut elements, bounds, axis_cfg, y_min, y_max, colors);
                 }
 
                 Self::draw_y_tick_labels_side(
@@ -113,12 +111,7 @@ impl CartesianAxisRenderer {
         elements
     }
 
-    fn draw_axis_line(
-        elements: &mut Vec<VisualElement>,
-        start: Point,
-        end: Point,
-        color: Color,
-    ) {
+    fn draw_axis_line(elements: &mut Vec<VisualElement>, start: Point, end: Point, color: Color) {
         elements.push(VisualElement::Line {
             start,
             end,

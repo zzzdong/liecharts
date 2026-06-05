@@ -5,9 +5,9 @@ use vello_cpu::kurbo::{Point, Rect};
 use crate::{
     error::Result,
     pipeline::{
-        materializer::{map_x_to_pixel, map_y_to_pixel, SeriesMaterializer},
-        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
+        materializer::{SeriesMaterializer, map_x_to_pixel, map_y_to_pixel},
         typed_series::{Bubble, BubbleSeries, TypedSeries},
+        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
     visual::Color,
 };
@@ -28,17 +28,17 @@ impl SeriesMaterializer for BubbleMaterializer {
             _ => {
                 return Err(crate::error::ChartError::InvalidConfig(
                     "Expected BubbleConfig".into(),
-                ))
+                ));
             }
         };
 
         // 获取 X/Y 轴范围
-        let x_range = axis_ranges
-            .get_x_range(spec.x_axis_index)
-            .ok_or_else(|| crate::error::ChartError::InvalidAxisBinding("X axis not found".into()))?;
-        let y_range = axis_ranges
-            .get_y_range(spec.y_axis_index)
-            .ok_or_else(|| crate::error::ChartError::InvalidAxisBinding("Y axis not found".into()))?;
+        let x_range = axis_ranges.get_x_range(spec.x_axis_index).ok_or_else(|| {
+            crate::error::ChartError::InvalidAxisBinding("X axis not found".into())
+        })?;
+        let y_range = axis_ranges.get_y_range(spec.y_axis_index).ok_or_else(|| {
+            crate::error::ChartError::InvalidAxisBinding("Y axis not found".into())
+        })?;
 
         // 从 DataFrame 获取数据
         let x_vals = spec
@@ -51,10 +51,16 @@ impl SeriesMaterializer for BubbleMaterializer {
             .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.y_col.clone()))?;
 
         // 可选的大小列
-        let size_vals = cfg.size_col.as_ref().and_then(|col| spec.data.get_column(col));
+        let size_vals = cfg
+            .size_col
+            .as_ref()
+            .and_then(|col| spec.data.get_column(col));
 
         // 可选的名称列
-        let name_vals = cfg.name_col.as_ref().and_then(|col| spec.data.get_column(col));
+        let name_vals = cfg
+            .name_col
+            .as_ref()
+            .and_then(|col| spec.data.get_column(col));
 
         // 将数据点映射到像素空间
         let mut bubbles = Vec::with_capacity(spec.data.row_count());
@@ -67,9 +73,9 @@ impl SeriesMaterializer for BubbleMaterializer {
                 let px = map_x_to_pixel(x, x_range, bounds);
                 let py = map_y_to_pixel(y, y_range, bounds);
 
-                // 计算气泡大小
-                let radius = if let Some(ref size_series) = size_vals {
-                    size_series.as_f64(i).unwrap_or(10.0) * cfg.symbol_size_scale
+                // 计算气泡大小：使用 sqrt 使面积代表数值，而非半径
+                let radius = if let Some(size_series) = size_vals {
+                    size_series.as_f64(i).unwrap_or(10.0).sqrt() * cfg.symbol_size_scale
                 } else {
                     10.0 * cfg.symbol_size_scale
                 };

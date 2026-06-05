@@ -350,12 +350,8 @@ impl DataProcessor for PolarBarProcessor {
         ));
 
         // 极坐标映射
-        self.mapper().map_coordinates(
-            &mut df,
-            input,
-            series.x_axis_index,
-            series.y_axis_index,
-        );
+        self.mapper()
+            .map_coordinates(&mut df, input, series.x_axis_index, series.y_axis_index);
 
         // --- 视觉元素生成（使用 DataFrame 和 SeriesSpec 配置）---
         let cx = df

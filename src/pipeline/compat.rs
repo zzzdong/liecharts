@@ -14,10 +14,8 @@ use crate::{
     pipeline::{
         dataframe::DataValue,
         types::{
-            AxisSpec, AxisType as NewAxisType, BarConfig, BubbleConfig, CandlestickConfig,
-            ChartSpec, ChartType, GaugeConfig, GridSpec, ItemStyleSpec, LegendSpec, LineConfig,
-            PieConfig, PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig,
-            SeriesConfig, SeriesSpec, SymbolType, TableConfig, TitleSpec,
+            BarConfig, ChartSpec, ChartType, GridSpec, LineConfig, PieConfig, ScatterConfig,
+            SeriesConfig, SeriesSpec, SymbolType,
         },
     },
     sampling::{SamplingOption, SamplingType},
@@ -317,10 +315,12 @@ fn resolve_position_option(pos: &PositionOption, total: f64) -> f64 {
     match pos {
         PositionOption::Pixel(v) => *v,
         PositionOption::Percent(p) => total * p / 100.0,
-        PositionOption::Preset(PositionPreset::Auto) => total * 0.1,  // fallback: 10%
+        PositionOption::Preset(PositionPreset::Auto) => total * 0.1, // fallback: 10%
         PositionOption::Preset(PositionPreset::Center) => total / 2.0,
-        PositionOption::Preset(PositionPreset::Left) | PositionOption::Preset(PositionPreset::Top) => 0.0,
-        PositionOption::Preset(PositionPreset::Right) | PositionOption::Preset(PositionPreset::Bottom) => total,
+        PositionOption::Preset(PositionPreset::Left)
+        | PositionOption::Preset(PositionPreset::Top) => 0.0,
+        PositionOption::Preset(PositionPreset::Right)
+        | PositionOption::Preset(PositionPreset::Bottom) => total,
     }
 }
 
@@ -343,9 +343,15 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         .iter()
         .map(|g| {
             let left = g.left.as_ref().map(|p| resolve_position_option(p, total_w));
-            let right = g.right.as_ref().map(|p| resolve_position_option(p, total_w));
+            let right = g
+                .right
+                .as_ref()
+                .map(|p| resolve_position_option(p, total_w));
             let top = g.top.as_ref().map(|p| resolve_position_option(p, total_h));
-            let bottom = g.bottom.as_ref().map(|p| resolve_position_option(p, total_h));
+            let bottom = g
+                .bottom
+                .as_ref()
+                .map(|p| resolve_position_option(p, total_h));
             GridSpec {
                 left,
                 right,
@@ -465,20 +471,34 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         y_col: "y".into(),
                         smooth: ls.smooth.unwrap_or(false),
                         line_width: ls.line_style.as_ref().and_then(|l| l.width).unwrap_or(2.0),
-                        area_color: ls.area_style.as_ref().and_then(|a| a.color)
+                        area: ls.area_style.is_some(),
+                        area_color: ls
+                            .area_style
+                            .as_ref()
+                            .and_then(|a| a.color)
                             .map(|c| crate::visual::Color::new(c.r, c.g, c.b)),
-                        area_opacity: ls.area_style.as_ref().and_then(|a| a.opacity).unwrap_or(0.5),
-                        symbol_type: ls.symbol.as_ref().map(|s| match s {
-                            crate::option::SymbolType::Circle => SymbolType::Circle,
-                            crate::option::SymbolType::Rect => SymbolType::Rect,
-                            crate::option::SymbolType::RoundRect => SymbolType::RoundRect,
-                            crate::option::SymbolType::Triangle => SymbolType::Triangle,
-                            crate::option::SymbolType::Diamond => SymbolType::Diamond,
-                            crate::option::SymbolType::Pin => SymbolType::Pin,
-                            crate::option::SymbolType::Arrow => SymbolType::Arrow,
-                            crate::option::SymbolType::None => SymbolType::None,
-                        }).unwrap_or_default(),
+                        area_opacity: ls
+                            .area_style
+                            .as_ref()
+                            .and_then(|a| a.opacity)
+                            .unwrap_or(0.5),
+                        symbol_type: ls
+                            .symbol
+                            .as_ref()
+                            .map(|s| match s {
+                                crate::option::SymbolType::Circle => SymbolType::Circle,
+                                crate::option::SymbolType::Rect => SymbolType::Rect,
+                                crate::option::SymbolType::RoundRect => SymbolType::RoundRect,
+                                crate::option::SymbolType::Triangle => SymbolType::Triangle,
+                                crate::option::SymbolType::Diamond => SymbolType::Diamond,
+                                crate::option::SymbolType::Pin => SymbolType::Pin,
+                                crate::option::SymbolType::Arrow => SymbolType::Arrow,
+                                crate::option::SymbolType::None => SymbolType::None,
+                            })
+                            .unwrap_or_default(),
                         symbol_size: ls.symbol_size.unwrap_or(4.0),
+                        label_show: false,
+                        label_font_size: 12.0,
                     };
                     SeriesSpec {
                         name,
@@ -496,7 +516,9 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 }
                 SeriesOption::Bar(bs) => {
                     let data = datapoints_to_dataframe(&bs.data, "x", "y");
-                    let bar_width = bs.bar_width.as_ref()
+                    let bar_width = bs
+                        .bar_width
+                        .as_ref()
                         .and_then(|bw| bw.strip_suffix('%'))
                         .and_then(|pct| pct.parse::<f64>().ok())
                         .map(|v| v / 100.0)
@@ -505,6 +527,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         x_col: "x".into(),
                         y_col: "y".into(),
                         bar_width,
+                        label_show: false,
+                        label_font_size: 12.0,
                     };
                     SeriesSpec {
                         name,
@@ -524,36 +548,50 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     let data = datapoints_to_dataframe(&ps.data, "name", "value");
                     let label = ps.label.as_ref();
                     // 解析 center 和 radius (从 Vec<String> 转换为 (f64, f64))
-                    let center = ps.center.as_ref().and_then(|c| {
-                        if c.len() >= 2 {
-                            let x = c[0].trim_end_matches('%').parse::<f64>().ok()?;
-                            let y = c[1].trim_end_matches('%').parse::<f64>().ok()?;
-                            Some((x, y))
-                        } else {
-                            None
-                        }
-                    }).unwrap_or((50.0, 50.0));
-                    let radius = ps.radius.as_ref().and_then(|r| {
-                        if r.len() >= 2 {
-                            let inner = r[0].trim_end_matches('%').parse::<f64>().ok()?;
-                            let outer = r[1].trim_end_matches('%').parse::<f64>().ok()?;
-                            Some((inner, outer))
-                        } else {
-                            None
-                        }
-                    }).unwrap_or((0.0, 75.0));
+                    let center = ps
+                        .center
+                        .as_ref()
+                        .and_then(|c| {
+                            if c.len() >= 2 {
+                                let x = c[0].trim_end_matches('%').parse::<f64>().ok()?;
+                                let y = c[1].trim_end_matches('%').parse::<f64>().ok()?;
+                                Some((x, y))
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or((50.0, 50.0));
+                    let radius = ps
+                        .radius
+                        .as_ref()
+                        .and_then(|r| {
+                            if r.len() >= 2 {
+                                let inner = r[0].trim_end_matches('%').parse::<f64>().ok()?;
+                                let outer = r[1].trim_end_matches('%').parse::<f64>().ok()?;
+                                Some((inner, outer))
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap_or((0.0, 75.0));
                     let config = PieConfig {
                         category_col: "name".into(),
                         value_col: "value".into(),
                         center,
                         radius,
                         label_show: label.and_then(|l| l.show).unwrap_or(false),
-                        label_position: label.and_then(|l| l.position)
+                        label_position: label
+                            .and_then(|l| l.position)
                             .map(|p| match p {
-                                crate::option::LabelPosition::Outside => crate::pipeline::types::LabelPosition::Outside,
-                                crate::option::LabelPosition::Inside => crate::pipeline::types::LabelPosition::Inside,
+                                crate::option::LabelPosition::Outside => {
+                                    crate::pipeline::types::LabelPosition::Outside
+                                }
+                                crate::option::LabelPosition::Inside => {
+                                    crate::pipeline::types::LabelPosition::Inside
+                                }
                                 _ => crate::pipeline::types::LabelPosition::Outside,
-                            }).unwrap_or(crate::pipeline::types::LabelPosition::Outside),
+                            })
+                            .unwrap_or(crate::pipeline::types::LabelPosition::Outside),
                         label_font_size: label.and_then(|l| l.font_size).unwrap_or(12.0),
                     };
                     SeriesSpec {
@@ -721,9 +759,7 @@ fn datapoints_to_dataframe(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::{
-        dataframe::{DataFrame, DataValue, Series},
-    };
+    use crate::pipeline::dataframe::{DataFrame, DataValue, Series};
 
     #[test]
     fn test_dataframe_to_datapoints_string_x() {

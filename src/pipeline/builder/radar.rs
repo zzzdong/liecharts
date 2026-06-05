@@ -1,13 +1,16 @@
 //! Radar Builder: 将 RadarSeries 组装为 VisualElement
 
-use vello_cpu::kurbo::{BezPath, Point};
 use std::f64::consts::PI;
+
+use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,
-    pipeline::builder::{stroke_style, SeriesBuilder, Z_SERIES_LINE, Z_SERIES_POINT},
-    pipeline::typed_series::{RadarSeries, RenderContext},
-    visual::{VisualElement, FillStrokeStyle, Stroke},
+    pipeline::{
+        builder::{SeriesBuilder, Z_SERIES_LINE, Z_SERIES_POINT},
+        typed_series::{RadarSeries, RenderContext},
+    },
+    visual::{FillStrokeStyle, Stroke, VisualElement},
 };
 
 pub struct RadarBuilder;
@@ -26,13 +29,13 @@ impl SeriesBuilder<RadarSeries> for RadarBuilder {
         let bounds = ctx.bounds;
         let width = bounds.width();
         let height = bounds.height();
-        
+
         // 将百分比坐标转换为像素坐标
         // 中心 X 在 50%，中心 Y 稍微向下偏移（55%）以平衡顶部空间（标题和图例）
         let center_x = bounds.x0 + width * 0.5;
         let center_y = bounds.y0 + height * 0.55;
         let center = Point::new(center_x, center_y);
-        
+
         // 半径取宽高的较小值的一半，再乘以百分比（75%，留出边距给标签）
         let min_dim = width.min(height);
         let radius = min_dim * 0.5 * 0.75;

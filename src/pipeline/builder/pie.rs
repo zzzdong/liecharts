@@ -1,14 +1,20 @@
 //! Pie Builder: 将 PieSeries 组装为 VisualElement
 
-use vello_cpu::kurbo::{BezPath, Point};
 use std::f64::consts::PI;
+
+use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,
     option::FontWeight,
-    pipeline::builder::{fill_style, SeriesBuilder, Z_SERIES_FILL},
-    pipeline::typed_series::{LabelPosition, PieSeries, RenderContext},
-    visual::{Color, FillStrokeStyle, FontStyle, Stroke, TextAlign, TextBaseline, TextStyle, VisualElement},
+    pipeline::{
+        builder::{SeriesBuilder, Z_SERIES_FILL, fill_style},
+        typed_series::{LabelPosition, PieSeries, RenderContext},
+    },
+    visual::{
+        Color, FillStrokeStyle, FontStyle, Stroke, TextAlign, TextBaseline, TextStyle,
+        VisualElement,
+    },
 };
 
 pub struct PieBuilder;

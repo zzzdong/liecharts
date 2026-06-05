@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "name" => ["Python", "Java", "C", "C++", "JavaScript", "Go", "Rust", "Swift", "Kotlin", "TypeScript"],
                 ))
                 .name("编程语言")
+                .size_col("size")
                 .name_col("name"),
         )
         .render_to_svg("scatter.svg")?;

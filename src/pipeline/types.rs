@@ -141,10 +141,16 @@ pub struct LineConfig {
     pub y_col: String,
     pub smooth: bool,
     pub line_width: f64,
+    /// 是否显示面积填充
+    pub area: bool,
+    /// 面积填充颜色（None 时使用系列颜色）
     pub area_color: Option<Color>,
     pub area_opacity: f64,
     pub symbol_type: SymbolType,
     pub symbol_size: f64,
+    /// 是否显示值标签
+    pub label_show: bool,
+    pub label_font_size: f64,
 }
 
 impl Default for LineConfig {
@@ -154,10 +160,13 @@ impl Default for LineConfig {
             y_col: "y".into(),
             smooth: false,
             line_width: 2.0,
+            area: false,
             area_color: None,
             area_opacity: 0.5,
             symbol_type: SymbolType::Circle,
             symbol_size: 4.0,
+            label_show: false,
+            label_font_size: 12.0,
         }
     }
 }
@@ -169,6 +178,9 @@ pub struct BarConfig {
     pub x_col: String,
     pub y_col: String,
     pub bar_width: f64, // 0.0~1.0 ratio
+    /// 是否显示值标签
+    pub label_show: bool,
+    pub label_font_size: f64,
 }
 
 impl Default for BarConfig {
@@ -177,6 +189,8 @@ impl Default for BarConfig {
             x_col: "x".into(),
             y_col: "y".into(),
             bar_width: 0.6,
+            label_show: false,
+            label_font_size: 12.0,
         }
     }
 }
@@ -372,8 +386,9 @@ pub struct TableConfig;
 
 // ── SymbolType ──
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum SymbolType {
+    #[default]
     Circle,
     Rect,
     RoundRect,
@@ -382,12 +397,6 @@ pub enum SymbolType {
     Pin,
     Arrow,
     None,
-}
-
-impl Default for SymbolType {
-    fn default() -> Self {
-        SymbolType::Circle
-    }
 }
 
 // ── SeriesSpec helpers ──
@@ -413,6 +422,24 @@ impl Default for SeriesSpec {
 impl SeriesSpec {
     /// 获取 Y 列的全部数值（用于轴范围计算）
     pub fn y_values(&self) -> Vec<f64> {
+        // K 线图需要包含 open/close/low/high 所有值来计算轴范围
+        if matches!(self.chart_type, super::ChartType::Candlestick) {
+            let mut all = Vec::new();
+            let cols = ["open", "close", "low", "high"];
+            for col_name in &cols {
+                if let Some(col) = self.data.get_column(col_name) {
+                    for v in &col.data {
+                        if let crate::pipeline::dataframe::DataValue::Float(f) = v {
+                            all.push(*f);
+                        } else if let crate::pipeline::dataframe::DataValue::Integer(i) = v {
+                            all.push(*i as f64);
+                        }
+                    }
+                }
+            }
+            return all;
+        }
+
         let y_col = self.config.y_col_name();
         self.data
             .get_column(y_col)

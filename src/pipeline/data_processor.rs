@@ -4,7 +4,10 @@ use crate::{
     error::Result,
     option::{ChartOption, SeriesOption},
     pipeline::{
-        ChartType, dataframe::DataFrame, mapper::CoordinateMapper, types::{ChartSpec, ColorContext, ResolvedAxisRanges, SeriesSpec, SubplotSpec}
+        ChartType,
+        dataframe::DataFrame,
+        mapper::CoordinateMapper,
+        types::{ChartSpec, ColorContext, ResolvedAxisRanges, SeriesSpec, SubplotSpec},
     },
     visual::VisualElement,
 };
@@ -136,9 +139,7 @@ pub fn create_processor_from_chart_type(chart_type: ChartType) -> Box<dyn DataPr
             Box::new(super::processor::candlestick::CandlestickProcessor::new())
         }
         ChartType::Radar => Box::new(super::processor::radar::RadarProcessor::new()),
-        ChartType::PolarBar => {
-            Box::new(super::processor::polar_bar::PolarBarProcessor::new())
-        }
+        ChartType::PolarBar => Box::new(super::processor::polar_bar::PolarBarProcessor::new()),
         ChartType::PolarScatter => {
             Box::new(super::processor::polar_scatter::PolarScatterProcessor::new())
         }

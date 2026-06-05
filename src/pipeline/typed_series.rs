@@ -54,6 +54,14 @@ pub struct LineSeries {
     pub points: Vec<Point>,
     /// 面积填充的基线 Y（像素空间）
     pub baseline_y: f64,
+    /// 堆叠面积图的底部轮廓点（像素空间）
+    /// - None: 以 baseline_y 为底（最底层的面积图）
+    /// - Some(points): 以此前的系列线条为上界的轮廓（堆叠面积图）
+    pub baseline_points: Option<Vec<Point>>,
+    /// 数据点的原始数值（用于 label 显示）
+    pub values: Vec<f64>,
+    /// 标签配置
+    pub label: Option<SeriesLabelConfig>,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -67,13 +75,15 @@ pub struct BarSeries {
     pub color: Color,
     /// 数据点（像素空间：每个条目已经算好了像素矩形）
     pub bars: Vec<BarRect>,
+    /// 标签配置
+    pub label: Option<SeriesLabelConfig>,
 }
 
 #[derive(Debug, Clone)]
 pub struct BarRect {
-    pub rect: Rect,          // 像素空间的矩形
-    pub category: String,   // 类别名（用于 label）
-    pub value: f64,          // 原始值（用于 label）
+    pub rect: Rect,       // 像素空间的矩形
+    pub category: String, // 类别名（用于 label）
+    pub value: f64,       // 原始值（用于 label）
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -103,11 +113,11 @@ pub struct BarSubSeries {
 
 #[derive(Debug, Clone)]
 pub struct GroupedBarRow {
-    pub bar_rect: Rect,         // 像素空间的矩形
-    pub sub_series_idx: usize,  // 指向 sub_series 的索引
-    pub color: Color,           // 子系列颜色
-    pub category: String,       // 类别名（用于 label）
-    pub value: f64,             // 原始值（用于 label）
+    pub bar_rect: Rect,        // 像素空间的矩形
+    pub sub_series_idx: usize, // 指向 sub_series 的索引
+    pub color: Color,          // 子系列颜色
+    pub category: String,      // 类别名（用于 label）
+    pub value: f64,            // 原始值（用于 label）
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -119,7 +129,7 @@ pub struct ScatterSeries {
     pub name: String,
     pub color: Color,
     pub symbol_size: f64,
-    pub points: Vec<Point>,  // 像素空间
+    pub points: Vec<Point>, // 像素空间
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -130,14 +140,14 @@ pub struct ScatterSeries {
 pub struct BubbleSeries {
     pub name: String,
     pub color: Color,
-    pub bubbles: Vec<Bubble>,  // 像素空间：center + radius + name
+    pub bubbles: Vec<Bubble>, // 像素空间：center + radius + name
 }
 
 #[derive(Debug, Clone)]
 pub struct Bubble {
-    pub center: Point,     // 像素空间中心
-    pub radius: f64,       // 像素空间半径
-    pub name: String,      // 气泡名（用于 label）
+    pub center: Point, // 像素空间中心
+    pub radius: f64,   // 像素空间半径
+    pub name: String,  // 气泡名（用于 label）
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -155,10 +165,10 @@ pub struct CandlestickSeries {
 #[derive(Debug, Clone)]
 pub struct CandleRect {
     pub category: String,
-    pub high_line: (Point, Point),   // 上影线端点（像素空间）
-    pub low_line: (Point, Point),    // 下影线端点（像素空间）
-    pub body_rect: Rect,             // 实体矩形（像素空间）
-    pub is_up: bool,                 // 涨跌
+    pub high_line: (Point, Point), // 上影线端点（像素空间）
+    pub low_line: (Point, Point),  // 下影线端点（像素空间）
+    pub body_rect: Rect,           // 实体矩形（像素空间）
+    pub is_up: bool,               // 涨跌
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -169,8 +179,8 @@ pub struct CandleRect {
 pub struct PieSeries {
     pub name: String,
     /// 布局参数（已解析）
-    pub radius_inner: f64,   // 百分比
-    pub radius_outer: f64,   // 百分比
+    pub radius_inner: f64, // 百分比
+    pub radius_outer: f64, // 百分比
     pub label_show: bool,
     pub label_position: LabelPosition,
     pub label_font_size: f64,
@@ -183,7 +193,7 @@ pub struct PieSlice {
     pub name: String,
     pub value: f64,
     pub color: Color,
-    pub percent: f64,  // 0.0~1.0
+    pub percent: f64, // 0.0~1.0
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -214,15 +224,16 @@ pub struct PolarBarSeries {
     pub color: Color,
     pub pad_angle: f64,
     pub start_angle: f64,
-    pub bars: Vec<PolarBarPoint>,  // angle, radius
+    pub bars: Vec<PolarBarPoint>, // angle, radius
 }
 
 #[derive(Debug, Clone)]
 pub struct PolarBarPoint {
-    pub angle: f64,    // 角度（度）
-    pub radius: f64,   // 半径（像素）
+    pub angle: f64,  // 角度（度）
+    pub radius: f64, // 半径（像素）
     pub value: f64,
     pub name: String,
+    pub color: Color, // 每个柱子的颜色
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -239,10 +250,11 @@ pub struct PolarScatterSeries {
 
 #[derive(Debug, Clone)]
 pub struct PolarPoint {
-    pub angle: f64,    // 角度（度）
-    pub radius: f64,   // 半径（像素）
+    pub angle: f64,  // 角度（度）
+    pub radius: f64, // 半径（像素）
     pub value: f64,
     pub name: String,
+    pub size: f64, // 气泡大小（像素半径）
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -273,6 +285,7 @@ pub struct TableSeries {
     pub headers: Vec<String>,
     pub rows: Vec<Vec<String>>,
     pub header_bg: Color,
+    pub header_border_color: Color,
     pub row_even_bg: Color,
     pub row_odd_bg: Color,
 }
@@ -281,8 +294,9 @@ pub struct TableSeries {
 // 共享类型
 // ═══════════════════════════════════════════════════════════════════
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum SymbolType {
+    #[default]
     Circle,
     Rect,
     RoundRect,
@@ -293,10 +307,23 @@ pub enum SymbolType {
     None,
 }
 
-impl Default for SymbolType {
-    fn default() -> Self {
-        SymbolType::Circle
-    }
+// ── LabelConfig ──
+
+/// 标签显示配置
+#[derive(Debug, Clone, Copy)]
+pub struct SeriesLabelConfig {
+    pub show: bool,
+    pub position: SeriesLabelPosition,
+    pub color: Color,
+    pub font_size: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SeriesLabelPosition {
+    /// 在柱子上方 / 折线点上方
+    Top,
+    /// 在柱子内部
+    Inside,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -311,7 +338,10 @@ impl TypedSeries {
             TypedSeries::Bar(s) => &s.name,
             TypedSeries::GroupedBar(s) => {
                 // GroupedBar 可能有多个子系列，返回第一个或空字符串
-                s.sub_series.first().map(|ss| ss.name.as_str()).unwrap_or("")
+                s.sub_series
+                    .first()
+                    .map(|ss| ss.name.as_str())
+                    .unwrap_or("")
             }
             TypedSeries::Scatter(s) => &s.name,
             TypedSeries::Bubble(s) => &s.name,

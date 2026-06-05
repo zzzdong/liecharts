@@ -2,8 +2,10 @@
 
 use crate::{
     error::Result,
-    pipeline::builder::{fill_style, SeriesBuilder, Z_SERIES_FILL},
-    pipeline::typed_series::{GroupedBarSeries, RenderContext},
+    pipeline::{
+        builder::{SeriesBuilder, Z_SERIES_FILL, fill_style},
+        typed_series::{GroupedBarSeries, RenderContext},
+    },
     visual::VisualElement,
 };
 

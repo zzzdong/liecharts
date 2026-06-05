@@ -6,8 +6,8 @@ use crate::{
     error::Result,
     pipeline::{
         materializer::SeriesMaterializer,
-        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
         typed_series::{RadarSeries, TypedSeries},
+        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
     visual::Color,
 };
@@ -28,7 +28,7 @@ impl SeriesMaterializer for RadarMaterializer {
             _ => {
                 return Err(crate::error::ChartError::InvalidConfig(
                     "Expected RadarConfig".into(),
-                ))
+                ));
             }
         };
 
@@ -43,7 +43,7 @@ impl SeriesMaterializer for RadarMaterializer {
         // 1. 多行数值（每行一个指标值）
         // 2. 单行逗号分隔字符串（如 "95,80,75,90,85"）
         let mut values = Vec::new();
-        
+
         for i in 0..spec.data.row_count() {
             if let Some(v) = value_col.as_f64(i) {
                 // 格式1：直接数值

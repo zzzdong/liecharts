@@ -5,12 +5,34 @@ use vello_cpu::kurbo::Rect;
 use crate::{
     error::Result,
     pipeline::{
+        dataframe::DataValue,
         materializer::SeriesMaterializer,
-        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
         typed_series::{TableSeries, TypedSeries},
+        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
     visual::Color,
 };
+
+/// 将 DataValue 格式化为可直接显示的字符串（不带类型包装）
+fn format_value(v: &DataValue) -> String {
+    match v {
+        DataValue::Null => String::new(),
+        DataValue::Bool(b) => format!("{}", b),
+        DataValue::Integer(i) => format!("{}", i),
+        DataValue::Float(f) => {
+            // 去除浮点数尾部多余的 0 和小数点
+            let s = format!("{}", f);
+            if s.contains('.') {
+                let trimmed = s.trim_end_matches('0').trim_end_matches('.');
+                trimmed.to_string()
+            } else {
+                s
+            }
+        }
+        DataValue::String(s) => s.clone(),
+        DataValue::Color(c) => format!("{:?}", c),
+    }
+}
 
 pub struct TableMaterializer;
 
@@ -28,7 +50,7 @@ impl SeriesMaterializer for TableMaterializer {
             _ => {
                 return Err(crate::error::ChartError::InvalidConfig(
                     "Expected TableConfig".into(),
-                ))
+                ));
             }
         };
 
@@ -47,7 +69,7 @@ impl SeriesMaterializer for TableMaterializer {
             let mut row = Vec::with_capacity(headers.len());
             for col_name in &headers {
                 if let Some(col) = spec.data.get_column(col_name) {
-                    let value = col.data.get(i).map(|v| format!("{:?}", v)).unwrap_or_default();
+                    let value = col.data.get(i).map(format_value).unwrap_or_default();
                     row.push(value);
                 } else {
                     row.push(String::new());
@@ -61,6 +83,7 @@ impl SeriesMaterializer for TableMaterializer {
             headers,
             rows,
             header_bg: colors.table_header_bg,
+            header_border_color: colors.axis_line_color,
             row_even_bg: colors.table_row_even_bg,
             row_odd_bg: colors.table_row_odd_bg,
         }))

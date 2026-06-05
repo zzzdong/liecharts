@@ -311,18 +311,23 @@ impl DataProcessor for LineProcessor {
         }
 
         // 坐标系映射
-        self.mapper().map_coordinates(
-            &mut df,
-            input,
-            series.x_axis_index,
-            series.y_axis_index,
-        );
+        self.mapper()
+            .map_coordinates(&mut df, input, series.x_axis_index, series.y_axis_index);
 
         // 读取 SeriesSpec 中的配置（从 config 字段获取）
-        let (line_width, smooth, area_color, area_opacity, show_symbol, symbol_size) = match &series.config {
+        let (line_width, smooth, area_color, area_opacity, show_symbol, symbol_size) = match &series
+            .config
+        {
             crate::pipeline::types::SeriesConfig::Line(cfg) => {
                 let show_sym = !matches!(cfg.symbol_type, crate::pipeline::types::SymbolType::None);
-                (cfg.line_width, cfg.smooth, cfg.area_color, cfg.area_opacity, show_sym, cfg.symbol_size)
+                (
+                    cfg.line_width,
+                    cfg.smooth,
+                    cfg.area_color,
+                    cfg.area_opacity,
+                    show_sym,
+                    cfg.symbol_size,
+                )
             }
             _ => (2.0, false, None, 0.5, true, 8.0),
         };
@@ -339,22 +344,22 @@ impl DataProcessor for LineProcessor {
         let mut elements = Vec::new();
 
         // 面积填充
-        if points.len() >= 2 {
-            if let Some(ac) = area_color {
-                let alpha = (255.0 * area_opacity).clamp(0.0, 255.0) as u8;
-                let mut fill_color = ac;
-                fill_color.a = alpha;
+        if points.len() >= 2
+            && let Some(ac) = area_color
+        {
+            let alpha = (255.0 * area_opacity).clamp(0.0, 255.0) as u8;
+            let mut fill_color = ac;
+            fill_color.a = alpha;
 
-                let path = Self::build_area_path(&points, input.spec.bounds.y1);
-                elements.push(VisualElement::Path {
-                    path,
-                    style: FillStrokeStyle {
-                        fill: Some(fill_color),
-                        stroke: None,
-                    },
-                    z_index: Z_SERIES_FILL,
-                });
-            }
+            let path = Self::build_area_path(&points, input.spec.bounds.y1);
+            elements.push(VisualElement::Path {
+                path,
+                style: FillStrokeStyle {
+                    fill: Some(fill_color),
+                    stroke: None,
+                },
+                z_index: Z_SERIES_FILL,
+            });
         }
 
         // 折线

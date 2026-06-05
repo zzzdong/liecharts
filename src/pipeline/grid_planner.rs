@@ -1,6 +1,6 @@
 use vello_cpu::kurbo::Rect;
 
-use crate::pipeline::types::{AxisSpec, GridSpec, SeriesSpec, SubplotSpec, SeriesConfig, LineConfig, ItemStyleSpec};
+use crate::pipeline::types::{AxisSpec, GridSpec, SeriesSpec, SubplotSpec};
 
 /// 纯数学画布切分器
 ///
@@ -115,6 +115,10 @@ impl<'a> GridPlanner<'a> {
     ///   - top 使用 header_height（标题/图例空间）
     ///   - 若 contain_label=true，left/bottom 使用更大默认值以容纳轴标签
     ///   - 否则使用标准边距
+    ///
+    /// 注意：用户指定的 bottom 值被视为子图整体（含坐标轴标签）的底部边距，
+    /// 因此计算图表区域时会额外减去标签占用的空间（约 28px），
+    /// 确保坐标轴标签不会被画布底部截断。
     fn resolve_position(&self, grid: &GridSpec) -> Rect {
         let total_w = self.total_width as f64;
         let total_h = self.total_height as f64;
@@ -130,21 +134,43 @@ impl<'a> GridPlanner<'a> {
         let top = grid.top.unwrap_or(self.header_height.max(40.0));
         let bottom = grid.bottom.unwrap_or(default_bottom);
 
-        let width = total_w - left - right;
-        let height = total_h - top - bottom;
+        // 当用户显式设置了边距值时，额外添加标签留白空间：
+        // - bottom: X 轴刻度标签在 bounds.y1 + 14px 处，约占用 28px 高度
+        // - left: Y 轴刻度标签在 bounds.x0 - 8px 处，数字标签约 35px 宽，留 50px
+        // - right: 右侧 Y 轴刻度标签在 bounds.x1 + 8px 处，留 40px
+        const LABEL_BOTTOM_PADDING: f64 = 28.0;
+        const LABEL_LEFT_PADDING: f64 = 50.0;
+        const LABEL_RIGHT_PADDING: f64 = 40.0;
 
-        Rect::new(left, top, left + width, top + height)
+        let effective_bottom = if grid.bottom.is_some() {
+            bottom + LABEL_BOTTOM_PADDING
+        } else {
+            bottom
+        };
+        let effective_left = if grid.left.is_some() {
+            left + LABEL_LEFT_PADDING
+        } else {
+            left
+        };
+        let effective_right = if grid.right.is_some() {
+            right + LABEL_RIGHT_PADDING
+        } else {
+            right
+        };
+
+        let width = total_w - effective_left - effective_right;
+        let height = total_h - top - effective_bottom;
+
+        Rect::new(effective_left, top, effective_left + width, top + height)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        pipeline::{
-            dataframe::{DataFrame, DataValue, Series},
-            types::*,
-        },
+    use crate::pipeline::{
+        dataframe::{DataFrame, DataValue, Series},
+        types::*,
     };
 
     fn make_series(name: &str, chart_type: ChartType, grid_index: usize) -> SeriesSpec {

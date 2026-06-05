@@ -2,8 +2,10 @@
 
 use crate::{
     error::Result,
-    pipeline::builder::{fill_stroke_style, SeriesBuilder, Z_SERIES_POINT},
-    pipeline::typed_series::{RenderContext, ScatterSeries},
+    pipeline::{
+        builder::{SeriesBuilder, Z_SERIES_POINT, fill_stroke_style},
+        typed_series::{RenderContext, ScatterSeries},
+    },
     visual::VisualElement,
 };
 

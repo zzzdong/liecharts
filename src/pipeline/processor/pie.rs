@@ -127,7 +127,10 @@ impl PieProcessor {
         path
     }
 
-    fn resolve_center_from_spec(center: &Option<Vec<String>>, bounds: &vello_cpu::kurbo::Rect) -> Point {
+    fn resolve_center_from_spec(
+        center: &Option<Vec<String>>,
+        bounds: &vello_cpu::kurbo::Rect,
+    ) -> Point {
         let default_center = vec!["50%".to_string(), "50%".to_string()];
         let center = center.as_ref().unwrap_or(&default_center);
 
@@ -145,7 +148,10 @@ impl PieProcessor {
         Point::new(bounds.x0 + cx, bounds.y0 + cy)
     }
 
-    fn resolve_radius_from_spec(radius: &Option<Vec<String>>, bounds: &vello_cpu::kurbo::Rect) -> (f64, f64) {
+    fn resolve_radius_from_spec(
+        radius: &Option<Vec<String>>,
+        bounds: &vello_cpu::kurbo::Rect,
+    ) -> (f64, f64) {
         let default_radius = vec!["0%".to_string(), "75%".to_string()];
         let radius = radius.as_ref().unwrap_or(&default_radius);
         let max_r = bounds.width().min(bounds.height()) * 0.5;
@@ -377,13 +383,25 @@ impl DataProcessor for PieProcessor {
 
         let bounds = input.bounds;
         // 从 config 获取 Pie 配置
-        let ((center_x, center_y), (inner_r_pct, outer_r_pct), label_show, label_font_size, label_position) = match &series.config {
+        let (
+            (center_x, center_y),
+            (inner_r_pct, outer_r_pct),
+            label_show,
+            label_font_size,
+            label_position,
+        ) = match &series.config {
             crate::pipeline::types::SeriesConfig::Pie(cfg) => {
                 let pos_str = match cfg.label_position {
                     crate::pipeline::types::LabelPosition::Outside => "outside",
                     crate::pipeline::types::LabelPosition::Inside => "inside",
                 };
-                (cfg.center, cfg.radius, cfg.label_show, cfg.label_font_size, pos_str)
+                (
+                    cfg.center,
+                    cfg.radius,
+                    cfg.label_show,
+                    cfg.label_font_size,
+                    pos_str,
+                )
             }
             _ => ((50.0, 50.0), (0.0, 75.0), false, 12.0, "outside"),
         };

@@ -5,9 +5,9 @@ use vello_cpu::kurbo::{Point, Rect};
 use crate::{
     error::Result,
     pipeline::{
-        materializer::{map_x_to_pixel, map_y_to_pixel, SeriesMaterializer},
-        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
+        materializer::{SeriesMaterializer, map_x_to_pixel, map_y_to_pixel},
         typed_series::{ScatterSeries, TypedSeries},
+        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
     visual::Color,
 };
@@ -28,17 +28,17 @@ impl SeriesMaterializer for ScatterMaterializer {
             _ => {
                 return Err(crate::error::ChartError::InvalidConfig(
                     "Expected ScatterConfig".into(),
-                ))
+                ));
             }
         };
 
         // 获取 X/Y 轴范围
-        let x_range = axis_ranges
-            .get_x_range(spec.x_axis_index)
-            .ok_or_else(|| crate::error::ChartError::InvalidAxisBinding("X axis not found".into()))?;
-        let y_range = axis_ranges
-            .get_y_range(spec.y_axis_index)
-            .ok_or_else(|| crate::error::ChartError::InvalidAxisBinding("Y axis not found".into()))?;
+        let x_range = axis_ranges.get_x_range(spec.x_axis_index).ok_or_else(|| {
+            crate::error::ChartError::InvalidAxisBinding("X axis not found".into())
+        })?;
+        let y_range = axis_ranges.get_y_range(spec.y_axis_index).ok_or_else(|| {
+            crate::error::ChartError::InvalidAxisBinding("Y axis not found".into())
+        })?;
 
         // 从 DataFrame 获取数据
         let x_vals = spec

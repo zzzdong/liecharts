@@ -2,11 +2,10 @@ use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
     error::Result,
-    option::{AxisType, SeriesOption},
+    option::SeriesOption,
     pipeline::{
         data_processor::{DataProcessor, DataProcessorInput},
         dataframe::{DataFrame, DataValue, Series},
-        mapper::{CartesianMapper, CoordinateMapper},
         sampling::SamplingProcessor,
         types::SeriesSpec,
     },
@@ -65,10 +64,22 @@ impl DataProcessor for CandlestickProcessor {
             let px = bounds.x0 + (i as f64 + 0.5) / data_len as f64 * bounds.width();
             let y_scale = bounds.height() / (y_max - y_min).max(0.001);
 
-            let open = df.get_column("open").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let close = df.get_column("close").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let low = df.get_column("low").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
-            let high = df.get_column("high").and_then(|c| c.as_f64(i)).unwrap_or(0.0);
+            let open = df
+                .get_column("open")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            let close = df
+                .get_column("close")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            let low = df
+                .get_column("low")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
+            let high = df
+                .get_column("high")
+                .and_then(|c| c.as_f64(i))
+                .unwrap_or(0.0);
 
             let open_y = bounds.y1 - (open - y_min) * y_scale;
             let close_y = bounds.y1 - (close - y_min) * y_scale;

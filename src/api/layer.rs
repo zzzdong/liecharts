@@ -1,4 +1,7 @@
-use crate::{pipeline::{dataframe::DataFrame, types::LabelPosition}, visual::Color};
+use crate::{
+    pipeline::{dataframe::DataFrame, types::LabelPosition},
+    visual::Color,
+};
 
 // ── Sampling ──
 
@@ -77,6 +80,8 @@ pub struct Line {
     pub y_axis_index: usize,
     pub grid_index: usize,
     pub sampling: Option<Sampling>,
+    pub label_show: bool,
+    pub label_font_size: f64,
 }
 
 impl Line {
@@ -95,6 +100,8 @@ impl Line {
             y_axis_index: 0,
             grid_index: 0,
             sampling: None,
+            label_show: false,
+            label_font_size: 12.0,
         }
     }
     pub fn data(mut self, data: DataFrame) -> Self {
@@ -155,6 +162,14 @@ impl Line {
         self.sampling = Some(sampling);
         self
     }
+    pub fn label_show(mut self, val: bool) -> Self {
+        self.label_show = val;
+        self
+    }
+    pub fn label_font_size(mut self, size: f64) -> Self {
+        self.label_font_size = size;
+        self
+    }
 }
 
 impl Default for Line {
@@ -176,6 +191,8 @@ pub struct Bar {
     pub color: Option<Color>,
     pub y_axis_index: usize,
     pub grid_index: usize,
+    pub label_show: bool,
+    pub label_font_size: f64,
 }
 
 impl Bar {
@@ -190,6 +207,8 @@ impl Bar {
             color: None,
             y_axis_index: 0,
             grid_index: 0,
+            label_show: false,
+            label_font_size: 12.0,
         }
     }
     pub fn data(mut self, data: DataFrame) -> Self {
@@ -231,6 +250,14 @@ impl Bar {
     /// Shortcut for `y_axis_index(1)`: bind this series to the right y-axis.
     pub fn right_axis(mut self) -> Self {
         self.y_axis_index = 1;
+        self
+    }
+    pub fn label_show(mut self, val: bool) -> Self {
+        self.label_show = val;
+        self
+    }
+    pub fn label_font_size(mut self, size: f64) -> Self {
+        self.label_font_size = size;
         self
     }
 }
@@ -386,6 +413,7 @@ impl Default for Scatter {
 pub struct Bubble {
     pub name: String,
     pub data: Option<DataFrame>,
+    pub size_col: Option<String>,
     pub name_col: Option<String>,
     pub color: Option<Color>,
     pub symbol_size_scale: f64,
@@ -398,6 +426,7 @@ impl Bubble {
         Self {
             name: String::new(),
             data: None,
+            size_col: None,
             name_col: None,
             color: None,
             symbol_size_scale: 1.0,
@@ -411,6 +440,10 @@ impl Bubble {
     }
     pub fn name(mut self, name: impl Into<String>) -> Self {
         self.name = name.into();
+        self
+    }
+    pub fn size_col(mut self, col: impl Into<String>) -> Self {
+        self.size_col = Some(col.into());
         self
     }
     pub fn name_col(mut self, col: impl Into<String>) -> Self {

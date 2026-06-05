@@ -589,26 +589,35 @@ impl Chart {
 }
 
 impl Chart {
-/// 直接转换为 ChartSpec（新管线入口）
-pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
+    /// 直接转换为 ChartSpec（新管线入口）
+    pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
         use crate::pipeline::types::{
-            AxisSpec, BarConfig, BubbleConfig, CandlestickConfig, ChartSpec, ChartType, GaugeConfig,
-            GridSpec, ItemStyleSpec, LegendSpec, LineConfig, PieConfig, PolarBarConfig,
-            PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig, SeriesSpec, SymbolType,
-            TableConfig, TitleSpec, LabelPosition,
+            AxisSpec, BarConfig, BubbleConfig, CandlestickConfig, ChartSpec, ChartType,
+            GaugeConfig, GridSpec, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
+            PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
+            SeriesSpec, SymbolType, TableConfig, TitleSpec,
         };
 
         // Grids
         let grids = if self.grids.is_empty() {
-            vec![GridSpec { left: None, right: None, top: None, bottom: None, contain_label: false }]
+            vec![GridSpec {
+                left: None,
+                right: None,
+                top: None,
+                bottom: None,
+                contain_label: false,
+            }]
         } else {
-            self.grids.iter().map(|g| GridSpec {
-                left: Some(g.left.to_pixels(self.width as f64)),
-                right: Some(g.right.to_pixels(self.width as f64)),
-                top: Some(g.top.to_pixels(self.height as f64)),
-                bottom: Some(g.bottom.to_pixels(self.height as f64)),
-                contain_label: g.contain_label,
-            }).collect()
+            self.grids
+                .iter()
+                .map(|g| GridSpec {
+                    left: Some(g.left.to_pixels(self.width as f64)),
+                    right: Some(g.right.to_pixels(self.width as f64)),
+                    top: Some(g.top.to_pixels(self.height as f64)),
+                    bottom: Some(g.bottom.to_pixels(self.height as f64)),
+                    contain_label: g.contain_label,
+                })
+                .collect()
         };
 
         // 从层数据中提取 X 轴类别（用于默认 X 轴）
@@ -617,19 +626,23 @@ pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
             let (data, x_col) = match layer {
                 LayerSpec::Line(l) => (l.data.clone().or_else(|| self.data.clone()), l.x.clone()),
                 LayerSpec::Bar(l) => (l.data.clone().or_else(|| self.data.clone()), l.x.clone()),
-                LayerSpec::Scatter(l) => (l.data.clone().or_else(|| self.data.clone()), l.x.clone()),
+                LayerSpec::Scatter(l) => {
+                    (l.data.clone().or_else(|| self.data.clone()), l.x.clone())
+                }
+                LayerSpec::Candlestick(l) => (
+                    l.data.clone().or_else(|| self.data.clone()),
+                    l.category.clone(),
+                ),
                 _ => (None, String::new()),
             };
-            if let Some(df) = data {
-                if let Some(col) = df.get_column(&x_col) {
-                    // 提取类别（字符串列）
-                    let cats: Vec<String> = (0..col.len())
-                        .filter_map(|i| col.as_string(i))
-                        .collect();
-                    if !cats.is_empty() {
-                        default_categories = cats;
-                        break;
-                    }
+            if let Some(df) = data
+                && let Some(col) = df.get_column(&x_col)
+            {
+                // 提取类别（字符串列）
+                let cats: Vec<String> = (0..col.len()).filter_map(|i| col.as_string(i)).collect();
+                if !cats.is_empty() {
+                    default_categories = cats;
+                    break;
                 }
             }
         }
@@ -639,29 +652,49 @@ pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
             vec![AxisSpec {
                 axis_type: crate::pipeline::types::AxisType::Category,
                 position: crate::pipeline::types::AxisPosition::Bottom,
-                grid_index: 0, min: None, max: None, name: None,
-                categories: default_categories.clone(), boundary_gap: true,
+                grid_index: 0,
+                min: None,
+                max: None,
+                name: None,
+                categories: default_categories.clone(),
+                boundary_gap: true,
             }]
         } else {
-            self.x_axes.iter().map(|a| AxisSpec {
-                axis_type: match a.axis_type {
-                    crate::api::AxisType::Value => crate::pipeline::types::AxisType::Value,
-                    crate::api::AxisType::Category => crate::pipeline::types::AxisType::Category,
-                    crate::api::AxisType::Time => crate::pipeline::types::AxisType::Time,
-                    crate::api::AxisType::Log => crate::pipeline::types::AxisType::Log,
-                },
-                position: match a.position {
-                    crate::api::AxisPosition::Left => crate::pipeline::types::AxisPosition::Left,
-                    crate::api::AxisPosition::Right => crate::pipeline::types::AxisPosition::Right,
-                    crate::api::AxisPosition::Bottom => crate::pipeline::types::AxisPosition::Bottom,
-                    crate::api::AxisPosition::Top => crate::pipeline::types::AxisPosition::Top,
-                },
-                grid_index: a.grid_index,
-                min: a.min, max: a.max,
-                name: a.name.clone(),
-                categories: if a.data.is_empty() { default_categories.clone() } else { a.data.clone() },
-                boundary_gap: a.boundary_gap,
-            }).collect()
+            self.x_axes
+                .iter()
+                .map(|a| AxisSpec {
+                    axis_type: match a.axis_type {
+                        crate::api::AxisType::Value => crate::pipeline::types::AxisType::Value,
+                        crate::api::AxisType::Category => {
+                            crate::pipeline::types::AxisType::Category
+                        }
+                        crate::api::AxisType::Time => crate::pipeline::types::AxisType::Time,
+                        crate::api::AxisType::Log => crate::pipeline::types::AxisType::Log,
+                    },
+                    position: match a.position {
+                        crate::api::AxisPosition::Left => {
+                            crate::pipeline::types::AxisPosition::Left
+                        }
+                        crate::api::AxisPosition::Right => {
+                            crate::pipeline::types::AxisPosition::Right
+                        }
+                        crate::api::AxisPosition::Bottom => {
+                            crate::pipeline::types::AxisPosition::Bottom
+                        }
+                        crate::api::AxisPosition::Top => crate::pipeline::types::AxisPosition::Top,
+                    },
+                    grid_index: a.grid_index,
+                    min: a.min,
+                    max: a.max,
+                    name: a.name.clone(),
+                    categories: if a.data.is_empty() {
+                        default_categories.clone()
+                    } else {
+                        a.data.clone()
+                    },
+                    boundary_gap: a.boundary_gap,
+                })
+                .collect()
         };
 
         // Y Axes
@@ -669,201 +702,331 @@ pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
             vec![AxisSpec {
                 axis_type: crate::pipeline::types::AxisType::Value,
                 position: crate::pipeline::types::AxisPosition::Left,
-                grid_index: 0, min: None, max: None, name: None,
-                categories: vec![], boundary_gap: true,
+                grid_index: 0,
+                min: None,
+                max: None,
+                name: None,
+                categories: vec![],
+                boundary_gap: true,
             }]
         } else {
-            self.y_axes.iter().map(|a| AxisSpec {
-                axis_type: match a.axis_type {
-                    crate::api::AxisType::Value => crate::pipeline::types::AxisType::Value,
-                    crate::api::AxisType::Category => crate::pipeline::types::AxisType::Category,
-                    crate::api::AxisType::Time => crate::pipeline::types::AxisType::Time,
-                    crate::api::AxisType::Log => crate::pipeline::types::AxisType::Log,
-                },
-                position: match a.position {
-                    crate::api::AxisPosition::Left => crate::pipeline::types::AxisPosition::Left,
-                    crate::api::AxisPosition::Right => crate::pipeline::types::AxisPosition::Right,
-                    crate::api::AxisPosition::Bottom => crate::pipeline::types::AxisPosition::Bottom,
-                    crate::api::AxisPosition::Top => crate::pipeline::types::AxisPosition::Top,
-                },
-                grid_index: a.grid_index,
-                min: a.min, max: a.max,
-                name: a.name.clone(),
-                categories: a.data.clone(),
-                boundary_gap: a.boundary_gap,
-            }).collect()
+            self.y_axes
+                .iter()
+                .map(|a| AxisSpec {
+                    axis_type: match a.axis_type {
+                        crate::api::AxisType::Value => crate::pipeline::types::AxisType::Value,
+                        crate::api::AxisType::Category => {
+                            crate::pipeline::types::AxisType::Category
+                        }
+                        crate::api::AxisType::Time => crate::pipeline::types::AxisType::Time,
+                        crate::api::AxisType::Log => crate::pipeline::types::AxisType::Log,
+                    },
+                    position: match a.position {
+                        crate::api::AxisPosition::Left => {
+                            crate::pipeline::types::AxisPosition::Left
+                        }
+                        crate::api::AxisPosition::Right => {
+                            crate::pipeline::types::AxisPosition::Right
+                        }
+                        crate::api::AxisPosition::Bottom => {
+                            crate::pipeline::types::AxisPosition::Bottom
+                        }
+                        crate::api::AxisPosition::Top => crate::pipeline::types::AxisPosition::Top,
+                    },
+                    grid_index: a.grid_index,
+                    min: a.min,
+                    max: a.max,
+                    name: a.name.clone(),
+                    categories: a.data.clone(),
+                    boundary_gap: a.boundary_gap,
+                })
+                .collect()
         };
 
         // Series
         let shared_data = self.data.as_ref();
-        let series: Vec<SeriesSpec> = self.layers.iter().map(|layer| {
-            let (chart_type, config): (ChartType, SeriesConfig) = match layer {
-                LayerSpec::Line(l) => {
-                    let sym = match l.symbol {
-                        LayerSymbol::Circle => SymbolType::Circle,
-                        LayerSymbol::Rect => SymbolType::Rect,
-                        LayerSymbol::RoundRect => SymbolType::RoundRect,
-                        LayerSymbol::Triangle => SymbolType::Triangle,
-                        LayerSymbol::Diamond => SymbolType::Diamond,
-                        LayerSymbol::Pin => SymbolType::Pin,
-                        LayerSymbol::Arrow => SymbolType::Arrow,
-                        LayerSymbol::None => SymbolType::None,
-                    };
-                    // 面积颜色：如果启用面积且用户指定了颜色则使用，否则使用默认蓝色
-                    let area_color = if l.area {
-                        Some(l.color.unwrap_or(crate::visual::Color::new(80, 112, 221)))
-                    } else {
-                        None
-                    };
-                    (ChartType::Line, SeriesConfig::Line(LineConfig {
-                        x_col: l.x.clone(),
-                        y_col: l.y.clone(),
-                        smooth: l.smooth,
-                        line_width: 2.0,
-                        area_color,
-                        area_opacity: 0.5,
-                        symbol_type: sym,
-                        symbol_size: l.symbol_size,
-                    }))
+        let series: Vec<SeriesSpec> = self
+            .layers
+            .iter()
+            .map(|layer| {
+                let (chart_type, config): (ChartType, SeriesConfig) = match layer {
+                    LayerSpec::Line(l) => {
+                        let sym = match l.symbol {
+                            LayerSymbol::Circle => SymbolType::Circle,
+                            LayerSymbol::Rect => SymbolType::Rect,
+                            LayerSymbol::RoundRect => SymbolType::RoundRect,
+                            LayerSymbol::Triangle => SymbolType::Triangle,
+                            LayerSymbol::Diamond => SymbolType::Diamond,
+                            LayerSymbol::Pin => SymbolType::Pin,
+                            LayerSymbol::Arrow => SymbolType::Arrow,
+                            LayerSymbol::None => SymbolType::None,
+                        };
+                        // 面积填充：使用系列颜色（由 ColorAssigner 分配），用户可指定颜色
+                        let area = l.area;
+                        let area_color = l.color; // 用户指定的颜色，None 时使用系列颜色
+                        (
+                            ChartType::Line,
+                            SeriesConfig::Line(LineConfig {
+                                x_col: l.x.clone(),
+                                y_col: l.y.clone(),
+                                smooth: l.smooth,
+                                line_width: 2.0,
+                                area,
+                                area_color,
+                                area_opacity: 0.5,
+                                symbol_type: sym,
+                                symbol_size: l.symbol_size,
+                                label_show: l.label_show,
+                                label_font_size: l.label_font_size,
+                            }),
+                        )
+                    }
+                    LayerSpec::Bar(l) => (
+                        ChartType::Bar,
+                        SeriesConfig::Bar(BarConfig {
+                            x_col: l.x.clone(),
+                            y_col: l.y.clone(),
+                            bar_width: 0.6,
+                            label_show: l.label_show,
+                            label_font_size: l.label_font_size,
+                        }),
+                    ),
+                    LayerSpec::Scatter(l) => (
+                        ChartType::Scatter,
+                        SeriesConfig::Scatter(ScatterConfig {
+                            x_col: l.x.clone(),
+                            y_col: l.y.clone(),
+                            symbol_size: l.symbol_size,
+                        }),
+                    ),
+                    LayerSpec::Bubble(l) => (
+                        ChartType::Bubble,
+                        SeriesConfig::Bubble(BubbleConfig {
+                            x_col: "x".into(),
+                            y_col: "y".into(),
+                            size_col: l.size_col.clone(),
+                            name_col: l.name_col.clone(),
+                            symbol_size_scale: l.symbol_size_scale,
+                        }),
+                    ),
+                    LayerSpec::Candlestick(l) => (
+                        ChartType::Candlestick,
+                        SeriesConfig::Candlestick(CandlestickConfig {
+                            category_col: l.category.clone(),
+                            open_col: l.open.clone(),
+                            close_col: l.close.clone(),
+                            low_col: l.low.clone(),
+                            high_col: l.high.clone(),
+                        }),
+                    ),
+                    LayerSpec::Pie(l) => (
+                        ChartType::Pie,
+                        SeriesConfig::Pie(PieConfig {
+                            category_col: l.category.clone(),
+                            value_col: l.value.clone(),
+                            center: l.center,
+                            radius: l.radius,
+                            label_show: l.label_show,
+                            label_position: l.label_position,
+                            label_font_size: 12.0,
+                        }),
+                    ),
+                    LayerSpec::Radar(l) => (
+                        ChartType::Radar,
+                        SeriesConfig::Radar(RadarConfig {
+                            value_col: l.values.clone(),
+                            indicators: l.indicators.clone(),
+                        }),
+                    ),
+                    LayerSpec::PolarBar(l) => (
+                        ChartType::PolarBar,
+                        SeriesConfig::PolarBar(PolarBarConfig {
+                            angle_col: l.angle.clone(),
+                            radius_col: l.radius.clone(),
+                            pad_angle: l.pad_angle,
+                            start_angle: l.start_angle,
+                        }),
+                    ),
+                    LayerSpec::PolarScatter(l) => (
+                        ChartType::PolarScatter,
+                        SeriesConfig::PolarScatter(PolarScatterConfig {
+                            angle_col: l.angle.clone(),
+                            radius_col: l.radius.clone(),
+                            symbol_size: l.symbol_size.unwrap_or(8.0),
+                        }),
+                    ),
+                    LayerSpec::Gauge(l) => (
+                        ChartType::Gauge,
+                        SeriesConfig::Gauge(GaugeConfig {
+                            value_col: l.value.clone(),
+                            min: l.min,
+                            max: l.max,
+                            center: l.center,
+                            radius: l.radius,
+                            start_angle: l.start_angle,
+                            end_angle: l.end_angle,
+                            split_number: l.split_number,
+                        }),
+                    ),
+                    LayerSpec::Table(_) => (ChartType::Table, SeriesConfig::Table(TableConfig)),
+                };
+
+                let data = match layer {
+                    LayerSpec::Line(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::Bar(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::Scatter(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::Bubble(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::Candlestick(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::Pie(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::Radar(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::PolarBar(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::PolarScatter(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::Gauge(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                    LayerSpec::Table(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
+                };
+
+                let name = match layer {
+                    LayerSpec::Line(l) => l.name.clone(),
+                    LayerSpec::Bar(l) => l.name.clone(),
+                    LayerSpec::Scatter(l) => l.name.clone(),
+                    LayerSpec::Bubble(l) => l.name.clone(),
+                    LayerSpec::Candlestick(l) => l.name.clone(),
+                    LayerSpec::Pie(l) => l.name.clone(),
+                    LayerSpec::Radar(l) => l.name.clone(),
+                    LayerSpec::PolarBar(l) => l.name.clone(),
+                    LayerSpec::PolarScatter(l) => l.name.clone(),
+                    LayerSpec::Gauge(l) => l.name.clone(),
+                    LayerSpec::Table(l) => l.name.clone(),
+                };
+
+                let grid_idx = match layer {
+                    LayerSpec::Line(l) => l.grid_index,
+                    LayerSpec::Bar(l) => l.grid_index,
+                    LayerSpec::Scatter(l) => l.grid_index,
+                    LayerSpec::Bubble(l) => l.grid_index,
+                    LayerSpec::Candlestick(l) => l.grid_index,
+                    LayerSpec::Pie(_) => 0,
+                    LayerSpec::Radar(_) => 0,
+                    LayerSpec::PolarBar(_) => 0,
+                    LayerSpec::PolarScatter(_) => 0,
+                    LayerSpec::Gauge(_) => 0,
+                    LayerSpec::Table(_) => 0,
+                };
+
+                let y_axis_idx = match layer {
+                    LayerSpec::Line(l) => l.y_axis_index,
+                    LayerSpec::Bar(l) => l.y_axis_index,
+                    LayerSpec::Scatter(l) => l.y_axis_index,
+                    LayerSpec::Bubble(l) => l.y_axis_index,
+                    LayerSpec::Candlestick(l) => l.y_axis_index,
+                    _ => 0,
+                };
+
+                let stack = match layer {
+                    LayerSpec::Line(l) => l.stack.clone(),
+                    LayerSpec::Bar(l) => l.stack.clone(),
+                    _ => None,
+                };
+
+                let group_index = match layer {
+                    LayerSpec::Bar(l) => l.group_index.unwrap_or(0),
+                    _ => 0,
+                };
+
+                let sampling = match &layer {
+                    LayerSpec::Line(l) => l.sampling.as_ref().map(|s| {
+                        let ty = match s {
+                            crate::api::layer::Sampling::Lttb(_) => {
+                                crate::sampling::SamplingType::Lttb
+                            }
+                            crate::api::layer::Sampling::Average(_) => {
+                                crate::sampling::SamplingType::Average
+                            }
+                            crate::api::layer::Sampling::Max(_) => {
+                                crate::sampling::SamplingType::Max
+                            }
+                            crate::api::layer::Sampling::Min(_) => {
+                                crate::sampling::SamplingType::Min
+                            }
+                        };
+                        let threshold = match s {
+                            crate::api::layer::Sampling::Lttb(n)
+                            | crate::api::layer::Sampling::Average(n)
+                            | crate::api::layer::Sampling::Max(n)
+                            | crate::api::layer::Sampling::Min(n) => *n,
+                        };
+                        (ty, threshold)
+                    }),
+                    _ => None,
+                };
+
+                SeriesSpec {
+                    name,
+                    chart_type,
+                    data,
+                    grid_index: grid_idx,
+                    x_axis_index: 0,
+                    y_axis_index: y_axis_idx,
+                    stack,
+                    group_index,
+                    sampling,
+                    item_style: ItemStyleSpec::default(),
+                    config,
                 }
-                LayerSpec::Bar(l) => (ChartType::Bar, SeriesConfig::Bar(BarConfig {
-                    x_col: l.x.clone(),
-                    y_col: l.y.clone(),
-                    bar_width: 0.6,
-                })),
-                LayerSpec::Scatter(l) => (ChartType::Scatter, SeriesConfig::Scatter(ScatterConfig {
-                    x_col: l.x.clone(),
-                    y_col: l.y.clone(),
-                    symbol_size: l.symbol_size,
-                })),
-                LayerSpec::Bubble(l) => (ChartType::Bubble, SeriesConfig::Bubble(BubbleConfig {
-                    x_col: "x".into(),
-                    y_col: "y".into(),
-                    size_col: None,
-                    name_col: l.name_col.clone(),
-                    symbol_size_scale: l.symbol_size_scale,
-                })),
-                LayerSpec::Candlestick(l) => (ChartType::Candlestick, SeriesConfig::Candlestick(CandlestickConfig {
-                    category_col: l.category.clone(),
-                    open_col: l.open.clone(),
-                    close_col: l.close.clone(),
-                    low_col: l.low.clone(),
-                    high_col: l.high.clone(),
-                })),
-                LayerSpec::Pie(l) => (ChartType::Pie, SeriesConfig::Pie(PieConfig {
-                    category_col: l.category.clone(),
-                    value_col: l.value.clone(),
-                    center: l.center,
-                    radius: l.radius,
-                    label_show: l.label_show,
-                    label_position: l.label_position,
-                    label_font_size: 12.0,
-                })),
-                LayerSpec::Radar(l) => (ChartType::Radar, SeriesConfig::Radar(RadarConfig {
-                    value_col: l.values.clone(),
-                    indicators: l.indicators.clone(),
-                })),
-                LayerSpec::PolarBar(l) => (ChartType::PolarBar, SeriesConfig::PolarBar(PolarBarConfig {
-                    angle_col: l.angle.clone(),
-                    radius_col: l.radius.clone(),
-                    pad_angle: l.pad_angle,
-                    start_angle: l.start_angle,
-                })),
-                LayerSpec::PolarScatter(l) => (ChartType::PolarScatter, SeriesConfig::PolarScatter(PolarScatterConfig {
-                    angle_col: l.angle.clone(),
-                    radius_col: l.radius.clone(),
-                    symbol_size: l.symbol_size.unwrap_or(8.0),
-                })),
-                LayerSpec::Gauge(l) => (ChartType::Gauge, SeriesConfig::Gauge(GaugeConfig {
-                    value_col: l.value.clone(),
-                    min: l.min,
-                    max: l.max,
-                    center: l.center,
-                    radius: l.radius,
-                    start_angle: l.start_angle,
-                    end_angle: l.end_angle,
-                    split_number: l.split_number,
-                })),
-                LayerSpec::Table(_) => (ChartType::Table, SeriesConfig::Table(TableConfig)),
-            };
-
-            let data = match layer {
-                LayerSpec::Line(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::Bar(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::Scatter(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::Bubble(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::Candlestick(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::Pie(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::Radar(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::PolarBar(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::PolarScatter(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::Gauge(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-                LayerSpec::Table(l) => l.data.clone().or_else(|| shared_data.cloned()).unwrap_or_default(),
-            };
-
-            let name = match layer {
-                LayerSpec::Line(l) => l.name.clone(),
-                LayerSpec::Bar(l) => l.name.clone(),
-                LayerSpec::Scatter(l) => l.name.clone(),
-                LayerSpec::Bubble(l) => l.name.clone(),
-                LayerSpec::Candlestick(l) => l.name.clone(),
-                LayerSpec::Pie(l) => l.name.clone(),
-                LayerSpec::Radar(l) => l.name.clone(),
-                LayerSpec::PolarBar(l) => l.name.clone(),
-                LayerSpec::PolarScatter(l) => l.name.clone(),
-                LayerSpec::Gauge(l) => l.name.clone(),
-                LayerSpec::Table(l) => l.name.clone(),
-            };
-
-            let grid_idx = match layer {
-                LayerSpec::Line(l) => l.grid_index,
-                LayerSpec::Bar(l) => l.grid_index,
-                LayerSpec::Scatter(l) => l.grid_index,
-                LayerSpec::Bubble(l) => l.grid_index,
-                LayerSpec::Candlestick(l) => l.grid_index,
-                LayerSpec::Pie(_) => 0,
-                LayerSpec::Radar(_) => 0,
-                LayerSpec::PolarBar(_) => 0,
-                LayerSpec::PolarScatter(_) => 0,
-                LayerSpec::Gauge(_) => 0,
-                LayerSpec::Table(_) => 0,
-            };
-
-            let y_axis_idx = match layer {
-                LayerSpec::Line(l) => l.y_axis_index,
-                LayerSpec::Bar(l) => l.y_axis_index,
-                LayerSpec::Scatter(l) => l.y_axis_index,
-                LayerSpec::Bubble(l) => l.y_axis_index,
-                LayerSpec::Candlestick(l) => l.y_axis_index,
-                _ => 0,
-            };
-
-            let stack = match layer {
-                LayerSpec::Line(l) => l.stack.clone(),
-                LayerSpec::Bar(l) => l.stack.clone(),
-                _ => None,
-            };
-
-            let group_index = match layer {
-                LayerSpec::Bar(l) => l.group_index.unwrap_or(0),
-                _ => 0,
-            };
-
-            SeriesSpec {
-                name, chart_type, data,
-                grid_index: grid_idx,
-                x_axis_index: 0,
-                y_axis_index: y_axis_idx,
-                stack, group_index,
-                sampling: None,
-                item_style: ItemStyleSpec::default(),
-                config,
-            }
-        }).collect();
+            })
+            .collect();
 
         ChartSpec {
-            width: self.width, height: self.height,
-            grids, x_axes, y_axes, series,
+            width: self.width,
+            height: self.height,
+            grids,
+            x_axes,
+            y_axes,
+            series,
             title: self.title.as_ref().map(|t| TitleSpec {
                 text: Some(t.text.clone()),
                 subtext: t.subtext.clone(),

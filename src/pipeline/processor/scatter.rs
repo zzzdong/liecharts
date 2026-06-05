@@ -214,12 +214,8 @@ impl DataProcessor for ScatterProcessor {
         }
 
         // 坐标系映射
-        self.mapper().map_coordinates(
-            &mut df,
-            input,
-            series.x_axis_index,
-            series.y_axis_index,
-        );
+        self.mapper()
+            .map_coordinates(&mut df, input, series.x_axis_index, series.y_axis_index);
 
         let symbol_size = match &series.config {
             crate::pipeline::types::SeriesConfig::Scatter(cfg) => cfg.symbol_size,

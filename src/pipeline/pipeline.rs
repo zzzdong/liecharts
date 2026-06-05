@@ -15,17 +15,17 @@ use crate::error::Result;
 use crate::{
     option::ChartOption,
     pipeline::{
+        RenderContext,
         axis_binding_resolver::AxisBindingResolver,
         axis_renderer,
+        builder::build_typed_series,
         color_assigner::ColorAssigner,
         compat,
-        data_processor::{create_processor_from_chart_type, DataProcessorInput},
         grid_planner::GridPlanner,
-        group::{GroupAnalyzer, GroupType, dataframe_builder::GroupedBarProcessor},
         materializer::materialize_all,
-        builder::build_typed_series,
-        types::{ChartSpec, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
-        RenderContext,
+        types::{
+            ChartSpec, ChartType, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer,
+        },
     },
     text::create_text_layout,
     theme::Theme,
@@ -103,9 +103,17 @@ fn build_chart_internal(
         z_index: Z_BACKGROUND,
     });
 
-    // 5. 渲染轴
+    // 5. 渲染轴（跳过纯表格子图，表格不需要坐标轴）
     let mut text_measurer = TextMeasurer::new();
     for subplot in &specs {
+        let is_table_subplot = subplot.series_indices.iter().all(|&idx| {
+            spec.series
+                .get(idx)
+                .is_some_and(|s| s.chart_type == ChartType::Table)
+        });
+        if is_table_subplot {
+            continue;
+        }
         let axis_elements =
             axis_renderer::render_axes(subplot, option, &axis_ranges, &colors, &mut text_measurer);
         all_elements.extend(axis_elements);
@@ -187,17 +195,17 @@ fn estimate_header_height(option: &ChartOption, theme: &Theme) -> f64 {
     }
 
     // 图例占用（在标题下方，有 16px 间距）
-    if let Some(legend) = &option.legend {
-        if legend.show != Some(false) {
-            if height > 0.0 {
-                height += 16.0; // 标题和图例之间的间距
-            }
-
-            let legend_style = theme.get_legend_text_style();
-            // 图例行高：symbol_size + 上下内边距
-            let legend_height = legend_style.font_size * 1.4 + 16.0; // font + vertical padding
-            height += legend_height;
+    if let Some(legend) = &option.legend
+        && legend.show != Some(false)
+    {
+        if height > 0.0 {
+            height += 16.0; // 标题和图例之间的间距
         }
+
+        let legend_style = theme.get_legend_text_style();
+        // 图例行高：symbol_size + 上下内边距
+        let legend_height = legend_style.font_size * 1.4 + 16.0; // font + vertical padding
+        height += legend_height;
     }
 
     // 最小值为 0，空标题/图例时返回 0
@@ -325,7 +333,7 @@ fn build_legend_elements_v2(
         let mut item_widths = Vec::new();
         let mut total_content_width = 0.0;
 
-        for (_i, name) in data.iter().enumerate() {
+        for name in data.iter() {
             // 估算文本宽度（使用 create_text_layout）
             let text_style = crate::visual::TextStyle {
                 font_size: legend_style.font_size,
@@ -356,7 +364,14 @@ fn build_legend_elements_v2(
             let content_start_x = current_x + legend_padding;
 
             // 选择颜色源：按数据点着色的图表使用 palette，按系列着色的使用 series_colors
-            let color = if use_palette {
+            let color = if option
+                .series
+                .get(i)
+                .is_some_and(|s| matches!(s, SeriesOption::Candlestick(_)))
+            {
+                // K 线图用 up_color（红色）可同时代表涨/跌，比 palette 颜色更贴切
+                colors.up_color
+            } else if use_palette {
                 colors
                     .palette
                     .get(i)
@@ -637,7 +652,7 @@ mod tests {
                         category_col: "name".into(),
                         value_col: "value".into(),
                         ..Default::default()
-                    }
+                    },
                 ),
             }],
             title: Some(crate::pipeline::types::TitleSpec {

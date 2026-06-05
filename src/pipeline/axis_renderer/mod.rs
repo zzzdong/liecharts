@@ -40,10 +40,14 @@ pub fn render_axes(
     }
 
     // 检查当前 subplot 包含的图表类型
-    let has_radar = option.series.iter().any(|s| matches!(s, SeriesOption::Radar(_)));
-    let has_polar = option.series.iter().any(|s| {
-        matches!(s, SeriesOption::PolarBar(_) | SeriesOption::PolarScatter(_))
-    });
+    let has_radar = option
+        .series
+        .iter()
+        .any(|s| matches!(s, SeriesOption::Radar(_)));
+    let has_polar = option
+        .series
+        .iter()
+        .any(|s| matches!(s, SeriesOption::PolarBar(_) | SeriesOption::PolarScatter(_)));
     let has_normal_chart = option.series.iter().any(|s| {
         !matches!(
             s,
@@ -54,8 +58,14 @@ pub fn render_axes(
                 | SeriesOption::PolarScatter(_)
         )
     });
-    let has_pie = option.series.iter().any(|s| matches!(s, SeriesOption::Pie(_)));
-    let has_gauge = option.series.iter().any(|s| matches!(s, SeriesOption::Gauge(_)));
+    let has_pie = option
+        .series
+        .iter()
+        .any(|s| matches!(s, SeriesOption::Pie(_)));
+    let has_gauge = option
+        .series
+        .iter()
+        .any(|s| matches!(s, SeriesOption::Gauge(_)));
 
     // 纯饼图/仪表盘不需要坐标轴
     if (has_pie || has_gauge) && !has_radar && !has_polar && !has_normal_chart {
@@ -65,12 +75,11 @@ pub fn render_axes(
     let mut elements = Vec::new();
 
     // 雷达图坐标轴
-    if has_radar {
-        if let Some(ref radar_option) = option.radar {
-            if let Some(ref indicators) = radar_option.indicator {
-                elements.extend(RadarAxisRenderer::render(subplot, indicators, colors));
-            }
-        }
+    if has_radar
+        && let Some(ref radar_option) = option.radar
+        && let Some(ref indicators) = radar_option.indicator
+    {
+        elements.extend(RadarAxisRenderer::render(subplot, indicators, colors));
     }
 
     // 极坐标轴

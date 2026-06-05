@@ -1,5 +1,5 @@
 use crate::pipeline::types::{
-    AxisSpec, AxisType, ResolvedAxisRange, ResolvedAxisRanges, SeriesSpec, SubplotSpec,
+    AxisSpec, AxisType, ChartType, ResolvedAxisRange, ResolvedAxisRanges, SeriesSpec, SubplotSpec,
 };
 
 /// 轴绑定解析器
@@ -30,12 +30,15 @@ impl<'a> AxisBindingResolver<'a> {
         for axis_idx in 0..self.x_axes.len() {
             let axis = &self.x_axes[axis_idx];
             let (data_min, data_max) = self.collect_x_axis_range(axis_idx, specs);
-            
+
             // Category 轴：collect_x_axis_range 已经返回正确范围
             let (resolved_min, resolved_max) = if matches!(axis.axis_type, AxisType::Category) {
                 (data_min, data_max)
             } else {
-                eprintln!("DEBUG: calling compute_final_range with data_min={}, data_max={}", data_min, data_max);
+                eprintln!(
+                    "DEBUG: calling compute_final_range with data_min={}, data_max={}",
+                    data_min, data_max
+                );
                 let result = self.compute_final_range(
                     axis.min,
                     axis.max,
@@ -44,6 +47,7 @@ impl<'a> AxisBindingResolver<'a> {
                     axis.axis_type,
                     axis.categories.len(),
                     axis.boundary_gap,
+                    false,
                 );
                 eprintln!("DEBUG: compute_final_range result={:?}", result);
                 result
@@ -52,7 +56,7 @@ impl<'a> AxisBindingResolver<'a> {
             ranges.push(ResolvedAxisRange {
                 axis_index: axis_idx,
                 position: axis.position,
-                axis_type: axis.axis_type.clone(),
+                axis_type: axis.axis_type,
                 min: resolved_min,
                 max: resolved_max,
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
@@ -64,6 +68,17 @@ impl<'a> AxisBindingResolver<'a> {
         for axis_idx in 0..self.y_axes.len() {
             let axis = &self.y_axes[axis_idx];
             let (data_min, data_max) = self.collect_y_axis_range(axis_idx, specs);
+
+            // 判断该轴关联的 subplot 中是否有非 Candlestick 的系列
+            let force_include_zero = specs.iter().any(|s| {
+                s.y_axis_indices.contains(&axis_idx)
+                    && s.series_indices.iter().any(|&si| {
+                        self.series
+                            .get(si)
+                            .is_some_and(|ser| !matches!(ser.chart_type, ChartType::Candlestick))
+                    })
+            });
+
             let (resolved_min, resolved_max) = self.compute_final_range(
                 axis.min,
                 axis.max,
@@ -72,12 +87,13 @@ impl<'a> AxisBindingResolver<'a> {
                 axis.axis_type,
                 axis.categories.len(),
                 axis.boundary_gap,
+                force_include_zero,
             );
 
             ranges.push(ResolvedAxisRange {
                 axis_index: axis_idx,
                 position: axis.position,
-                axis_type: axis.axis_type.clone(),
+                axis_type: axis.axis_type,
                 min: resolved_min,
                 max: resolved_max,
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
@@ -96,7 +112,10 @@ impl<'a> AxisBindingResolver<'a> {
             .map(|s| s.id)
             .collect();
 
-        eprintln!("DEBUG collect_x_axis_range: axis_idx={}, grids_with_axis={:?}, specs={:?}", axis_idx, grids_with_axis, specs);
+        eprintln!(
+            "DEBUG collect_x_axis_range: axis_idx={}, grids_with_axis={:?}, specs={:?}",
+            axis_idx, grids_with_axis, specs
+        );
 
         if grids_with_axis.is_empty() {
             return (0.0, 0.0);
@@ -123,7 +142,7 @@ impl<'a> AxisBindingResolver<'a> {
             if axis.boundary_gap {
                 return (0.0, max_count as f64);
             } else {
-                return (0.0, (max_count - 1).max(0) as f64);
+                return (0.0, (max_count - 1) as f64);
             }
         }
 
@@ -132,7 +151,10 @@ impl<'a> AxisBindingResolver<'a> {
         let mut bound_series: Vec<&SeriesSpec> = Vec::new();
 
         for series in self.series {
-            eprintln!("DEBUG: series.grid_index={}, grids_with_axis={:?}", series.grid_index, grids_with_axis);
+            eprintln!(
+                "DEBUG: series.grid_index={}, grids_with_axis={:?}",
+                series.grid_index, grids_with_axis
+            );
             if !grids_with_axis.contains(&series.grid_index) {
                 eprintln!("DEBUG: series skipped");
                 continue;
@@ -160,7 +182,11 @@ impl<'a> AxisBindingResolver<'a> {
         let mut data_max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
 
         // 检查是否有堆叠（用于横向柱状图，其值在 X 轴上）
-        eprintln!("DEBUG: axis_type={:?}, bound_series.len={}", axis.axis_type, bound_series.len());
+        eprintln!(
+            "DEBUG: axis_type={:?}, bound_series.len={}",
+            axis.axis_type,
+            bound_series.len()
+        );
         if matches!(axis.axis_type, AxisType::Value) {
             let has_stacked_bars = bound_series.iter().any(|s| s.stack.is_some());
             eprintln!("DEBUG: has_stacked_bars={}", has_stacked_bars);
@@ -171,7 +197,7 @@ impl<'a> AxisBindingResolver<'a> {
                     stack_groups.entry(s.stack.clone()).or_default().push(s);
                 }
 
-                for (_, group) in &stack_groups {
+                for group in stack_groups.values() {
                     if group.len() <= 1 {
                         continue;
                     }
@@ -185,13 +211,16 @@ impl<'a> AxisBindingResolver<'a> {
                     for row in 0..max_rows {
                         let mut row_total = 0.0;
                         for s in group {
-                            if let Some(col) = s.data.get_column(s.config.y_col_name()) {
-                                if let Some(v) = col.as_f64(row) {
-                                    row_total += v;
-                                }
+                            if let Some(col) = s.data.get_column(s.config.y_col_name())
+                                && let Some(v) = col.as_f64(row)
+                            {
+                                row_total += v;
                             }
                         }
-                        eprintln!("DEBUG: row={}, row_total={}, data_max={}", row, row_total, data_max);
+                        eprintln!(
+                            "DEBUG: row={}, row_total={}, data_max={}",
+                            row, row_total, data_max
+                        );
                         if row_total > data_max {
                             data_max = row_total;
                         }
@@ -247,7 +276,7 @@ impl<'a> AxisBindingResolver<'a> {
             }
 
             // 对每个有多于一个系列的 stack 组，计算每行总值
-            for (_, group) in &stack_groups {
+            for group in stack_groups.values() {
                 if group.len() <= 1 {
                     continue;
                 }
@@ -263,10 +292,50 @@ impl<'a> AxisBindingResolver<'a> {
                     let mut row_total = 0.0;
                     for s in group {
                         let y_col = s.config.y_col_name();
-                        if let Some(col) = s.data.get_column(y_col) {
-                            if let Some(v) = col.as_f64(row) {
-                                row_total += v;
-                            }
+                        if let Some(col) = s.data.get_column(y_col)
+                            && let Some(v) = col.as_f64(row)
+                        {
+                            row_total += v;
+                        }
+                    }
+                    if row_total > data_max {
+                        data_max = row_total;
+                    }
+                }
+            }
+        }
+
+        // 检查是否有堆叠面积图（Line/Stack 系列）
+        let has_stacked_areas = bound_series
+            .iter()
+            .any(|s| s.stack.is_some() && matches!(s.chart_type, super::ChartType::Line));
+        if has_stacked_areas {
+            use std::collections::HashMap;
+            let mut stack_groups: HashMap<Option<String>, Vec<&SeriesSpec>> = HashMap::new();
+            for s in &bound_series {
+                if s.stack.is_some() && matches!(s.chart_type, super::ChartType::Line) {
+                    stack_groups.entry(s.stack.clone()).or_default().push(s);
+                }
+            }
+
+            for group in stack_groups.values() {
+                if group.len() <= 1 {
+                    continue;
+                }
+
+                let max_rows = group.iter().map(|s| s.data.row_count()).max().unwrap_or(0);
+                if max_rows == 0 {
+                    continue;
+                }
+
+                for row in 0..max_rows {
+                    let mut row_total = 0.0;
+                    for s in group {
+                        let y_col = s.config.y_col_name();
+                        if let Some(col) = s.data.get_column(y_col)
+                            && let Some(v) = col.as_f64(row)
+                        {
+                            row_total += v;
                         }
                     }
                     if row_total > data_max {
@@ -292,6 +361,7 @@ impl<'a> AxisBindingResolver<'a> {
         axis_type: AxisType,
         category_count: usize,
         boundary_gap: bool,
+        force_include_zero: bool,
     ) -> (f64, f64) {
         // Category 轴：使用计数
         if matches!(axis_type, AxisType::Category) {
@@ -309,7 +379,10 @@ impl<'a> AxisBindingResolver<'a> {
         // Value 轴：结合用户指定 + 数据范围
         let range = data_max - data_min;
 
-        let should_include_zero = if data_min >= 0.0 {
+        // 当数据全为正数时，非 K 线图强制包含 0；有负数时不强制，使用原有启发式逻辑
+        let should_include_zero = if force_include_zero && data_min >= 0.0 {
+            true
+        } else if data_min >= 0.0 {
             data_min < range * 0.2
         } else if data_max <= 0.0 {
             data_max.abs() < range * 0.2

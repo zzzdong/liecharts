@@ -2,8 +2,10 @@
 
 use crate::{
     error::Result,
-    pipeline::builder::{fill_stroke_style, stroke_style, SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LINE},
-    pipeline::typed_series::{CandlestickSeries, RenderContext},
+    pipeline::{
+        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LINE, fill_stroke_style, stroke_style},
+        typed_series::{CandlestickSeries, RenderContext},
+    },
     visual::VisualElement,
 };
 
@@ -14,7 +16,11 @@ impl SeriesBuilder<CandlestickSeries> for CandlestickBuilder {
         let mut elements = Vec::with_capacity(series.candles.len() * 3); // 每个蜡烛有上影线、下影线和实体
 
         for candle in &series.candles {
-            let color = if candle.is_up { series.up_color } else { series.down_color };
+            let color = if candle.is_up {
+                series.up_color
+            } else {
+                series.down_color
+            };
 
             // 上影线
             elements.push(VisualElement::Line {

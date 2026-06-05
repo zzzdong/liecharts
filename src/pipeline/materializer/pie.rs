@@ -6,8 +6,8 @@ use crate::{
     error::Result,
     pipeline::{
         materializer::SeriesMaterializer,
-        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
         typed_series::{LabelPosition, PieSeries, PieSlice, TypedSeries},
+        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
     visual::Color,
 };
@@ -28,7 +28,7 @@ impl SeriesMaterializer for PieMaterializer {
             _ => {
                 return Err(crate::error::ChartError::InvalidConfig(
                     "Expected PieConfig".into(),
-                ))
+                ));
             }
         };
 

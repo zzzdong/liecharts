@@ -6,8 +6,8 @@ use crate::{
     error::Result,
     pipeline::{
         materializer::SeriesMaterializer,
-        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
         typed_series::{GaugeSeries, TypedSeries},
+        types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
     visual::Color,
 };
@@ -17,7 +17,7 @@ pub struct GaugeMaterializer;
 impl SeriesMaterializer for GaugeMaterializer {
     fn materialize(
         spec: &SeriesSpec,
-        bounds: Rect,
+        _bounds: Rect,
         _axis_ranges: &ResolvedAxisRanges,
         color: Color,
         _colors: &ColorContext,
@@ -28,7 +28,7 @@ impl SeriesMaterializer for GaugeMaterializer {
             _ => {
                 return Err(crate::error::ChartError::InvalidConfig(
                     "Expected GaugeConfig".into(),
-                ))
+                ));
             }
         };
 

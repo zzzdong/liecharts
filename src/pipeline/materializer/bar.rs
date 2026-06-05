@@ -5,9 +5,9 @@ use vello_cpu::kurbo::Rect;
 use crate::{
     error::Result,
     pipeline::{
-        materializer::{map_x_to_pixel, map_y_to_pixel, SeriesMaterializer},
-        types::{AxisType, ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
+        materializer::{SeriesMaterializer, map_x_to_pixel, map_y_to_pixel},
         typed_series::{BarRect, BarSeries, TypedSeries},
+        types::{AxisType, ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
     visual::Color,
 };
@@ -28,17 +28,17 @@ impl SeriesMaterializer for BarMaterializer {
             _ => {
                 return Err(crate::error::ChartError::InvalidConfig(
                     "Expected BarConfig".into(),
-                ))
+                ));
             }
         };
 
         // 获取 X/Y 轴范围
-        let x_range = axis_ranges
-            .get_x_range(spec.x_axis_index)
-            .ok_or_else(|| crate::error::ChartError::InvalidAxisBinding("X axis not found".into()))?;
-        let y_range = axis_ranges
-            .get_y_range(spec.y_axis_index)
-            .ok_or_else(|| crate::error::ChartError::InvalidAxisBinding("Y axis not found".into()))?;
+        let x_range = axis_ranges.get_x_range(spec.x_axis_index).ok_or_else(|| {
+            crate::error::ChartError::InvalidAxisBinding("X axis not found".into())
+        })?;
+        let y_range = axis_ranges.get_y_range(spec.y_axis_index).ok_or_else(|| {
+            crate::error::ChartError::InvalidAxisBinding("Y axis not found".into())
+        })?;
 
         // 判断是否为横向柱状图（Y 轴为分类轴）
         let is_horizontal = matches!(y_range.axis_type, AxisType::Category);
@@ -142,6 +142,16 @@ impl SeriesMaterializer for BarMaterializer {
             name: spec.name.clone(),
             color,
             bars,
+            label: if cfg.label_show {
+                Some(crate::pipeline::typed_series::SeriesLabelConfig {
+                    show: true,
+                    position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
+                    color: Color::new(60, 60, 65),
+                    font_size: cfg.label_font_size,
+                })
+            } else {
+                None
+            },
         }))
     }
 }
