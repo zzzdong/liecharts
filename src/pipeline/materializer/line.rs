@@ -6,10 +6,10 @@ use crate::{
     error::Result,
     pipeline::{
         materializer::{SeriesMaterializer, map_x_to_pixel, map_y_to_pixel},
-        sampling::SamplingProcessor,
         typed_series::{LineSeries, SymbolType, TypedSeries},
         types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
+    sampling::SamplingProcessor,
     visual::Color,
 };
 

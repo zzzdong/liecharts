@@ -35,11 +35,7 @@ impl<'a> AxisBindingResolver<'a> {
             let (resolved_min, resolved_max) = if matches!(axis.axis_type, AxisType::Category) {
                 (data_min, data_max)
             } else {
-                eprintln!(
-                    "DEBUG: calling compute_final_range with data_min={}, data_max={}",
-                    data_min, data_max
-                );
-                let result = self.compute_final_range(
+                self.compute_final_range(
                     axis.min,
                     axis.max,
                     data_min,
@@ -48,9 +44,7 @@ impl<'a> AxisBindingResolver<'a> {
                     axis.categories.len(),
                     axis.boundary_gap,
                     false,
-                );
-                eprintln!("DEBUG: compute_final_range result={:?}", result);
-                result
+                )
             };
 
             ranges.push(ResolvedAxisRange {
@@ -112,11 +106,6 @@ impl<'a> AxisBindingResolver<'a> {
             .map(|s| s.id)
             .collect();
 
-        eprintln!(
-            "DEBUG collect_x_axis_range: axis_idx={}, grids_with_axis={:?}, specs={:?}",
-            axis_idx, grids_with_axis, specs
-        );
-
         if grids_with_axis.is_empty() {
             return (0.0, 0.0);
         }
@@ -151,17 +140,11 @@ impl<'a> AxisBindingResolver<'a> {
         let mut bound_series: Vec<&SeriesSpec> = Vec::new();
 
         for series in self.series {
-            eprintln!(
-                "DEBUG: series.grid_index={}, grids_with_axis={:?}",
-                series.grid_index, grids_with_axis
-            );
             if !grids_with_axis.contains(&series.grid_index) {
-                eprintln!("DEBUG: series skipped");
                 continue;
             }
             all_y.extend(series.y_values());
             all_x.extend(series.x_values());
-            eprintln!("DEBUG: series added, stack={:?}", series.stack);
             bound_series.push(series);
         }
 
@@ -182,14 +165,8 @@ impl<'a> AxisBindingResolver<'a> {
         let mut data_max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
 
         // 检查是否有堆叠（用于横向柱状图，其值在 X 轴上）
-        eprintln!(
-            "DEBUG: axis_type={:?}, bound_series.len={}",
-            axis.axis_type,
-            bound_series.len()
-        );
         if matches!(axis.axis_type, AxisType::Value) {
             let has_stacked_bars = bound_series.iter().any(|s| s.stack.is_some());
-            eprintln!("DEBUG: has_stacked_bars={}", has_stacked_bars);
             if has_stacked_bars {
                 use std::collections::HashMap;
                 let mut stack_groups: HashMap<Option<String>, Vec<&SeriesSpec>> = HashMap::new();
@@ -217,10 +194,6 @@ impl<'a> AxisBindingResolver<'a> {
                                 row_total += v;
                             }
                         }
-                        eprintln!(
-                            "DEBUG: row={}, row_total={}, data_max={}",
-                            row, row_total, data_max
-                        );
                         if row_total > data_max {
                             data_max = row_total;
                         }

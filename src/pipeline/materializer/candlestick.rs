@@ -62,9 +62,10 @@ impl SeriesMaterializer for CandlestickMaterializer {
             .get_column(&cfg.high_col)
             .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.high_col.clone()))?;
 
-        // 计算蜡烛宽度
+        // 计算蜡烛宽度 — K线图通常比较紧凑窄小
         let cat_count = (x_range.max - x_range.min).max(1.0) as usize;
-        let candle_width = bounds.width() / cat_count as f64 * 0.6;
+        let slot_width = bounds.width() / cat_count as f64;
+        let candle_width = (slot_width * 0.35).max(2.0); // 窄小紧凑，最小 2px
 
         // 将数据点映射到像素空间
         let mut candles = Vec::with_capacity(spec.data.row_count());

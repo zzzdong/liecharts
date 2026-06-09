@@ -1,6 +1,7 @@
 pub mod api;
 pub mod builder;
 pub mod chart;
+pub mod compat;
 pub mod error;
 pub mod option;
 pub mod pipeline;
@@ -29,10 +30,8 @@ pub use option::{
     TableSeriesOption, TextAlignOption, TextStyleOption, TitleOption,
 };
 pub use pipeline::{
-    AxisBindingResolver, CartesianMapper, ColorAssigner, ColorContext, CoordinateMapper,
-    DataProcessor, DataProcessorInput, GridPlanner, NoopMapper, PolarMapper, ResolvedAxisRange,
-    ResolvedAxisRanges, SubplotSpec, SubplotVisualData, TextMeasurer, VisualElementBuilder,
-    build_chart, build_chart_with_theme,
+    AxisBindingResolver, ColorAssigner, ColorContext, GridPlanner, ResolvedAxisRange,
+    ResolvedAxisRanges, SubplotSpec, TextMeasurer, build_chart, build_chart_with_theme,
 };
 pub use sampling::{SamplingOption, SamplingType};
 pub use theme::{Theme, ThemeRegistry};

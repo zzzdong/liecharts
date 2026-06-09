@@ -738,7 +738,7 @@ fn datapoints_to_dataframe(
         df.add_column(DfSeries::new(x_col, xs));
         df.add_column(DfSeries::new(y_col, ys));
     } else {
-        // DataPoint::Value only
+        // DataPoint::Value only — add x as index + y column
         let values: Vec<DataValue> = points
             .iter()
             .map(|p| {
@@ -750,6 +750,10 @@ fn datapoints_to_dataframe(
                 DataValue::Float(v)
             })
             .collect();
+        let xs: Vec<DataValue> = (0..points.len())
+            .map(|i| DataValue::Float(i as f64))
+            .collect();
+        df.add_column(DfSeries::new(x_col, xs));
         df.add_column(DfSeries::new(y_col, values));
     }
 

@@ -65,7 +65,7 @@ impl PolarAxisRenderer {
             });
 
             // 添加半径标签
-            let label_value = (level * 100 / grid_levels);
+            let label_value = level * 100 / grid_levels;
             elements.push(VisualElement::TextRun {
                 text: label_value.to_string(),
                 position: Point::new(center.x + level_radius + 5.0, center.y),

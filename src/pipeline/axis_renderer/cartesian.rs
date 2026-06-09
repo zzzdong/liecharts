@@ -33,18 +33,10 @@ impl CartesianAxisRenderer {
         let bounds = subplot.bounds;
 
         // ── X 轴线 ──
-        eprintln!(
-            "DEBUG CartesianAxisRenderer: subplot.series_indices={:?}, axis_ranges.ranges={:?}",
-            subplot.series_indices, axis_ranges.ranges
-        );
         for &x_axis_idx in &subplot.x_axis_indices {
             let axis_config = option.x_axis.get(x_axis_idx);
             if let Some(axis_cfg) = axis_config {
                 let x_range = axis_ranges.get_x_range(x_axis_idx);
-                eprintln!(
-                    "DEBUG CartesianAxisRenderer: x_axis_idx={}, x_range={:?}",
-                    x_axis_idx, x_range
-                );
                 let (x_min, x_max) = x_range.map(|r| (r.min, r.max)).unwrap_or((0.0, 1.0));
 
                 // 轴线（底部）
