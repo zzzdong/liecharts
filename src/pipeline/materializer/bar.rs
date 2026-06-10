@@ -43,25 +43,21 @@ impl SeriesMaterializer for BarMaterializer {
         // 判断是否为横向柱状图（Y 轴为分类轴）
         let is_horizontal = matches!(y_range.axis_type, AxisType::Category);
 
-        // 类别列和数值列（用户配置：x_col是类别，y_col是数值）
-        let cat_col = &cfg.x_col;
-        let val_col = &cfg.y_col;
-
-        // 从 DataFrame 获取数据
-        let cat_vals = spec
-            .data
-            .get_column(cat_col)
-            .ok_or_else(|| crate::error::ChartError::MissingColumn(cat_col.clone()))?;
-        let val_vals = spec
-            .data
-            .get_column(val_col)
-            .ok_or_else(|| crate::error::ChartError::MissingColumn(val_col.clone()))?;
-
         // 将数据点映射到像素矩形
         let mut bars = Vec::with_capacity(spec.data.row_count());
 
         if is_horizontal {
             // 横向柱状图：Y轴是分类，X轴是数值
+            // 数据布局：X列是数值，Y列是索引
+            let x_vals = spec
+                .data
+                .get_column(&cfg.x_col)
+                .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.x_col.clone()))?;
+            let y_vals = spec
+                .data
+                .get_column(&cfg.y_col)
+                .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.y_col.clone()))?;
+
             let cat_count = (y_range.max - y_range.min).max(1.0) as usize;
             let bar_height = bounds.height() / cat_count as f64 * cfg.bar_width;
             // 基线：如果0在范围内，使用0；否则使用范围的最小值
@@ -76,11 +72,17 @@ impl SeriesMaterializer for BarMaterializer {
             };
 
             for i in 0..spec.data.row_count() {
-                let value = val_vals.as_f64(i).unwrap_or(0.0);
-                let category = cat_vals.as_string(i).unwrap_or_default();
+                let value = x_vals.as_f64(i).unwrap_or(0.0);
+                let cat_idx = y_vals.as_f64(i).unwrap_or(i as f64) as usize % cat_count;
+
+                // 类别标签从 Y 轴配置获取
+                let category = if let Some(cat) = y_range.categories.get(cat_idx) {
+                    cat.clone()
+                } else {
+                    format!("{}", cat_idx)
+                };
 
                 // 计算 Y 位置（类别中心）
-                let cat_idx = i % cat_count;
                 let py = bounds.y1 - (cat_idx as f64 + 0.5) / cat_count as f64 * bounds.height();
                 let px = map_x_to_pixel(value, x_range, bounds);
 
@@ -100,6 +102,16 @@ impl SeriesMaterializer for BarMaterializer {
             }
         } else {
             // 纵向柱状图：X轴是分类，Y轴是数值
+            // 数据布局：X列是索引，Y列是数值
+            let x_vals = spec
+                .data
+                .get_column(&cfg.x_col)
+                .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.x_col.clone()))?;
+            let y_vals = spec
+                .data
+                .get_column(&cfg.y_col)
+                .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.y_col.clone()))?;
+            // 纵向柱状图：X轴是分类，Y轴是数值
             let cat_count = (x_range.max - x_range.min).max(1.0) as usize;
             let bar_width = bounds.width() / cat_count as f64 * cfg.bar_width;
             // 基线：如果0在范围内，使用0；否则使用范围的最小值（底部）
@@ -114,11 +126,17 @@ impl SeriesMaterializer for BarMaterializer {
             };
 
             for i in 0..spec.data.row_count() {
-                let value = val_vals.as_f64(i).unwrap_or(0.0);
-                let category = cat_vals.as_string(i).unwrap_or_default();
+                let value = y_vals.as_f64(i).unwrap_or(0.0);
+                let cat_idx = x_vals.as_f64(i).unwrap_or(i as f64) as usize % cat_count;
+
+                // 类别标签从 X 轴配置获取
+                let category = if let Some(cat) = x_range.categories.get(cat_idx) {
+                    cat.clone()
+                } else {
+                    format!("{}", cat_idx)
+                };
 
                 // 计算 X 位置（类别中心）
-                let cat_idx = i % cat_count;
                 let px = bounds.x0 + (cat_idx as f64 + 0.5) / cat_count as f64 * bounds.width();
                 let py = map_y_to_pixel(value, y_range, bounds);
 

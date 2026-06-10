@@ -6,11 +6,11 @@
 use crate::{
     error::Result,
     option::{
-        AxisOption, AxisType, BarSeriesOption, BubbleDataPoint, BubbleSeriesOption,
-        CandlestickSeriesOption, ChartOption, GaugeSeriesOption, GridOption, LegendOption,
-        LineSeriesOption, PieSeriesOption, PolarBarSeriesOption, PolarScatterSeriesOption,
-        PositionOption, PositionPreset, RadarSeriesOption, ScatterSeriesOption, SeriesOption,
-        TableSeriesOption, TitleOption,
+        AxisConfig, AxisOption, AxisType, BarSeriesOption, BubbleDataPoint, BubbleSeriesOption,
+        CandlestickSeriesOption, ChartOption, GaugeSeriesOption, GridConfig, GridOption,
+        LegendOption, LineSeriesOption, PieSeriesOption, PolarBarSeriesOption,
+        PolarScatterSeriesOption, PositionOption, PositionPreset, RadarSeriesOption,
+        ScatterSeriesOption, SeriesOption, TableSeriesOption, TitleOption,
     },
     pipeline::{
         dataframe::DataValue,
@@ -49,24 +49,31 @@ pub fn chart_spec_to_chart_option(spec: &ChartSpec) -> ChartOption {
     }
 
     // Grids
-    for g in &spec.grids {
-        option.grid.push(GridOption {
+    let grid_options: Vec<GridOption> = spec
+        .grids
+        .iter()
+        .map(|g| GridOption {
             left: g.left.map(PositionOption::Pixel),
             right: g.right.map(PositionOption::Pixel),
             top: g.top.map(PositionOption::Pixel),
             bottom: g.bottom.map(PositionOption::Pixel),
             contain_label: Some(g.contain_label),
-        });
+        })
+        .collect();
+    if !grid_options.is_empty() {
+        option.grid = GridConfig::Multiple(grid_options);
     }
 
     // X Axes
-    for a in &spec.x_axes {
-        option.x_axis.push(axis_spec_to_option(a));
+    let x_axis_options: Vec<AxisOption> = spec.x_axes.iter().map(axis_spec_to_option).collect();
+    if !x_axis_options.is_empty() {
+        option.x_axis = AxisConfig::Multiple(x_axis_options);
     }
 
     // Y Axes
-    for a in &spec.y_axes {
-        option.y_axis.push(axis_spec_to_option(a));
+    let y_axis_options: Vec<AxisOption> = spec.y_axes.iter().map(axis_spec_to_option).collect();
+    if !y_axis_options.is_empty() {
+        option.y_axis = AxisConfig::Multiple(y_axis_options);
     }
 
     // Series

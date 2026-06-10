@@ -55,6 +55,7 @@ impl<'a> AxisBindingResolver<'a> {
                 max: resolved_max,
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
                 tick_count_hint: None,
+                categories: axis.categories.clone(),
             });
         }
 
@@ -92,6 +93,7 @@ impl<'a> AxisBindingResolver<'a> {
                 max: resolved_max,
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
                 tick_count_hint: None,
+                categories: axis.categories.clone(),
             });
         }
 
@@ -148,14 +150,12 @@ impl<'a> AxisBindingResolver<'a> {
             bound_series.push(series);
         }
 
-        // 对于数值轴，如果 x_values 为空（字符串列），则使用 y_values
-        let values = if matches!(axis.axis_type, AxisType::Value) && !all_x.is_empty() {
-            all_x
-        } else if matches!(axis.axis_type, AxisType::Value) {
-            all_y
-        } else {
-            all_y
-        };
+        // 对于数值轴，合并 x_values 和 y_values 来确定范围
+        // 这样可以处理水平柱状图（数值在 Y 列）和普通情况（数值在 X 列）
+        let mut values = all_y;
+        if matches!(axis.axis_type, AxisType::Value) {
+            values.extend(all_x);
+        }
 
         if values.is_empty() {
             return (0.0, 100.0);

@@ -2,8 +2,8 @@ use crate::{
     chart::Chart,
     error::{ChartError, Result},
     option::{
-        AxisOption, ChartOption, ColorOption, DataPoint, GridOption, LegendOption,
-        LineSeriesOption, RadarOption, SeriesOption, TextStyleOption, TitleOption,
+        AxisConfig, AxisOption, ChartOption, ColorOption, DataPoint, GridConfig, GridOption,
+        LegendOption, LineSeriesOption, RadarOption, SeriesOption, TextStyleOption, TitleOption,
     },
     theme::{Theme, ThemeRegistry},
 };
@@ -87,17 +87,51 @@ impl ChartBuilder {
     }
 
     pub fn with_grid(mut self, grid: GridOption) -> Self {
-        self.option.grid.push(grid);
+        match &mut self.option.grid {
+            GridConfig::Multiple(grids) => grids.push(grid),
+            GridConfig::Single(_) => {
+                // If currently single, convert to multiple
+                let old = std::mem::take(&mut self.option.grid);
+                let mut grids = match old {
+                    GridConfig::Single(g) => vec![g],
+                    GridConfig::Multiple(g) => g,
+                };
+                grids.push(grid);
+                self.option.grid = GridConfig::Multiple(grids);
+            }
+        }
         self
     }
 
     pub fn with_x_axis(mut self, axis: AxisOption) -> Self {
-        self.option.x_axis.push(axis);
+        match &mut self.option.x_axis {
+            AxisConfig::Multiple(axes) => axes.push(axis),
+            AxisConfig::Single(_) => {
+                let old = std::mem::take(&mut self.option.x_axis);
+                let mut axes = match old {
+                    AxisConfig::Single(a) => vec![a],
+                    AxisConfig::Multiple(a) => a,
+                };
+                axes.push(axis);
+                self.option.x_axis = AxisConfig::Multiple(axes);
+            }
+        }
         self
     }
 
     pub fn with_y_axis(mut self, axis: AxisOption) -> Self {
-        self.option.y_axis.push(axis);
+        match &mut self.option.y_axis {
+            AxisConfig::Multiple(axes) => axes.push(axis),
+            AxisConfig::Single(_) => {
+                let old = std::mem::take(&mut self.option.y_axis);
+                let mut axes = match old {
+                    AxisConfig::Single(a) => vec![a],
+                    AxisConfig::Multiple(a) => a,
+                };
+                axes.push(axis);
+                self.option.y_axis = AxisConfig::Multiple(axes);
+            }
+        }
         self
     }
 

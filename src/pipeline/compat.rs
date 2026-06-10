@@ -5,11 +5,12 @@
 
 use crate::{
     option::{
-        self, AxisOption, AxisType, BarSeriesOption, BubbleDataPoint, BubbleSeriesOption,
-        CandlestickSeriesOption, ChartOption, GaugeSeriesOption, GridOption, LegendOption,
-        LineSeriesOption, PieSeriesOption, PolarBarSeriesOption, PolarScatterSeriesOption,
-        PositionOption, PositionPreset, RadarIndicatorOption, RadarOption, RadarSeriesOption,
-        ScatterSeriesOption, SeriesOption, TableSeriesOption, TitleOption,
+        self, AxisConfig, AxisOption, AxisType, BarSeriesOption, BubbleDataPoint,
+        BubbleSeriesOption, CandlestickSeriesOption, ChartOption, GaugeSeriesOption, GridConfig,
+        GridOption, LegendOption, LineSeriesOption, PieSeriesOption, PolarBarSeriesOption,
+        PolarScatterSeriesOption, PositionOption, PositionPreset, RadarIndicatorOption,
+        RadarOption, RadarSeriesOption, ScatterSeriesOption, SeriesOption, TableSeriesOption,
+        TitleOption,
     },
     pipeline::{
         dataframe::DataValue,
@@ -51,13 +52,22 @@ pub fn chart_spec_to_chart_option(spec: &ChartSpec) -> ChartOption {
     }
 
     // Grids
-    option.grid = spec.grids.iter().map(grid_to_grid_option).collect();
+    let grid_options: Vec<GridOption> = spec.grids.iter().map(grid_to_grid_option).collect();
+    if !grid_options.is_empty() {
+        option.grid = GridConfig::Multiple(grid_options);
+    }
 
     // X Axes
-    option.x_axis = spec.x_axes.iter().map(axis_to_axis_option).collect();
+    let x_axis_options: Vec<AxisOption> = spec.x_axes.iter().map(axis_to_axis_option).collect();
+    if !x_axis_options.is_empty() {
+        option.x_axis = AxisConfig::Multiple(x_axis_options);
+    }
 
     // Y Axes
-    option.y_axis = spec.y_axes.iter().map(axis_to_axis_option).collect();
+    let y_axis_options: Vec<AxisOption> = spec.y_axes.iter().map(axis_to_axis_option).collect();
+    if !y_axis_options.is_empty() {
+        option.y_axis = AxisConfig::Multiple(y_axis_options);
+    }
 
     // Series
     option.series = spec.series.iter().map(series_to_series_option).collect();
@@ -515,7 +525,26 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     }
                 }
                 SeriesOption::Bar(bs) => {
-                    let data = datapoints_to_dataframe(&bs.data, "x", "y");
+                    // 判断是否为水平柱状图：Y轴是分类轴
+                    let y_axis_idx = bs.y_axis_index.unwrap_or(0);
+                    let x_axis_idx = 0; // Bar 系列目前只支持 xAxisIndex=0
+                    let is_horizontal = y_axes
+                        .get(y_axis_idx)
+                        .map(|a| matches!(a.axis_type, NewAxisType::Category))
+                        .unwrap_or(false);
+
+                    // 根据方向决定数据转换方式
+                    let (data, x_col, y_col) = if is_horizontal {
+                        // 水平柱状图：X轴是数值，Y轴是分类
+                        // 将数据放入 X 列，索引放入 Y 列
+                        let df = datapoints_to_dataframe_horizontal(&bs.data);
+                        (df, "x".into(), "y".into())
+                    } else {
+                        // 纵向柱状图：X轴是分类，Y轴是数值
+                        let df = datapoints_to_dataframe(&bs.data, "x", "y");
+                        (df, "x".into(), "y".into())
+                    };
+
                     let bar_width = bs
                         .bar_width
                         .as_ref()
@@ -524,8 +553,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         .map(|v| v / 100.0)
                         .unwrap_or(0.6);
                     let config = BarConfig {
-                        x_col: "x".into(),
-                        y_col: "y".into(),
+                        x_col,
+                        y_col,
                         bar_width,
                         label_show: false,
                         label_font_size: 12.0,
@@ -535,8 +564,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         chart_type: ChartType::Bar,
                         data,
                         grid_index: bs.grid_index.unwrap_or(0),
-                        x_axis_index: 0,
-                        y_axis_index: bs.y_axis_index.unwrap_or(0),
+                        x_axis_index: x_axis_idx,
+                        y_axis_index: y_axis_idx,
                         stack: bs.stack.clone(),
                         group_index: bs.group_index.unwrap_or(0),
                         sampling,
@@ -755,6 +784,82 @@ fn datapoints_to_dataframe(
             .collect();
         df.add_column(DfSeries::new(x_col, xs));
         df.add_column(DfSeries::new(y_col, values));
+    }
+
+    df
+}
+
+/// 为水平柱状图转换数据点
+/// 水平柱状图：X轴是数值轴，Y轴是分类轴
+/// 将数据值放入 X 列，索引放入 Y 列
+fn datapoints_to_dataframe_horizontal(
+    points: &[option::DataPoint],
+) -> crate::pipeline::dataframe::DataFrame {
+    use crate::pipeline::dataframe::{DataFrame, DataValue, Series as DfSeries};
+
+    let mut df = DataFrame::new();
+
+    if points.is_empty() {
+        return df;
+    }
+
+    // 判断数据点类型
+    let is_named = matches!(points[0], option::DataPoint::Named(_, _));
+    let is_xy = matches!(points[0], option::DataPoint::XY(_, _));
+
+    if is_named {
+        // Named 模式: (category, value) -> X=value, Y=index
+        let xs: Vec<DataValue> = points
+            .iter()
+            .map(|p| {
+                let v = match p {
+                    option::DataPoint::Named(_, y) => *y,
+                    option::DataPoint::Value(y) => *y,
+                    option::DataPoint::XY(_, y) => *y,
+                };
+                DataValue::Float(v)
+            })
+            .collect();
+        let ys: Vec<DataValue> = (0..points.len())
+            .map(|i| DataValue::Float(i as f64))
+            .collect();
+        df.add_column(DfSeries::new("x", xs));
+        df.add_column(DfSeries::new("y", ys));
+    } else if is_xy {
+        // XY 模式: (x, y) -> X=x, Y=index
+        let xs: Vec<DataValue> = points
+            .iter()
+            .map(|p| {
+                if let option::DataPoint::XY(x, _) = p {
+                    DataValue::Float(*x)
+                } else {
+                    DataValue::Null
+                }
+            })
+            .collect();
+        let ys: Vec<DataValue> = (0..points.len())
+            .map(|i| DataValue::Float(i as f64))
+            .collect();
+        df.add_column(DfSeries::new("x", xs));
+        df.add_column(DfSeries::new("y", ys));
+    } else {
+        // Value 模式: value -> X=value, Y=index
+        let xs: Vec<DataValue> = points
+            .iter()
+            .map(|p| {
+                let v = match p {
+                    option::DataPoint::Value(y) => *y,
+                    option::DataPoint::XY(_, y) => *y,
+                    option::DataPoint::Named(_, y) => *y,
+                };
+                DataValue::Float(v)
+            })
+            .collect();
+        let ys: Vec<DataValue> = (0..points.len())
+            .map(|i| DataValue::Float(i as f64))
+            .collect();
+        df.add_column(DfSeries::new("x", xs));
+        df.add_column(DfSeries::new("y", ys));
     }
 
     df

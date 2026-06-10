@@ -7,13 +7,31 @@ use vello_cpu::kurbo::{Point, Rect};
 
 use super::compute_nice_ticks;
 use crate::{
-    option::{AxisOption, AxisType, ChartOption},
+    option::{AxisLabelOption, AxisOption, AxisType, ChartOption},
     pipeline::types::{AxisPosition, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
     visual::{
         Color, StrokeStyle, TextAlign, TextBaseline, TextStyle, VisualElement, Z_AXIS, Z_GRID,
         Z_LABEL,
     },
 };
+
+/// 应用 formatter 格式化标签文本
+///
+/// 支持 ECharts 风格的 formatter:
+/// - "{value}" - 替换为数值
+/// - "{value} 万人" - 带后缀的模板
+fn format_label(value: &str, axis_label: &Option<AxisLabelOption>) -> String {
+    let Some(label_cfg) = axis_label else {
+        return value.to_string();
+    };
+
+    let Some(formatter) = &label_cfg.formatter else {
+        return value.to_string();
+    };
+
+    // 处理 {value} 占位符
+    formatter.replace("{value}", value)
+}
 
 /// 笛卡尔坐标轴渲染器
 ///
@@ -207,8 +225,9 @@ impl CartesianAxisRenderer {
                         0.5
                     };
                     let x = bounds.x0 + t * bounds.width();
+                    let formatted_label = format_label(label, &axis_cfg.axis_label);
                     elements.push(VisualElement::TextRun {
-                        text: label.clone(),
+                        text: formatted_label,
                         position: Point::new(x, label_y),
                         style: TextStyle {
                             font_size: 11.0,
@@ -234,13 +253,14 @@ impl CartesianAxisRenderer {
                     0.5
                 };
                 let x = bounds.x0 + t * bounds.width();
-                let label = if v.fract() == 0.0 {
+                let raw_label = if v.fract() == 0.0 {
                     format!("{:.0}", v)
                 } else if (v * 100.0).fract() == 0.0 {
                     format!("{:.1}", v)
                 } else {
                     format!("{:.2}", v)
                 };
+                let label = format_label(&raw_label, &axis_cfg.axis_label);
                 elements.push(VisualElement::TextRun {
                     text: label,
                     position: Point::new(x, label_y),
@@ -289,8 +309,9 @@ impl CartesianAxisRenderer {
                         0.5
                     };
                     let y = bounds.y0 + t * bounds.height();
+                    let formatted_label = format_label(label, &axis_cfg.axis_label);
                     elements.push(VisualElement::TextRun {
-                        text: label.clone(),
+                        text: formatted_label,
                         position: Point::new(x, y),
                         style: TextStyle {
                             font_size: 11.0,
@@ -318,13 +339,14 @@ impl CartesianAxisRenderer {
                 0.5
             };
             let y = bounds.y0 + t * bounds.height();
-            let label = if v.fract() == 0.0 {
+            let raw_label = if v.fract() == 0.0 {
                 format!("{:.0}", v)
             } else if (v * 100.0).fract() == 0.0 {
                 format!("{:.1}", v)
             } else {
                 format!("{:.2}", v)
             };
+            let label = format_label(&raw_label, &axis_cfg.axis_label);
             elements.push(VisualElement::TextRun {
                 text: label,
                 position: Point::new(x, y),

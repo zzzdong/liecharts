@@ -2,10 +2,129 @@ use std::fmt;
 
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
-    de::{self, Visitor},
+    de::{self, SeqAccess, Visitor},
 };
 
 use crate::sampling::SamplingOption;
+
+/// Configuration that can be either a single item or multiple items.
+/// Used for ECharts-compatible JSON parsing where a field can be an object or array.
+#[derive(Debug, Clone)]
+pub enum SingleOrMultiple<T> {
+    Single(T),
+    Multiple(Vec<T>),
+}
+
+impl<T> Default for SingleOrMultiple<T> {
+    fn default() -> Self {
+        SingleOrMultiple::Multiple(Vec::new())
+    }
+}
+
+impl<T: Serialize> Serialize for SingleOrMultiple<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            SingleOrMultiple::Single(item) => item.serialize(serializer),
+            SingleOrMultiple::Multiple(items) => items.serialize(serializer),
+        }
+    }
+}
+
+impl<'de, T: Deserialize<'de>> Deserialize<'de> for SingleOrMultiple<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct SingleOrMultipleVisitor<T> {
+            _phantom: std::marker::PhantomData<T>,
+        }
+
+        impl<'de, T: Deserialize<'de>> Visitor<'de> for SingleOrMultipleVisitor<T> {
+            type Value = SingleOrMultiple<T>;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a single object or an array of objects")
+            }
+
+            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                let item = T::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(SingleOrMultiple::Single(item))
+            }
+
+            fn visit_seq<A>(self, seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let items = Vec::deserialize(de::value::SeqAccessDeserializer::new(seq))?;
+                Ok(SingleOrMultiple::Multiple(items))
+            }
+        }
+
+        deserializer.deserialize_any(SingleOrMultipleVisitor {
+            _phantom: std::marker::PhantomData,
+        })
+    }
+}
+
+impl<T> SingleOrMultiple<T> {
+    /// Returns the items as a slice.
+    pub fn as_slice(&self) -> &[T] {
+        match self {
+            SingleOrMultiple::Single(item) => std::slice::from_ref(item),
+            SingleOrMultiple::Multiple(items) => items.as_slice(),
+        }
+    }
+
+    /// Returns true if there are no items configured.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            SingleOrMultiple::Single(_) => false,
+            SingleOrMultiple::Multiple(items) => items.is_empty(),
+        }
+    }
+
+    /// Returns the number of items.
+    pub fn len(&self) -> usize {
+        match self {
+            SingleOrMultiple::Single(_) => 1,
+            SingleOrMultiple::Multiple(items) => items.len(),
+        }
+    }
+
+    /// Returns an iterator over the items.
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        match self {
+            SingleOrMultiple::Single(item) => std::slice::from_ref(item).iter(),
+            SingleOrMultiple::Multiple(items) => items.iter(),
+        }
+    }
+
+    /// Returns a reference to the item at the given index.
+    pub fn get(&self, index: usize) -> Option<&T> {
+        match self {
+            SingleOrMultiple::Single(item) => {
+                if index == 0 {
+                    Some(item)
+                } else {
+                    None
+                }
+            }
+            SingleOrMultiple::Multiple(items) => items.get(index),
+        }
+    }
+}
+
+/// Type alias for grid configuration.
+pub type GridConfig = SingleOrMultiple<GridOption>;
+
+/// Type alias for axis configuration.
+pub type AxisConfig = SingleOrMultiple<AxisOption>;
 
 /// Root chart configuration.
 ///
@@ -18,12 +137,12 @@ pub struct ChartOption {
     pub title: Option<TitleOption>,
     pub legend: Option<LegendOption>,
     #[serde(default)]
-    pub grid: Vec<GridOption>,
+    pub grid: GridConfig,
     pub radar: Option<RadarOption>,
     #[serde(default)]
-    pub x_axis: Vec<AxisOption>,
+    pub x_axis: AxisConfig,
     #[serde(default)]
-    pub y_axis: Vec<AxisOption>,
+    pub y_axis: AxisConfig,
     #[serde(default)]
     pub series: Vec<SeriesOption>,
     pub color: Option<Vec<ColorOption>>,

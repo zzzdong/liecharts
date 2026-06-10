@@ -56,21 +56,22 @@ impl SeriesMaterializer for LineMaterializer {
             .get_column(&cfg.y_col)
             .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.y_col.clone()))?;
 
-        // 判断 X 列是否为数值类型（第一行数据）
-        let is_numeric_x = x_vals.as_f64(0).is_some();
-
-        // 判断是否为分类轴且 boundary_gap 为 true（需要居中）
-        let is_category_with_gap =
-            !is_numeric_x && (x_range.max - x_range.min) > df.row_count() as f64 - 1.0;
+        // 判断 X 轴类型：优先使用 axis_type，而不是 DataFrame 中的数据类型
+        let is_category_axis = matches!(
+            x_range.axis_type,
+            crate::pipeline::types::AxisType::Category
+        );
+        let is_numeric_x = !is_category_axis && x_vals.as_f64(0).is_some();
+        let row_count = df.row_count();
+        let range_size = x_range.max - x_range.min;
+        let is_category_with_gap = is_category_axis && range_size > row_count as f64 - 1.0;
 
         // 将数据点映射到像素空间
         let mut points = Vec::with_capacity(df.row_count());
         let mut values = Vec::with_capacity(df.row_count());
 
         for i in 0..df.row_count() {
-            let x = if is_numeric_x {
-                x_vals.as_f64(i)
-            } else {
+            let x = if is_category_axis {
                 // 分类轴：使用索引作为 X 值，居中时加 0.5
                 let idx = i as f64;
                 if is_category_with_gap {
@@ -78,6 +79,11 @@ impl SeriesMaterializer for LineMaterializer {
                 } else {
                     Some(idx)
                 }
+            } else if is_numeric_x {
+                x_vals.as_f64(i)
+            } else {
+                // 其他情况：使用索引
+                Some(i as f64)
             };
             let y = y_vals.as_f64(i);
 

@@ -554,6 +554,7 @@ pub struct ResolvedAxisRange {
     pub max: f64,
     pub is_user_defined: bool,
     pub tick_count_hint: Option<usize>,
+    pub categories: Vec<String>,
 }
 
 impl ResolvedAxisRange {
