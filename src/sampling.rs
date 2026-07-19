@@ -92,12 +92,13 @@ impl SamplingProcessor {
             let x_next = (row_count - 1) as f64;
             let y_next = values[row_count - 1];
 
-            for j in bucket_start..bucket_end {
-                if j >= row_count {
-                    break;
-                }
+            for (j, &y_j) in values
+                .iter()
+                .enumerate()
+                .take(bucket_end)
+                .skip(bucket_start)
+            {
                 let x_j = j as f64;
-                let y_j = values[j];
                 let area =
                     ((x_prev - x_j) * (y_next - y_j) - (x_prev - x_next) * (y_prev - y_j)).abs();
                 if area > best_area {

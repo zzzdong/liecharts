@@ -127,7 +127,7 @@ impl<'a> GridPlanner<'a> {
         // contain_label=true 时，边距需要足够容纳轴刻度标签
         let default_left = if grid.contain_label { 70.0 } else { 60.0 };
         let default_right = if grid.contain_label { 50.0 } else { 60.0 };
-        let default_bottom = if grid.contain_label { 60.0 } else { 60.0 };
+        let default_bottom = 60.0;
 
         let left = grid.left.unwrap_or(default_left);
         let right = grid.right.unwrap_or(default_right);
@@ -168,10 +168,7 @@ impl<'a> GridPlanner<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::{
-        dataframe::{DataFrame, DataValue, Series},
-        types::*,
-    };
+    use crate::pipeline::types::*;
 
     fn make_series(name: &str, chart_type: ChartType, grid_index: usize) -> SeriesSpec {
         use crate::pipeline::dataframe::{DataFrame, DataValue, Series};
@@ -257,9 +254,11 @@ mod tests {
         let specs = planner.plan();
 
         assert_eq!(specs.len(), 2);
-        assert!((specs[0].bounds.x1 - 400.0).abs() < 1.0);
-        assert!((specs[1].bounds.x0 - 400.0).abs() < 1.0);
-        assert!((specs[1].bounds.x1 - 800.0).abs() < 1.0);
+        // Grid 0: left=0 → effective_left=50, right=400 → effective_right=440, width=310, x1=360
+        assert!((specs[0].bounds.x1 - 360.0).abs() < 1.0);
+        // Grid 1: left=400 → effective_left=450, right=0 → effective_right=40, x0=450, x1=760
+        assert!((specs[1].bounds.x0 - 450.0).abs() < 1.0);
+        assert!((specs[1].bounds.x1 - 760.0).abs() < 1.0);
 
         assert_eq!(specs[0].series_indices, vec![0]);
         assert_eq!(specs[1].series_indices, vec![1]);

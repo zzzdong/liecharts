@@ -3,7 +3,7 @@ pub use vello_cpu::Pixmap;
 use crate::{
     error::Result,
     option::ChartOption,
-    pipeline::pipeline::build_chart_with_theme,
+    pipeline::chart_pipeline::build_chart_with_theme,
     render::{PixmapRenderer, SvgRenderer},
     theme::Theme,
     visual::VisualElement,

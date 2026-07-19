@@ -6,9 +6,9 @@
 use crate::{
     error::Result,
     option::{
-        AxisConfig, AxisOption, AxisType, BarSeriesOption, BubbleDataPoint, BubbleSeriesOption,
-        CandlestickSeriesOption, ChartOption, GaugeSeriesOption, GridConfig, GridOption,
-        LegendOption, LineSeriesOption, PieSeriesOption, PolarBarSeriesOption,
+        AxisConfig, AxisOption, AxisType, BarSeriesOption, BoxplotSeriesOption, BubbleDataPoint,
+        BubbleSeriesOption, CandlestickSeriesOption, ChartOption, GaugeSeriesOption, GridConfig,
+        GridOption, LegendOption, LineSeriesOption, PieSeriesOption, PolarBarSeriesOption,
         PolarScatterSeriesOption, PositionOption, PositionPreset, RadarSeriesOption,
         ScatterSeriesOption, SeriesOption, TableSeriesOption, TitleOption,
     },
@@ -28,10 +28,8 @@ use crate::{
 
 /// 将 ChartSpec 转换为旧的 ChartOption
 pub fn chart_spec_to_chart_option(spec: &ChartSpec) -> ChartOption {
-    let mut option = ChartOption::default();
-
     // Title
-    option.title = spec.title.as_ref().map(|t| TitleOption {
+    let title = spec.title.as_ref().map(|t| TitleOption {
         text: t.text.clone(),
         subtext: t.subtext.clone(),
         left: Some(PositionOption::Preset(PositionPreset::Center)),
@@ -40,43 +38,62 @@ pub fn chart_spec_to_chart_option(spec: &ChartSpec) -> ChartOption {
     });
 
     // Legend
-    if let Some(ref legend) = spec.legend {
-        option.legend = Some(LegendOption {
-            show: Some(legend.show),
-            data: Some(legend.data.clone()),
-            ..Default::default()
-        });
-    }
+    let legend = spec.legend.as_ref().map(|legend| LegendOption {
+        show: Some(legend.show),
+        data: Some(
+            legend
+                .data
+                .iter()
+                .cloned()
+                .map(crate::option::LegendDataItem::Str)
+                .collect(),
+        ),
+        ..Default::default()
+    });
 
     // Grids
-    let grid_options: Vec<GridOption> = spec
-        .grids
-        .iter()
-        .map(|g| GridOption {
-            left: g.left.map(PositionOption::Pixel),
-            right: g.right.map(PositionOption::Pixel),
-            top: g.top.map(PositionOption::Pixel),
-            bottom: g.bottom.map(PositionOption::Pixel),
-            contain_label: Some(g.contain_label),
-        })
-        .collect();
-    if !grid_options.is_empty() {
-        option.grid = GridConfig::Multiple(grid_options);
-    }
+    let grid = {
+        let grid_options: Vec<GridOption> = spec
+            .grids
+            .iter()
+            .map(|g| GridOption {
+                left: g.left.map(PositionOption::Pixel),
+                right: g.right.map(PositionOption::Pixel),
+                top: g.top.map(PositionOption::Pixel),
+                bottom: g.bottom.map(PositionOption::Pixel),
+                contain_label: Some(g.contain_label),
+                ..Default::default()
+            })
+            .collect();
+        if grid_options.is_empty() {
+            GridConfig::default()
+        } else {
+            GridConfig::Multiple(grid_options)
+        }
+    };
 
     // X Axes
-    let x_axis_options: Vec<AxisOption> = spec.x_axes.iter().map(axis_spec_to_option).collect();
-    if !x_axis_options.is_empty() {
-        option.x_axis = AxisConfig::Multiple(x_axis_options);
-    }
+    let x_axis = {
+        let x_axis_options: Vec<AxisOption> = spec.x_axes.iter().map(axis_spec_to_option).collect();
+        if x_axis_options.is_empty() {
+            AxisConfig::default()
+        } else {
+            AxisConfig::Multiple(x_axis_options)
+        }
+    };
 
     // Y Axes
-    let y_axis_options: Vec<AxisOption> = spec.y_axes.iter().map(axis_spec_to_option).collect();
-    if !y_axis_options.is_empty() {
-        option.y_axis = AxisConfig::Multiple(y_axis_options);
-    }
+    let y_axis = {
+        let y_axis_options: Vec<AxisOption> = spec.y_axes.iter().map(axis_spec_to_option).collect();
+        if y_axis_options.is_empty() {
+            AxisConfig::default()
+        } else {
+            AxisConfig::Multiple(y_axis_options)
+        }
+    };
 
     // Series
+    let mut series = Vec::new();
     for s in &spec.series {
         match s.chart_type {
             ChartType::Line => {
@@ -84,241 +101,305 @@ pub fn chart_spec_to_chart_option(spec: &ChartSpec) -> ChartOption {
                     SeriesConfig::Line(c) => c.clone(),
                     _ => Default::default(),
                 };
-                let mut ls = LineSeriesOption::default();
-                ls.name = Some(s.name.clone());
-                ls.data = df_to_datapoints_by_cols(s, &cfg.x_col, &cfg.y_col);
-                ls.smooth = Some(cfg.smooth);
-                ls.stack = s.stack.clone();
-                ls.sampling = s
-                    .sampling
-                    .map(|(ty, threshold)| SamplingOption { ty, threshold });
-                ls.item_style = s.item_style.color.map(|c| crate::option::ItemStyleOption {
-                    color: Some(crate::option::ColorOption::new(c.r, c.g, c.b)),
+                series.push(SeriesOption::Line(LineSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: df_to_datapoints_by_cols(s, &cfg.x_col, &cfg.y_col),
+                    smooth: Some(cfg.smooth),
+                    stack: s.stack.clone(),
+                    sampling: s
+                        .sampling
+                        .map(|(ty, threshold)| SamplingOption { ty, threshold }),
+                    item_style: s.item_style.color.map(|c| crate::option::ItemStyleOption {
+                        color: Some(crate::option::ColorOption::new(c.r, c.g, c.b)),
+                        ..Default::default()
+                    }),
+                    y_axis_index: Some(s.y_axis_index),
+                    grid_index: Some(s.grid_index),
                     ..Default::default()
-                });
-                ls.y_axis_index = Some(s.y_axis_index);
-                ls.grid_index = Some(s.grid_index);
-                option.series.push(SeriesOption::Line(ls));
+                }));
             }
             ChartType::Bar => {
                 let cfg = match &s.config {
                     SeriesConfig::Bar(c) => c.clone(),
                     _ => Default::default(),
                 };
-                let mut bs = BarSeriesOption::default();
-                bs.name = Some(s.name.clone());
-                bs.data = df_to_datapoints_by_cols(s, &cfg.x_col, &cfg.y_col);
-                bs.stack = s.stack.clone();
-                bs.group_index = Some(s.group_index);
-                bs.item_style = s.item_style.color.map(|c| crate::option::ItemStyleOption {
-                    color: Some(crate::option::ColorOption::new(c.r, c.g, c.b)),
+                series.push(SeriesOption::Bar(BarSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: df_to_datapoints_by_cols(s, &cfg.x_col, &cfg.y_col),
+                    stack: s.stack.clone(),
+                    group_index: Some(s.group_index),
+                    item_style: s.item_style.color.map(|c| crate::option::ItemStyleOption {
+                        color: Some(crate::option::ColorOption::new(c.r, c.g, c.b)),
+                        ..Default::default()
+                    }),
+                    y_axis_index: Some(s.y_axis_index),
+                    grid_index: Some(s.grid_index),
                     ..Default::default()
-                });
-                bs.y_axis_index = Some(s.y_axis_index);
-                bs.grid_index = Some(s.grid_index);
-                option.series.push(SeriesOption::Bar(bs));
+                }));
             }
             ChartType::Scatter => {
                 let cfg = match &s.config {
                     SeriesConfig::Scatter(c) => c.clone(),
                     _ => Default::default(),
                 };
-                let mut ss = ScatterSeriesOption::default();
-                ss.name = Some(s.name.clone());
-                ss.data = df_to_datapoints_by_cols(s, &cfg.x_col, &cfg.y_col);
-                ss.item_style = s.item_style.color.map(|c| crate::option::ItemStyleOption {
-                    color: Some(crate::option::ColorOption::new(c.r, c.g, c.b)),
+                series.push(SeriesOption::Scatter(ScatterSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: df_to_datapoints_by_cols(s, &cfg.x_col, &cfg.y_col),
+                    item_style: s.item_style.color.map(|c| crate::option::ItemStyleOption {
+                        color: Some(crate::option::ColorOption::new(c.r, c.g, c.b)),
+                        ..Default::default()
+                    }),
+                    symbol_size: Some(cfg.symbol_size),
+                    y_axis_index: Some(s.y_axis_index),
+                    grid_index: Some(s.grid_index),
                     ..Default::default()
-                });
-                ss.symbol_size = Some(cfg.symbol_size);
-                ss.y_axis_index = Some(s.y_axis_index);
-                ss.grid_index = Some(s.grid_index);
-                option.series.push(SeriesOption::Scatter(ss));
+                }));
             }
             ChartType::Pie => {
-                let mut ps = PieSeriesOption::default();
-                ps.name = Some(s.name.clone());
-                ps.data = df_to_datapoints(s);
-                option.series.push(SeriesOption::Pie(ps));
+                series.push(SeriesOption::Pie(PieSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: df_to_datapoints(s),
+                    ..Default::default()
+                }));
             }
             ChartType::Bubble => {
                 let cfg = match &s.config {
                     SeriesConfig::Bubble(c) => c.clone(),
                     _ => Default::default(),
                 };
-                let mut bs = BubbleSeriesOption::default();
-                bs.name = Some(s.name.clone());
-                let dps: Vec<BubbleDataPoint> = (0..s.data.row_count())
-                    .map(|i| {
-                        let x = s
-                            .data
-                            .get_column(&cfg.x_col)
-                            .and_then(|c| c.as_f64(i))
-                            .unwrap_or(0.0);
-                        let y = s
-                            .data
-                            .get_column(&cfg.y_col)
-                            .and_then(|c| c.as_f64(i))
-                            .unwrap_or(0.0);
-                        let size = cfg
-                            .size_col
-                            .as_ref()
-                            .and_then(|sc| s.data.get_column(sc))
-                            .and_then(|c| c.as_f64(i));
-                        BubbleDataPoint {
-                            x,
-                            y,
-                            size,
-                            name: None,
-                        }
-                    })
-                    .collect();
-                bs.data = dps;
-                bs.symbol_size_scale = Some(cfg.symbol_size_scale);
-                bs.y_axis_index = Some(s.y_axis_index);
-                bs.grid_index = Some(s.grid_index);
-                option.series.push(SeriesOption::Bubble(bs));
+                series.push(SeriesOption::Bubble(BubbleSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: (0..s.data.row_count())
+                        .map(|i| {
+                            let x = s
+                                .data
+                                .get_column(&cfg.x_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0);
+                            let y = s
+                                .data
+                                .get_column(&cfg.y_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0);
+                            let size = cfg
+                                .size_col
+                                .as_ref()
+                                .and_then(|sc| s.data.get_column(sc))
+                                .and_then(|c| c.as_f64(i));
+                            BubbleDataPoint {
+                                x,
+                                y,
+                                size,
+                                name: None,
+                            }
+                        })
+                        .collect(),
+                    symbol_size_scale: Some(cfg.symbol_size_scale),
+                    y_axis_index: Some(s.y_axis_index),
+                    grid_index: Some(s.grid_index),
+                    ..Default::default()
+                }));
             }
             ChartType::Candlestick => {
                 let cfg = match &s.config {
                     SeriesConfig::Candlestick(c) => c.clone(),
                     _ => Default::default(),
                 };
-                let mut cs = CandlestickSeriesOption::default();
-                cs.name = Some(s.name.clone());
-                let dps: Vec<crate::option::CandlestickDataPoint> = (0..s.data.row_count())
-                    .map(|i| crate::option::CandlestickDataPoint {
-                        open: s
-                            .data
-                            .get_column(&cfg.open_col)
-                            .and_then(|c| c.as_f64(i))
-                            .unwrap_or(0.0),
-                        close: s
-                            .data
-                            .get_column(&cfg.close_col)
-                            .and_then(|c| c.as_f64(i))
-                            .unwrap_or(0.0),
-                        low: s
-                            .data
-                            .get_column(&cfg.low_col)
-                            .and_then(|c| c.as_f64(i))
-                            .unwrap_or(0.0),
-                        high: s
-                            .data
-                            .get_column(&cfg.high_col)
-                            .and_then(|c| c.as_f64(i))
-                            .unwrap_or(0.0),
-                        name: None,
-                    })
-                    .collect();
-                cs.data = dps;
-                cs.y_axis_index = Some(s.y_axis_index);
-                cs.grid_index = Some(s.grid_index);
-                option.series.push(SeriesOption::Candlestick(cs));
+                series.push(SeriesOption::Candlestick(CandlestickSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: (0..s.data.row_count())
+                        .map(|i| crate::option::CandlestickDataPoint {
+                            open: s
+                                .data
+                                .get_column(&cfg.open_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            close: s
+                                .data
+                                .get_column(&cfg.close_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            low: s
+                                .data
+                                .get_column(&cfg.low_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            high: s
+                                .data
+                                .get_column(&cfg.high_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            name: None,
+                        })
+                        .collect(),
+                    y_axis_index: Some(s.y_axis_index),
+                    grid_index: Some(s.grid_index),
+                    ..Default::default()
+                }));
+            }
+            ChartType::Boxplot => {
+                let cfg = match &s.config {
+                    SeriesConfig::Boxplot(c) => c.clone(),
+                    _ => Default::default(),
+                };
+                series.push(SeriesOption::Boxplot(BoxplotSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: (0..s.data.row_count())
+                        .map(|i| crate::option::BoxplotDataPoint {
+                            min: s
+                                .data
+                                .get_column(&cfg.min_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            q1: s
+                                .data
+                                .get_column(&cfg.q1_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            median: s
+                                .data
+                                .get_column(&cfg.median_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            q3: s
+                                .data
+                                .get_column(&cfg.q3_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            max: s
+                                .data
+                                .get_column(&cfg.max_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            name: s
+                                .data
+                                .get_column(&cfg.category_col)
+                                .and_then(|c| c.as_string(i)),
+                        })
+                        .collect(),
+                    y_axis_index: Some(s.y_axis_index),
+                    grid_index: Some(s.grid_index),
+                    ..Default::default()
+                }));
             }
             ChartType::Radar => {
                 let cfg = match &s.config {
                     SeriesConfig::Radar(c) => c.clone(),
                     _ => Default::default(),
                 };
-                let mut rs = RadarSeriesOption::default();
-                rs.name = Some(s.name.clone());
-                let dps: Vec<crate::option::RadarDataOption> = (0..s.data.row_count())
-                    .map(|i| crate::option::RadarDataOption {
-                        value: vec![
-                            s.data
-                                .get_column(&cfg.value_col)
-                                .and_then(|c| c.as_f64(i))
-                                .unwrap_or(0.0),
-                        ],
-                        name: None,
-                    })
-                    .collect();
-                rs.data = dps;
-                option.series.push(SeriesOption::Radar(rs));
+                series.push(SeriesOption::Radar(RadarSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: (0..s.data.row_count())
+                        .map(|i| crate::option::RadarDataOption {
+                            value: vec![
+                                s.data
+                                    .get_column(&cfg.value_col)
+                                    .and_then(|c| c.as_f64(i))
+                                    .unwrap_or(0.0),
+                            ],
+                            name: None,
+                        })
+                        .collect(),
+                    ..Default::default()
+                }));
             }
             ChartType::PolarBar => {
-                let mut pbs = PolarBarSeriesOption::default();
-                pbs.name = Some(s.name.clone());
-                pbs.data = df_to_datapoints(s);
-                option.series.push(SeriesOption::PolarBar(pbs));
+                series.push(SeriesOption::PolarBar(PolarBarSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: df_to_datapoints(s),
+                    ..Default::default()
+                }));
             }
             ChartType::PolarScatter => {
                 let cfg = match &s.config {
                     SeriesConfig::PolarScatter(c) => c.clone(),
                     _ => Default::default(),
                 };
-                let mut pss = PolarScatterSeriesOption::default();
-                pss.name = Some(s.name.clone());
-                let dps: Vec<crate::option::PolarScatterDataPoint> = (0..s.data.row_count())
-                    .map(|i| crate::option::PolarScatterDataPoint {
-                        angle: s
-                            .data
-                            .get_column(&cfg.angle_col)
-                            .and_then(|c| c.as_f64(i))
-                            .unwrap_or(0.0),
-                        radius: s
-                            .data
-                            .get_column(&cfg.radius_col)
-                            .and_then(|c| c.as_f64(i))
-                            .unwrap_or(0.0),
-                        symbol_size: None,
-                        name: None,
-                    })
-                    .collect();
-                pss.data = dps;
-                option.series.push(SeriesOption::PolarScatter(pss));
+                series.push(SeriesOption::PolarScatter(PolarScatterSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: (0..s.data.row_count())
+                        .map(|i| crate::option::PolarScatterDataPoint {
+                            angle: s
+                                .data
+                                .get_column(&cfg.angle_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            radius: s
+                                .data
+                                .get_column(&cfg.radius_col)
+                                .and_then(|c| c.as_f64(i))
+                                .unwrap_or(0.0),
+                            symbol_size: None,
+                            name: None,
+                        })
+                        .collect(),
+                    ..Default::default()
+                }));
             }
             ChartType::Gauge => {
                 let cfg = match &s.config {
                     SeriesConfig::Gauge(c) => c.clone(),
                     _ => Default::default(),
                 };
-                let mut gs = GaugeSeriesOption::default();
-                gs.name = Some(s.name.clone());
-                gs.data = df_to_gauge_datapoints(s, &cfg.value_col);
-                gs.min = Some(cfg.min);
-                gs.max = Some(cfg.max);
-                option.series.push(SeriesOption::Gauge(gs));
+                series.push(SeriesOption::Gauge(GaugeSeriesOption {
+                    name: Some(s.name.clone()),
+                    data: df_to_gauge_datapoints(s, &cfg.value_col),
+                    min: Some(cfg.min),
+                    max: Some(cfg.max),
+                    ..Default::default()
+                }));
             }
             ChartType::Table => {
-                let mut ts = TableSeriesOption::default();
-                ts.name = Some(s.name.clone());
                 let cols = s.data.column_names().to_vec();
-                ts.columns = Some(cols);
-                let mut rows = Vec::new();
-                for i in 0..s.data.row_count() {
-                    let mut row = Vec::new();
-                    for col_name in s.data.column_names() {
-                        let val = s.data.get_column(col_name).and_then(|c| c.as_string(i));
-                        let json_val: serde_json::Value = val
-                            .map(|s| {
-                                s.parse::<f64>()
-                                    .map(serde_json::Value::from)
-                                    .unwrap_or_else(|_| serde_json::Value::String(s))
+                let rows: Vec<Vec<serde_json::Value>> = (0..s.data.row_count())
+                    .map(|i| {
+                        s.data
+                            .column_names()
+                            .iter()
+                            .map(|col_name| {
+                                let val = s.data.get_column(col_name).and_then(|c| c.as_string(i));
+                                val.map(|s| {
+                                    s.parse::<f64>()
+                                        .map(serde_json::Value::from)
+                                        .unwrap_or_else(|_| serde_json::Value::String(s))
+                                })
+                                .unwrap_or(serde_json::Value::Null)
                             })
-                            .unwrap_or(serde_json::Value::Null);
-                        row.push(json_val);
-                    }
-                    rows.push(row);
-                }
-                ts.data = Some(rows);
-                option.series.push(SeriesOption::Table(ts));
+                            .collect()
+                    })
+                    .collect();
+                series.push(SeriesOption::Table(TableSeriesOption {
+                    name: Some(s.name.clone()),
+                    columns: Some(cols),
+                    data: Some(rows),
+                    ..Default::default()
+                }));
             }
         }
     }
 
     // Palette
-    if !spec.palette.is_empty() {
-        option.color = Some(
-            spec.palette
-                .iter()
-                .map(|c| crate::option::ColorOption::new(c.r, c.g, c.b))
-                .collect(),
-        );
-    }
+    let color = if spec.palette.is_empty() {
+        None
+    } else {
+        let colors: Vec<crate::option::ColorOption> = spec
+            .palette
+            .iter()
+            .map(|c| crate::option::ColorOption::new(c.r, c.g, c.b))
+            .collect();
+        Some(crate::option::OneOrMany::Many(colors))
+    };
 
-    option
+    ChartOption {
+        title,
+        legend,
+        grid,
+        x_axis,
+        y_axis,
+        series,
+        color,
+        ..Default::default()
+    }
 }
 
 fn axis_spec_to_option(a: &NewAxisSpec) -> AxisOption {
@@ -467,12 +548,12 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         .map(|a| option_axis_to_new_spec(a, crate::option::AxisPosition::Left))
         .collect();
 
-    // Series
+    // Series — Unknown 系列会被跳过（不渲染，但解析不报错）
     let series: Vec<SeriesSpec> = option
         .series
         .iter()
         .enumerate()
-        .map(|(idx, s)| option_series_to_spec(s, idx))
+        .filter_map(|(idx, s)| option_series_to_spec(s, idx))
         .collect();
 
     // Title
@@ -484,7 +565,13 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
     // Legend
     let legend = option.legend.as_ref().map(|l| types::LegendSpec {
         show: l.show.unwrap_or(true),
-        data: l.data.clone().unwrap_or_default(),
+        data: l
+            .data
+            .clone()
+            .unwrap_or_default()
+            .iter()
+            .map(|i| i.name().to_string())
+            .collect(),
         symbol_size: l.symbol_size.unwrap_or(10.0),
     });
 
@@ -532,7 +619,7 @@ fn option_axis_to_new_spec(
     }
 }
 
-fn option_series_to_spec(s: &SeriesOption, idx: usize) -> SeriesSpec {
+fn option_series_to_spec(s: &SeriesOption, idx: usize) -> Option<SeriesSpec> {
     let mut df = crate::pipeline::dataframe::DataFrame::new();
 
     let (chart_type, stack, group_index, config, data_points) = match s {
@@ -616,6 +703,44 @@ fn option_series_to_spec(s: &SeriesOption, idx: usize) -> SeriesSpec {
             let config = SeriesConfig::Candlestick(Default::default());
             (ChartType::Candlestick, None, 0usize, config, vec![])
         }
+        SeriesOption::Boxplot(bs) => {
+            let mut min_vals = Vec::new();
+            let mut q1_vals = Vec::new();
+            let mut median_vals = Vec::new();
+            let mut q3_vals = Vec::new();
+            let mut max_vals = Vec::new();
+            let mut categories = Vec::new();
+            for (i, dp) in bs.data.iter().enumerate() {
+                categories.push(DataValue::from(
+                    dp.name.clone().unwrap_or_else(|| (i + 1).to_string()),
+                ));
+                min_vals.push(DataValue::Float(dp.min));
+                q1_vals.push(DataValue::Float(dp.q1));
+                median_vals.push(DataValue::Float(dp.median));
+                q3_vals.push(DataValue::Float(dp.q3));
+                max_vals.push(DataValue::Float(dp.max));
+            }
+            df.add_column(crate::pipeline::dataframe::Series::new(
+                "category", categories,
+            ));
+            df.add_column(crate::pipeline::dataframe::Series::new("min", min_vals));
+            df.add_column(crate::pipeline::dataframe::Series::new("q1", q1_vals));
+            df.add_column(crate::pipeline::dataframe::Series::new(
+                "median",
+                median_vals,
+            ));
+            df.add_column(crate::pipeline::dataframe::Series::new("q3", q3_vals));
+            df.add_column(crate::pipeline::dataframe::Series::new("max", max_vals));
+            let config = SeriesConfig::Boxplot(crate::pipeline::types::BoxplotConfig {
+                category_col: "category".into(),
+                min_col: "min".into(),
+                q1_col: "q1".into(),
+                median_col: "median".into(),
+                q3_col: "q3".into(),
+                max_col: "max".into(),
+            });
+            (ChartType::Boxplot, None, 0usize, config, vec![])
+        }
         SeriesOption::Radar(_) => {
             let config = SeriesConfig::Radar(Default::default());
             (ChartType::Radar, None, 0usize, config, vec![])
@@ -692,6 +817,10 @@ fn option_series_to_spec(s: &SeriesOption, idx: usize) -> SeriesSpec {
             let config = SeriesConfig::Table(Default::default());
             (ChartType::Table, None, 0usize, config, vec![])
         }
+        SeriesOption::Unknown => {
+            // 未识别的 series 类型（heatmap/funnel/treemap/...）：解析不报错，渲染时跳过
+            return None;
+        }
     };
 
     // 确保 DataFrame 至少有一列
@@ -704,7 +833,7 @@ fn option_series_to_spec(s: &SeriesOption, idx: usize) -> SeriesSpec {
         ));
     }
 
-    SeriesSpec {
+    Some(SeriesSpec {
         name: format!("series_{}", idx),
         chart_type,
         data: df,
@@ -716,7 +845,7 @@ fn option_series_to_spec(s: &SeriesOption, idx: usize) -> SeriesSpec {
         sampling: None,
         item_style: types::ItemStyleSpec::default(),
         config,
-    }
+    })
 }
 
 /// 将 DataPoint 列表转换为 DataFrame 列数据，返回 (x_col_name, y_col_name, Vec<(col_name, Vec<DataValue>)>)
@@ -794,5 +923,5 @@ pub fn build_chart_with_theme(
     theme: &Theme,
 ) -> Result<Vec<VisualElement>> {
     let spec = chart_option_to_chart_spec(option, width, height);
-    crate::pipeline::pipeline::build_chart_from_spec(&spec, theme)
+    crate::pipeline::chart_pipeline::build_chart_from_spec(&spec, theme)
 }

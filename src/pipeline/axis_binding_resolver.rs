@@ -150,12 +150,9 @@ impl<'a> AxisBindingResolver<'a> {
             bound_series.push(series);
         }
 
-        // 对于数值轴，合并 x_values 和 y_values 来确定范围
-        // 这样可以处理水平柱状图（数值在 Y 列）和普通情况（数值在 X 列）
-        let mut values = all_y;
-        if matches!(axis.axis_type, AxisType::Value) {
-            values.extend(all_x);
-        }
+        // 对数值 X 轴使用 x_values 确定范围
+        // 水平柱状图通过 API 层的列交换已确保 x_col 是数值列
+        let values = all_x;
 
         if values.is_empty() {
             return (0.0, 100.0);
@@ -184,11 +181,11 @@ impl<'a> AxisBindingResolver<'a> {
                         continue;
                     }
 
-                    // 对于数值 X 轴上的堆叠（横向柱状图），使用 y_col 作为值列
+                    // 对于数值 X 轴上的堆叠（横向柱状图），使用 x_col 作为值列
                     for row in 0..max_rows {
                         let mut row_total = 0.0;
                         for s in group {
-                            if let Some(col) = s.data.get_column(s.config.y_col_name())
+                            if let Some(col) = s.data.get_column(s.config.x_col_name())
                                 && let Some(v) = col.as_f64(row)
                             {
                                 row_total += v;
@@ -325,6 +322,7 @@ impl<'a> AxisBindingResolver<'a> {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn compute_final_range(
         &self,
         user_min: Option<f64>,

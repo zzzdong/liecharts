@@ -17,6 +17,7 @@ pub enum TypedSeries {
     Scatter(ScatterSeries),
     Bubble(BubbleSeries),
     Candlestick(CandlestickSeries),
+    Boxplot(BoxplotSeries),
     Pie(PieSeries),
     Radar(RadarSeries),
     PolarBar(PolarBarSeries),
@@ -169,6 +170,34 @@ pub struct CandleRect {
     pub low_line: (Point, Point),  // 下影线端点（像素空间）
     pub body_rect: Rect,           // 实体矩形（像素空间）
     pub is_up: bool,               // 涨跌
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// BoxplotSeries
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone)]
+pub struct BoxplotSeries {
+    pub name: String,
+    pub color: Color,
+    pub border_color: Color,
+    pub border_width: f64,
+    pub boxes: Vec<BoxplotRect>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BoxplotRect {
+    pub category: String,
+    /// 从 min 到 max 的 whisker 垂直线
+    pub whisker_line: (Point, Point),
+    /// whisker 顶端（max）横线
+    pub top_whisker: (Point, Point),
+    /// whisker 底端（min）横线
+    pub bottom_whisker: (Point, Point),
+    /// 箱体矩形：从 Q1 到 Q3
+    pub body_rect: Rect,
+    /// 中位数横线
+    pub median_line: (Point, Point),
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -346,6 +375,7 @@ impl TypedSeries {
             TypedSeries::Scatter(s) => &s.name,
             TypedSeries::Bubble(s) => &s.name,
             TypedSeries::Candlestick(s) => &s.name,
+            TypedSeries::Boxplot(s) => &s.name,
             TypedSeries::Pie(s) => &s.name,
             TypedSeries::Radar(s) => &s.name,
             TypedSeries::PolarBar(s) => &s.name,
@@ -364,6 +394,7 @@ impl TypedSeries {
             TypedSeries::Scatter(_) => "scatter",
             TypedSeries::Bubble(_) => "bubble",
             TypedSeries::Candlestick(_) => "candlestick",
+            TypedSeries::Boxplot(_) => "boxplot",
             TypedSeries::Pie(_) => "pie",
             TypedSeries::Radar(_) => "radar",
             TypedSeries::PolarBar(_) => "polar_bar",

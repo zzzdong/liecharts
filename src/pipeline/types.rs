@@ -73,6 +73,7 @@ pub enum ChartType {
     Scatter,
     Bubble,
     Candlestick,
+    Boxplot,
     Radar,
     PolarBar,
     PolarScatter,
@@ -108,6 +109,7 @@ pub enum SeriesConfig {
     Scatter(ScatterConfig),
     Bubble(BubbleConfig),
     Candlestick(CandlestickConfig),
+    Boxplot(BoxplotConfig),
     Radar(RadarConfig),
     PolarBar(PolarBarConfig),
     PolarScatter(PolarScatterConfig),
@@ -124,6 +126,7 @@ impl SeriesConfig {
             SeriesConfig::Scatter(_) => ChartType::Scatter,
             SeriesConfig::Bubble(_) => ChartType::Bubble,
             SeriesConfig::Candlestick(_) => ChartType::Candlestick,
+            SeriesConfig::Boxplot(_) => ChartType::Boxplot,
             SeriesConfig::Radar(_) => ChartType::Radar,
             SeriesConfig::PolarBar(_) => ChartType::PolarBar,
             SeriesConfig::PolarScatter(_) => ChartType::PolarScatter,
@@ -293,6 +296,31 @@ impl Default for CandlestickConfig {
     }
 }
 
+// ── BoxplotConfig ──
+
+#[derive(Debug, Clone)]
+pub struct BoxplotConfig {
+    pub category_col: String,
+    pub min_col: String,
+    pub q1_col: String,
+    pub median_col: String,
+    pub q3_col: String,
+    pub max_col: String,
+}
+
+impl Default for BoxplotConfig {
+    fn default() -> Self {
+        Self {
+            category_col: "category".into(),
+            min_col: "min".into(),
+            q1_col: "q1".into(),
+            median_col: "median".into(),
+            q3_col: "q3".into(),
+            max_col: "max".into(),
+        }
+    }
+}
+
 // ── RadarConfig ──
 
 #[derive(Debug, Clone)]
@@ -422,10 +450,27 @@ impl Default for SeriesSpec {
 impl SeriesSpec {
     /// 获取 Y 列的全部数值（用于轴范围计算）
     pub fn y_values(&self) -> Vec<f64> {
-        // K 线图需要包含 open/close/low/high 所有值来计算轴范围
+        // K 线图和箱线图需要包含所有极值/分位数来计算轴范围
         if matches!(self.chart_type, super::ChartType::Candlestick) {
             let mut all = Vec::new();
             let cols = ["open", "close", "low", "high"];
+            for col_name in &cols {
+                if let Some(col) = self.data.get_column(col_name) {
+                    for v in &col.data {
+                        if let crate::pipeline::dataframe::DataValue::Float(f) = v {
+                            all.push(*f);
+                        } else if let crate::pipeline::dataframe::DataValue::Integer(i) = v {
+                            all.push(*i as f64);
+                        }
+                    }
+                }
+            }
+            return all;
+        }
+
+        if matches!(self.chart_type, super::ChartType::Boxplot) {
+            let mut all = Vec::new();
+            let cols = ["min", "q1", "median", "q3", "max"];
             for col_name in &cols {
                 if let Some(col) = self.data.get_column(col_name) {
                     for v in &col.data {
@@ -484,6 +529,7 @@ impl SeriesConfig {
             SeriesConfig::Bubble(c) => &c.x_col,
             SeriesConfig::Pie(c) => &c.category_col,
             SeriesConfig::Candlestick(c) => &c.category_col,
+            SeriesConfig::Boxplot(c) => &c.category_col,
             SeriesConfig::Radar(_) => "indicator",
             SeriesConfig::PolarBar(c) => &c.angle_col,
             SeriesConfig::PolarScatter(c) => &c.angle_col,
@@ -500,6 +546,7 @@ impl SeriesConfig {
             SeriesConfig::Bubble(c) => &c.y_col,
             SeriesConfig::Pie(c) => &c.value_col,
             SeriesConfig::Candlestick(_) => "close",
+            SeriesConfig::Boxplot(_) => "median",
             SeriesConfig::Radar(c) => &c.value_col,
             SeriesConfig::PolarBar(c) => &c.radius_col,
             SeriesConfig::PolarScatter(c) => &c.radius_col,

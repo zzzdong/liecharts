@@ -159,7 +159,7 @@ fn build_chart_internal(
 
     // 9. 渲染轴名称
     all_elements.extend(build_axis_name_elements(
-        option, width, &specs, &colors, theme,
+        option, width, height, &specs, &colors, theme,
     ));
 
     // 10. 计算文本布局
@@ -262,7 +262,7 @@ fn build_title_elements(
                 style: main_text_style,
                 rotation: 0.0,
                 max_width: None,
-                layout: Some(layout),
+                layout: Some(Box::new(layout)),
                 z_index: Z_TITLE,
             });
         }
@@ -289,7 +289,7 @@ fn build_title_elements(
                 style: sub_text_style,
                 rotation: 0.0,
                 max_width: None,
-                layout: Some(layout),
+                layout: Some(Box::new(layout)),
                 z_index: Z_TITLE,
             });
         }
@@ -343,7 +343,7 @@ fn build_legend_elements_v2(
                 vertical_align: TextBaseline::Middle,
                 ..Default::default()
             };
-            let text_layout = create_text_layout(name, &text_style, None);
+            let text_layout = create_text_layout(name.name(), &text_style, None);
             let text_width = text_layout.width() as f64;
 
             let item_width = symbol_size + item_gap + text_width + legend_padding * 2.0;
@@ -404,7 +404,7 @@ fn build_legend_elements_v2(
             // 图例文字 - 使用 Left 对齐，位置在 symbol 右侧
             let text_x = symbol_x + symbol_size + item_gap;
             elements.push(VisualElement::TextRun {
-                text: name.clone(),
+                text: name.name().to_string(),
                 position: Point::new(text_x, y),
                 style: crate::visual::TextStyle {
                     font_size: legend_style.font_size,
@@ -431,6 +431,7 @@ fn build_legend_elements_v2(
 fn build_axis_name_elements(
     option: &ChartOption,
     width: u32,
+    height: u32,
     specs: &[SubplotSpec],
     _colors: &ColorContext,
     theme: &Theme,
@@ -472,7 +473,7 @@ fn build_axis_name_elements(
                 // 旋转后文本呈竖直状态：
                 // - 左轴（旋转-90°）：文本向上延伸，需保证 text_top >= margin
                 // - 右轴（旋转+90°）：文本向下延伸，需保证 text_bottom <= width - margin
-                let margin = 10.0; // 画布边缘留白
+                let margin = 15.0; // 画布边缘留白
                 let label_margin = 8.0; // 轴名称与刻度标签间距
 
                 // 使用左上角作为锚点和旋转中心
@@ -526,7 +527,7 @@ fn build_axis_name_elements(
                     },
                     rotation,
                     max_width: None,
-                    layout: Some(text_layout),
+                    layout: Some(Box::new(text_layout)),
                     z_index: Z_LABEL,
                 });
             }
@@ -541,10 +542,11 @@ fn build_axis_name_elements(
                     || (x_axis.position.is_none() && i > 0);
 
                 let x = bounds.x0 + bounds.width() / 2.0;
+                let font_size = axis_label_style.font_size;
                 let y = if is_top {
-                    bounds.y0 - 25.0 // 上方轴，名称在轴上方
+                    (bounds.y0 - 25.0).max(font_size) // 上方轴，名称在轴上方，不超出顶部
                 } else {
-                    bounds.y1 + 35.0 // 下方轴，名称在轴下方
+                    (bounds.y1 + 35.0).min(height as f64 - font_size - 10.0) // 下方轴，名称在轴下方，不超出底部
                 };
 
                 elements.push(VisualElement::TextRun {
@@ -593,7 +595,7 @@ fn compute_text_layouts(elements: &mut [VisualElement]) {
             {
                 position.x += x_off;
                 position.y += y_off;
-                *layout = Some(text_layout);
+                *layout = Some(Box::new(text_layout));
             }
         }
     }

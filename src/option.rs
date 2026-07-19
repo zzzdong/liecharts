@@ -126,6 +126,984 @@ pub type GridConfig = SingleOrMultiple<GridOption>;
 /// Type alias for axis configuration.
 pub type AxisConfig = SingleOrMultiple<AxisOption>;
 
+// ═══════════════════════════════════════════════════════════════════
+// 容错类型 — 用于 ECharts JSON 兼容性
+// ═══════════════════════════════════════════════════════════════════
+
+/// 接受字符串或 usize 的灵活类型。
+///
+/// 用于 ECharts 中既可以是数字索引（`0`）又可以是字符串列名（`"product"`）的字段，
+/// 例如 `series.encode.x` / `series.encode.y`。
+#[derive(Debug, Clone, PartialEq)]
+pub enum StringOrInt {
+    Str(String),
+    Int(usize),
+}
+
+impl StringOrInt {
+    /// 返回字符串表示（数字会转为字符串）。
+    pub fn as_str(&self) -> String {
+        match self {
+            StringOrInt::Str(s) => s.clone(),
+            StringOrInt::Int(n) => n.to_string(),
+        }
+    }
+
+    /// 如果是 Int，返回对应的 usize。
+    pub fn as_int(&self) -> Option<usize> {
+        match self {
+            StringOrInt::Int(n) => Some(*n),
+            StringOrInt::Str(s) => s.parse::<usize>().ok(),
+        }
+    }
+}
+
+impl Serialize for StringOrInt {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            StringOrInt::Str(s) => serializer.serialize_str(s),
+            StringOrInt::Int(n) => serializer.serialize_u64(*n as u64),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for StringOrInt {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct StringOrIntVisitor;
+
+        impl<'de> Visitor<'de> for StringOrIntVisitor {
+            type Value = StringOrInt;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string or a number")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(StringOrInt::Str(v.to_string()))
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                Ok(StringOrInt::Str(v))
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(StringOrInt::Int(v as usize))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(StringOrInt::Int(v as usize))
+            }
+
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(StringOrInt::Int(v as usize))
+            }
+        }
+
+        deserializer.deserialize_any(StringOrIntVisitor)
+    }
+}
+
+/// 接受数字或百分比字符串（如 `"100%"`）的灵活类型。
+///
+/// 用于 `dataZoom.handleSize` 等 ECharts 字段。
+#[derive(Debug, Clone, PartialEq)]
+pub enum NumberOrPercent {
+    Number(f64),
+    Percent(f64),
+}
+
+impl NumberOrPercent {
+    /// 解析为最终数值：`Number(n)` 返回 `n`；`Percent(p)` 返回 `p`（百分比数值本身，由调用方换算）。
+    pub fn raw_value(&self) -> f64 {
+        match self {
+            NumberOrPercent::Number(n) => *n,
+            NumberOrPercent::Percent(p) => *p,
+        }
+    }
+
+    /// 根据基准值换算百分比。`Number(n)` 返回 `n`；`Percent(p)` 返回 `base * p / 100.0`。
+    pub fn resolve(&self, base: f64) -> f64 {
+        match self {
+            NumberOrPercent::Number(n) => *n,
+            NumberOrPercent::Percent(p) => base * *p / 100.0,
+        }
+    }
+}
+
+impl Default for NumberOrPercent {
+    fn default() -> Self {
+        NumberOrPercent::Number(0.0)
+    }
+}
+
+impl Serialize for NumberOrPercent {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            NumberOrPercent::Number(n) => serializer.serialize_f64(*n),
+            NumberOrPercent::Percent(p) => serializer.serialize_str(&format!("{}%", p)),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for NumberOrPercent {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct NumberOrPercentVisitor;
+
+        impl<'de> Visitor<'de> for NumberOrPercentVisitor {
+            type Value = NumberOrPercent;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a number or a percentage string like \"100%\"")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                if let Some(stripped) = v.strip_suffix('%') {
+                    let p = stripped
+                        .trim()
+                        .parse::<f64>()
+                        .map_err(|_| de::Error::custom(format!("invalid percentage: {}", v)))?;
+                    Ok(NumberOrPercent::Percent(p))
+                } else {
+                    let n = v
+                        .parse::<f64>()
+                        .map_err(|_| de::Error::custom(format!("invalid number: {}", v)))?;
+                    Ok(NumberOrPercent::Number(n))
+                }
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(NumberOrPercent::Number(v))
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(NumberOrPercent::Number(v as f64))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(NumberOrPercent::Number(v as f64))
+            }
+        }
+
+        deserializer.deserialize_any(NumberOrPercentVisitor)
+    }
+}
+
+/// 容错 bool：接受 bool 或 "true"/"false" 字符串。
+///
+/// LLM 偶尔会输出 `"animation":"true"`，此类型用于让解析不报错。
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct LenientBool(pub bool);
+
+impl From<bool> for LenientBool {
+    fn from(b: bool) -> Self {
+        LenientBool(b)
+    }
+}
+
+impl From<LenientBool> for bool {
+    fn from(b: LenientBool) -> Self {
+        b.0
+    }
+}
+
+impl Serialize for LenientBool {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_bool(self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientBool {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LenientBoolVisitor;
+
+        impl<'de> Visitor<'de> for LenientBoolVisitor {
+            type Value = LenientBool;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a boolean or a \"true\"/\"false\" string")
+            }
+
+            fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(LenientBool(v))
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match v.trim().to_ascii_lowercase().as_str() {
+                    "true" | "1" => Ok(LenientBool(true)),
+                    "false" | "0" => Ok(LenientBool(false)),
+                    _ => Err(de::Error::custom(format!("invalid bool string: {}", v))),
+                }
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(LenientBool(v != 0))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(LenientBool(v != 0))
+            }
+        }
+
+        deserializer.deserialize_any(LenientBoolVisitor)
+    }
+}
+
+/// 图例数据项：字符串或 `{name, icon}` 对象。
+///
+/// ECharts 允许 `legend.data` 同时包含字符串和对象。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum LegendDataItem {
+    Str(String),
+    Object {
+        name: String,
+        #[serde(default)]
+        icon: Option<String>,
+        #[serde(default)]
+        color: Option<ColorOption>,
+    },
+}
+
+impl LegendDataItem {
+    /// 返回数据项的名称。
+    pub fn name(&self) -> &str {
+        match self {
+            LegendDataItem::Str(s) => s,
+            LegendDataItem::Object { name, .. } => name,
+        }
+    }
+}
+
+/// 区间值：数字或 "auto"。
+///
+/// 用于 `axisLabel.interval` 等 ECharts 字段。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum IntervalOption {
+    #[default]
+    Auto,
+    Fixed(f64),
+}
+
+impl Serialize for IntervalOption {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            IntervalOption::Auto => serializer.serialize_str("auto"),
+            IntervalOption::Fixed(n) => serializer.serialize_f64(*n),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for IntervalOption {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct IntervalVisitor;
+
+        impl<'de> Visitor<'de> for IntervalVisitor {
+            type Value = IntervalOption;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a number or the string \"auto\"")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                if v.trim().eq_ignore_ascii_case("auto") {
+                    Ok(IntervalOption::Auto)
+                } else {
+                    let n = v
+                        .parse::<f64>()
+                        .map_err(|_| de::Error::custom(format!("invalid interval: {}", v)))?;
+                    Ok(IntervalOption::Fixed(n))
+                }
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(IntervalOption::Fixed(v))
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(IntervalOption::Fixed(v as f64))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(IntervalOption::Fixed(v as f64))
+            }
+        }
+
+        deserializer.deserialize_any(IntervalVisitor)
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Tooltip — 提示框组件
+// ═══════════════════════════════════════════════════════════════════
+
+/// Tooltip trigger type.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub enum TooltipTrigger {
+    #[default]
+    Item,
+    Axis,
+    None,
+}
+
+/// Tooltip configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TooltipOption {
+    pub show: Option<bool>,
+    pub trigger: Option<TooltipTrigger>,
+    pub formatter: Option<String>,
+    pub value_formatter: Option<String>,
+    pub background_color: Option<ColorOption>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+    pub padding: Option<f64>,
+    pub text_style: Option<TextStyleOption>,
+    pub axis_pointer: Option<AxisPointerOption>,
+    pub always_show_content: Option<bool>,
+    pub trigger_on: Option<String>,
+    pub confine: Option<bool>,
+    pub hide_delay: Option<f64>,
+    pub show_delay: Option<f64>,
+    pub transition_duration: Option<f64>,
+    pub enterable: Option<bool>,
+    pub render_mode: Option<String>,
+}
+
+impl Default for TooltipOption {
+    fn default() -> Self {
+        Self {
+            show: Some(true),
+            trigger: Some(TooltipTrigger::Item),
+            formatter: None,
+            value_formatter: None,
+            background_color: None,
+            border_color: None,
+            border_width: None,
+            padding: None,
+            text_style: None,
+            axis_pointer: None,
+            always_show_content: None,
+            trigger_on: None,
+            confine: None,
+            hide_delay: Some(100.0),
+            show_delay: None,
+            transition_duration: Some(0.4),
+            enterable: None,
+            render_mode: None,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AxisPointer — 坐标轴指示器
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub enum AxisPointerType {
+    #[default]
+    Line,
+    Shadow,
+    Cross,
+    None,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AxisPointerOption {
+    pub show: Option<bool>,
+    #[serde(rename = "type")]
+    pub pointer_type: Option<AxisPointerType>,
+    pub snap: Option<bool>,
+    pub z: Option<f64>,
+    pub label: Option<AxisPointerLabelOption>,
+    pub line_style: Option<LineStyleOption>,
+    pub shadow_style: Option<ShadowStyleOption>,
+    pub trigger_tooltip: Option<bool>,
+    pub value: Option<f64>,
+    pub status: Option<bool>,
+    pub handle: Option<HandleOption>,
+}
+
+impl Default for AxisPointerOption {
+    fn default() -> Self {
+        Self {
+            show: Some(true),
+            pointer_type: Some(AxisPointerType::Line),
+            snap: None,
+            z: None,
+            label: None,
+            line_style: None,
+            shadow_style: None,
+            trigger_tooltip: Some(true),
+            value: None,
+            status: None,
+            handle: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AxisPointerLabelOption {
+    pub show: Option<bool>,
+    pub formatter: Option<String>,
+    pub color: Option<ColorOption>,
+    pub font_size: Option<f64>,
+    pub font_family: Option<String>,
+    pub font_weight: Option<FontWeight>,
+    pub padding: Option<f64>,
+    pub background_color: Option<ColorOption>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+}
+
+impl Default for AxisPointerLabelOption {
+    fn default() -> Self {
+        Self {
+            show: Some(true),
+            formatter: None,
+            color: None,
+            font_size: None,
+            font_family: None,
+            font_weight: None,
+            padding: None,
+            background_color: None,
+            border_color: None,
+            border_width: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct HandleOption {
+    pub show: Option<bool>,
+    pub icon: Option<String>,
+    pub size: Option<f64>,
+    pub margin: Option<f64>,
+    pub color: Option<ColorOption>,
+    pub throttle: Option<f64>,
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Dataset — 数据集声明
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct DatasetOption {
+    pub id: Option<String>,
+    pub source: Option<Vec<Vec<serde_json::Value>>>,
+    pub source_header: Option<bool>,
+    pub dimensions: Option<Vec<String>>,
+    pub from_dataset_index: Option<usize>,
+    pub from_transform_result: Option<usize>,
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Animation — 动画配置
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub enum EasingFunction {
+    #[default]
+    Linear,
+    QuadIn,
+    QuadOut,
+    QuadInOut,
+    CubicIn,
+    CubicOut,
+    CubicInOut,
+    SinIn,
+    SinOut,
+    SinInOut,
+    BounceIn,
+    BounceOut,
+    BounceInOut,
+    ElasticIn,
+    ElasticOut,
+    ElasticInOut,
+    BackIn,
+    BackOut,
+    BackInOut,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnimationOption {
+    pub duration: Option<f64>,
+    pub easing: Option<EasingFunction>,
+    pub delay: Option<f64>,
+    pub duration_update: Option<f64>,
+    pub easing_update: Option<EasingFunction>,
+    pub delay_update: Option<f64>,
+}
+
+impl Default for AnimationOption {
+    fn default() -> Self {
+        Self {
+            duration: Some(1000.0),
+            easing: Some(EasingFunction::CubicOut),
+            delay: None,
+            duration_update: Some(300.0),
+            easing_update: Some(EasingFunction::CubicInOut),
+            delay_update: None,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// VisualMap — 视觉映射组件
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub enum VisualMapType {
+    #[default]
+    Continuous,
+    Piecewise,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualMapOption {
+    pub show: Option<bool>,
+    #[serde(rename = "type")]
+    pub visual_map_type: Option<VisualMapType>,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub calculable: Option<bool>,
+    pub series_index: Option<Vec<usize>>,
+    pub dimension: Option<usize>,
+    pub in_range: Option<VisualMapRangeOption>,
+    pub out_of_range: Option<VisualMapRangeOption>,
+    pub text: Option<Vec<String>>,
+    pub text_style: Option<TextStyleOption>,
+    pub color: Option<Vec<ColorOption>>,
+    pub hover_link: Option<bool>,
+    pub inverse: Option<bool>,
+    pub precision: Option<usize>,
+    pub item_width: Option<f64>,
+    pub item_height: Option<f64>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+    pub handle_icon: Option<String>,
+    pub handle_size: Option<f64>,
+    pub indicator_icon: Option<String>,
+    pub indicator_size: Option<f64>,
+    pub left: Option<PositionOption>,
+    pub top: Option<PositionOption>,
+    pub right: Option<PositionOption>,
+    pub bottom: Option<PositionOption>,
+    pub orient: Option<Orient>,
+    pub padding: Option<f64>,
+    pub background_color: Option<ColorOption>,
+}
+
+impl Default for VisualMapOption {
+    fn default() -> Self {
+        Self {
+            show: Some(true),
+            visual_map_type: Some(VisualMapType::Continuous),
+            min: Some(0.0),
+            max: Some(100.0),
+            calculable: Some(false),
+            series_index: None,
+            dimension: None,
+            in_range: None,
+            out_of_range: None,
+            text: None,
+            text_style: None,
+            color: None,
+            hover_link: Some(true),
+            inverse: None,
+            precision: None,
+            item_width: None,
+            item_height: None,
+            border_color: None,
+            border_width: None,
+            handle_icon: None,
+            handle_size: None,
+            indicator_icon: None,
+            indicator_size: None,
+            left: None,
+            top: None,
+            right: None,
+            bottom: None,
+            orient: None,
+            padding: None,
+            background_color: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VisualMapRangeOption {
+    pub color: Option<Vec<ColorOption>>,
+    pub symbol: Option<String>,
+    pub symbol_size: Option<Vec<f64>>,
+    pub color_alpha: Option<Vec<f64>>,
+    pub color_lightness: Option<Vec<f64>>,
+    pub color_saturation: Option<Vec<f64>>,
+    pub color_hue: Option<Vec<f64>>,
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// DataZoom — 数据区域缩放组件
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub enum DataZoomType {
+    #[default]
+    Inside,
+    Slider,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DataZoomOption {
+    pub show: Option<bool>,
+    #[serde(rename = "type")]
+    pub zoom_type: Option<DataZoomType>,
+    pub x_axis_index: Option<OneOrMany<usize>>,
+    pub y_axis_index: Option<OneOrMany<usize>>,
+    pub start: Option<f64>,
+    pub end: Option<f64>,
+    pub start_value: Option<f64>,
+    pub end_value: Option<f64>,
+    pub min_value_span: Option<f64>,
+    pub max_value_span: Option<f64>,
+    pub orient: Option<Orient>,
+    pub zoom_lock: Option<bool>,
+    pub throttle: Option<f64>,
+    pub range_mode: Option<String>,
+    pub left: Option<PositionOption>,
+    pub top: Option<PositionOption>,
+    pub right: Option<PositionOption>,
+    pub bottom: Option<PositionOption>,
+    pub background_color: Option<ColorOption>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+    pub filler_color: Option<ColorOption>,
+    pub handle_icon: Option<String>,
+    /// 缩放条手柄尺寸，接受数字或百分比字符串（如 `100%`）
+    pub handle_size: Option<NumberOrPercent>,
+    pub handle_style: Option<ItemStyleOption>,
+    pub data_background_color: Option<ColorOption>,
+    pub selected_data_background_color: Option<ColorOption>,
+}
+
+impl Default for DataZoomOption {
+    fn default() -> Self {
+        Self {
+            show: None,
+            zoom_type: Some(DataZoomType::Inside),
+            x_axis_index: None,
+            y_axis_index: None,
+            start: Some(0.0),
+            end: Some(100.0),
+            start_value: None,
+            end_value: None,
+            min_value_span: None,
+            max_value_span: None,
+            orient: None,
+            zoom_lock: None,
+            throttle: None,
+            range_mode: None,
+            left: None,
+            top: None,
+            right: None,
+            bottom: None,
+            background_color: None,
+            border_color: None,
+            border_width: None,
+            filler_color: None,
+            handle_icon: None,
+            handle_size: None,
+            handle_style: None,
+            data_background_color: None,
+            selected_data_background_color: None,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Brush — 区域选择组件
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub enum BrushType {
+    #[default]
+    Rect,
+    Polygon,
+    LineX,
+    LineY,
+    Path,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub enum BrushMode {
+    #[default]
+    Single,
+    Multiple,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrushOption {
+    pub brush_type: Option<BrushType>,
+    pub brush_mode: Option<BrushMode>,
+    pub transformable: Option<bool>,
+    pub brush_style: Option<ItemStyleOption>,
+    pub throttle: Option<f64>,
+    pub geo_index: Option<Vec<usize>>,
+    pub x_axis_index: Option<Vec<usize>>,
+    pub y_axis_index: Option<Vec<usize>>,
+    pub brush_link: Option<Vec<usize>>,
+    pub series_index: Option<Vec<usize>>,
+    pub in_brush: Option<BrushSelectOption>,
+    pub out_of_brush: Option<BrushSelectOption>,
+    pub z: Option<f64>,
+}
+
+impl Default for BrushOption {
+    fn default() -> Self {
+        Self {
+            brush_type: Some(BrushType::Rect),
+            brush_mode: Some(BrushMode::Single),
+            transformable: Some(true),
+            brush_style: None,
+            throttle: None,
+            geo_index: None,
+            x_axis_index: None,
+            y_axis_index: None,
+            brush_link: None,
+            series_index: None,
+            in_brush: None,
+            out_of_brush: None,
+            z: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrushSelectOption {
+    pub color: Option<ColorOption>,
+    pub color_alpha: Option<f64>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SplitArea — 轴分隔区域
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SplitAreaOption {
+    pub show: Option<bool>,
+    pub interval: Option<f64>,
+    pub area_style: Option<AreaStyleOption>,
+    pub color: Option<Vec<ColorOption>>,
+}
+
+impl Default for SplitAreaOption {
+    fn default() -> Self {
+        Self {
+            show: Some(false),
+            interval: None,
+            area_style: None,
+            color: None,
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// ShadowStyle — 阴影样式
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct ShadowStyleOption {
+    pub color: Option<ColorOption>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
+    pub opacity: Option<f64>,
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// MarkPoint / MarkLine / MarkArea — 标记系列
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkPointOption {
+    pub data: Option<Vec<MarkPointDataOption>>,
+    pub symbol: Option<SymbolType>,
+    pub symbol_size: Option<f64>,
+    pub item_style: Option<ItemStyleOption>,
+    pub label: Option<LabelOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+}
+
+impl Default for MarkPointOption {
+    fn default() -> Self {
+        Self {
+            data: None,
+            symbol: Some(SymbolType::Pin),
+            symbol_size: Some(50.0),
+            item_style: None,
+            label: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct MarkPointDataOption {
+    pub name: Option<String>,
+    #[serde(rename = "type")]
+    pub data_type: Option<String>,
+    pub value_index: Option<usize>,
+    pub value_dim: Option<String>,
+    pub coord: Option<Vec<f64>>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub value: Option<f64>,
+    pub item_style: Option<ItemStyleOption>,
+    pub label: Option<LabelOption>,
+    pub symbol: Option<SymbolType>,
+    pub symbol_size: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct MarkLineOption {
+    pub data: Option<Vec<MarkLineDataOption>>,
+    pub symbol: Option<Vec<SymbolType>>,
+    pub symbol_size: Option<Vec<f64>>,
+    pub line_style: Option<LineStyleOption>,
+    pub label: Option<LabelOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub precision: Option<usize>,
+    pub silent: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct MarkLineDataOption {
+    pub name: Option<String>,
+    #[serde(rename = "type")]
+    pub data_type: Option<String>,
+    pub value_index: Option<usize>,
+    pub value_dim: Option<String>,
+    pub x_axis: Option<f64>,
+    pub y_axis: Option<f64>,
+    pub coord: Option<Vec<f64>>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub value: Option<f64>,
+    pub line_style: Option<LineStyleOption>,
+    pub label: Option<LabelOption>,
+    pub symbol: Option<Vec<SymbolType>>,
+    pub symbol_size: Option<Vec<f64>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct MarkAreaOption {
+    pub data: Option<Vec<Vec<MarkAreaDataOption>>>,
+    pub item_style: Option<ItemStyleOption>,
+    pub label: Option<LabelOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub silent: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct MarkAreaDataOption {
+    pub name: Option<String>,
+    #[serde(rename = "type")]
+    pub data_type: Option<String>,
+    pub value_index: Option<usize>,
+    pub value_dim: Option<String>,
+    pub x_axis: Option<f64>,
+    pub y_axis: Option<f64>,
+    pub coord: Option<Vec<f64>>,
+    pub x: Option<f64>,
+    pub y: Option<f64>,
+    pub value: Option<f64>,
+    pub item_style: Option<ItemStyleOption>,
+    pub label: Option<LabelOption>,
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SeriesEncode — 数据编码
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct SeriesEncodeOption {
+    pub x: Option<OneOrMany<StringOrInt>>,
+    pub y: Option<OneOrMany<StringOrInt>>,
+    pub width: Option<OneOrMany<StringOrInt>>,
+    pub height: Option<OneOrMany<StringOrInt>>,
+    pub angle: Option<OneOrMany<StringOrInt>>,
+    pub radius: Option<OneOrMany<StringOrInt>>,
+    pub value: Option<OneOrMany<StringOrInt>>,
+    pub item_name: Option<OneOrMany<StringOrInt>>,
+    pub item_group_id: Option<OneOrMany<StringOrInt>>,
+    pub tooltip: Option<OneOrMany<StringOrInt>>,
+    pub series_name: Option<OneOrMany<StringOrInt>>,
+}
+
 /// Root chart configuration.
 ///
 /// This is the raw option struct that mirrors the ECharts JSON schema. In most cases
@@ -145,10 +1123,14 @@ pub struct ChartOption {
     pub y_axis: AxisConfig,
     #[serde(default)]
     pub series: Vec<SeriesOption>,
-    pub color: Option<Vec<ColorOption>>,
+    pub color: Option<OneOrMany<ColorOption>>,
     pub background_color: Option<ColorOption>,
     pub theme: Option<String>,
     pub text_style: Option<TextStyleOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub visual_map: Option<SingleOrMultiple<VisualMapOption>>,
+    pub data_zoom: Option<SingleOrMultiple<DataZoomOption>>,
+    pub dataset: Option<SingleOrMultiple<DatasetOption>>,
 }
 
 /// Chart title configuration.
@@ -159,8 +1141,28 @@ pub struct TitleOption {
     pub subtext: Option<String>,
     pub left: Option<PositionOption>,
     pub top: Option<PositionOption>,
+    pub right: Option<PositionOption>,
+    pub bottom: Option<PositionOption>,
     pub text_style: Option<TextStyleOption>,
     pub subtext_style: Option<TextStyleOption>,
+    pub text_align: Option<String>,
+    pub text_vertical_align: Option<String>,
+    pub item_gap: Option<f64>,
+    pub show: Option<bool>,
+    pub target: Option<String>,
+    pub sublink: Option<String>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+    pub border_radius: Option<f64>,
+    pub background_color: Option<ColorOption>,
+    pub padding: Option<Vec<f64>>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
+    pub trigger_event: Option<bool>,
 }
 
 impl Default for TitleOption {
@@ -170,8 +1172,28 @@ impl Default for TitleOption {
             subtext: None,
             left: Some(PositionOption::center()),
             top: Some(PositionOption::auto()),
+            right: None,
+            bottom: None,
             text_style: None,
             subtext_style: None,
+            text_align: None,
+            text_vertical_align: None,
+            item_gap: None,
+            show: Some(true),
+            target: None,
+            sublink: None,
+            z: None,
+            zlevel: None,
+            border_color: None,
+            border_width: None,
+            border_radius: None,
+            background_color: None,
+            padding: None,
+            shadow_blur: None,
+            shadow_color: None,
+            shadow_offset_x: None,
+            shadow_offset_y: None,
+            trigger_event: None,
         }
     }
 }
@@ -217,19 +1239,63 @@ impl TitleOption {
 #[serde(rename_all = "camelCase")]
 pub struct LegendOption {
     pub show: Option<bool>,
-    pub data: Option<Vec<String>>,
+    /// 图例数据项，可以是字符串数组或 `{name, icon}` 对象数组。
+    pub data: Option<Vec<LegendDataItem>>,
     pub left: Option<PositionOption>,
     pub top: Option<PositionOption>,
+    pub right: Option<PositionOption>,
+    pub bottom: Option<PositionOption>,
     pub orient: Option<Orient>,
     pub text_style: Option<TextStyleOption>,
     pub item_width: Option<f64>,
     pub item_height: Option<f64>,
     pub symbol_size: Option<f64>,
+    pub icon: Option<String>,
+    pub align: Option<String>,
+    pub item_gap: Option<f64>,
+    pub formatter: Option<String>,
+    pub selected_mode: Option<String>,
+    pub inactive_color: Option<ColorOption>,
+    pub inactive_border_color: Option<ColorOption>,
+    pub inactive_border_width: Option<f64>,
+    pub selector: Option<bool>,
+    pub selector_label: Option<String>,
+    pub selector_position: Option<String>,
+    pub selector_item_gap: Option<f64>,
+    pub selector_button_gap: Option<f64>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+    pub border_radius: Option<f64>,
+    pub background_color: Option<ColorOption>,
+    pub padding: Option<Vec<f64>>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
+    pub scroll_data_index: Option<usize>,
+    pub page_button_item_gap: Option<f64>,
+    pub page_button_gap: Option<f64>,
+    pub page_icon_color: Option<String>,
+    pub page_icon_inactive_color: Option<String>,
+    pub page_icon_size: Option<f64>,
+    pub animation_duration_update: Option<f64>,
+    pub type_: Option<String>,
+    pub selected: Option<std::collections::HashMap<String, bool>>,
 }
 
 impl LegendOption {
+    /// 设置图例数据项（字符串形式）。
     pub fn data(mut self, data: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.data = Some(data.into_iter().map(Into::into).collect());
+        self.data = Some(
+            data.into_iter()
+                .map(|s| LegendDataItem::Str(s.into()))
+                .collect(),
+        );
         self
     }
 
@@ -263,6 +1329,17 @@ pub struct GridOption {
     pub top: Option<PositionOption>,
     pub bottom: Option<PositionOption>,
     pub contain_label: Option<bool>,
+    pub background_color: Option<ColorOption>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
+    pub show: Option<bool>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub tooltip: Option<TooltipOption>,
 }
 
 impl Default for GridOption {
@@ -273,6 +1350,17 @@ impl Default for GridOption {
             top: Some(PositionOption::percent(15.0)),
             bottom: Some(PositionOption::percent(15.0)),
             contain_label: Some(true),
+            background_color: None,
+            border_color: None,
+            border_width: None,
+            shadow_blur: None,
+            shadow_color: None,
+            shadow_offset_x: None,
+            shadow_offset_y: None,
+            show: Some(true),
+            z: None,
+            zlevel: None,
+            tooltip: None,
         }
     }
 }
@@ -314,15 +1402,29 @@ pub struct AxisOption {
     pub name: Option<String>,
     pub name_location: Option<NameLocation>,
     pub name_text_style: Option<TextStyleOption>,
+    pub name_gap: Option<f64>,
+    pub name_rotate: Option<f64>,
     pub axis_label: Option<AxisLabelOption>,
     pub axis_line: Option<AxisLineOption>,
     pub axis_tick: Option<AxisTickOption>,
     pub split_line: Option<SplitLineOption>,
+    pub split_area: Option<SplitAreaOption>,
     pub min: Option<f64>,
     pub max: Option<f64>,
+    pub min_interval: Option<f64>,
+    pub max_interval: Option<f64>,
+    pub interval: Option<f64>,
     pub boundary_gap: Option<bool>,
     pub position: Option<AxisPosition>,
     pub grid_index: Option<usize>,
+    pub align_ticks: Option<bool>,
+    pub axis_pointer: Option<AxisPointerOption>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub inverse: Option<bool>,
+    pub log_base: Option<f64>,
+    pub silent: Option<bool>,
+    pub trigger_event: Option<bool>,
 }
 
 impl Default for AxisOption {
@@ -333,15 +1435,29 @@ impl Default for AxisOption {
             name: None,
             name_location: Some(NameLocation::End),
             name_text_style: None,
+            name_gap: None,
+            name_rotate: None,
             axis_label: None,
             axis_line: None,
             axis_tick: None,
             grid_index: None,
             split_line: None,
+            split_area: None,
             min: None,
             max: None,
+            min_interval: None,
+            max_interval: None,
+            interval: None,
             boundary_gap: Some(true),
             position: None,
+            align_ticks: None,
+            axis_pointer: None,
+            z: None,
+            zlevel: None,
+            inverse: None,
+            log_base: None,
+            silent: None,
+            trigger_event: None,
         }
     }
 }
@@ -416,13 +1532,37 @@ pub struct AxisLabelOption {
     pub show: Option<bool>,
     pub rotate: Option<f64>,
     pub formatter: Option<String>,
-    pub color: Option<ColorOption>,
+    /// 标签颜色，可以是单色或颜色数组（如 `["#333","#666"]`）
+    pub color: Option<OneOrMany<ColorOption>>,
     pub font_size: Option<f64>,
     pub font_family: Option<String>,
     pub font_weight: Option<FontWeight>,
     pub align: Option<LabelAlign>,
     pub vertical_align: Option<LabelVerticalAlign>,
     pub margin: Option<f64>,
+    /// 标签显示间隔，可以是数字或字符串 `"auto"`
+    pub interval: Option<IntervalOption>,
+    pub inside: Option<bool>,
+    pub show_min_label: Option<bool>,
+    pub show_max_label: Option<bool>,
+    pub hide_overlap: Option<bool>,
+    pub color_func: Option<String>,
+    pub font_style: Option<String>,
+    pub line_height: Option<f64>,
+    pub background_color: Option<ColorOption>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+    pub border_radius: Option<f64>,
+    pub padding: Option<Vec<f64>>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub overflow: Option<String>,
+    pub ellipsis: Option<bool>,
+    pub rich: Option<serde_json::Value>,
 }
 
 impl Default for AxisLabelOption {
@@ -438,6 +1578,28 @@ impl Default for AxisLabelOption {
             align: None,
             vertical_align: None,
             margin: None,
+            interval: None,
+            inside: None,
+            show_min_label: None,
+            show_max_label: None,
+            hide_overlap: None,
+            color_func: None,
+            font_style: None,
+            line_height: None,
+            background_color: None,
+            border_color: None,
+            border_width: None,
+            border_radius: None,
+            padding: None,
+            shadow_blur: None,
+            shadow_color: None,
+            shadow_offset_x: None,
+            shadow_offset_y: None,
+            width: None,
+            height: None,
+            overflow: None,
+            ellipsis: None,
+            rich: None,
         }
     }
 }
@@ -447,6 +1609,12 @@ impl Default for AxisLabelOption {
 pub struct AxisLineOption {
     pub show: Option<bool>,
     pub line_style: Option<LineStyleOption>,
+    pub on_zero: Option<bool>,
+    pub on_zero_axis_index: Option<usize>,
+    /// 轴线两端的箭头，可以是字符串或字符串数组（如 `"none"` 或 `["none","arrow"]`）
+    pub symbol: Option<OneOrMany<String>>,
+    pub symbol_size: Option<Vec<f64>>,
+    pub symbol_offset: Option<Vec<f64>>,
 }
 
 impl Default for AxisLineOption {
@@ -454,6 +1622,11 @@ impl Default for AxisLineOption {
         Self {
             show: Some(true),
             line_style: None,
+            on_zero: None,
+            on_zero_axis_index: None,
+            symbol: None,
+            symbol_size: None,
+            symbol_offset: None,
         }
     }
 }
@@ -463,6 +1636,10 @@ impl Default for AxisLineOption {
 pub struct AxisTickOption {
     pub show: Option<bool>,
     pub align_with_label: Option<bool>,
+    /// 刻度显示间隔，可以是数字或字符串 `"auto"`
+    pub interval: Option<IntervalOption>,
+    pub inside: Option<bool>,
+    pub length: Option<f64>,
     pub line_style: Option<LineStyleOption>,
 }
 
@@ -471,6 +1648,9 @@ impl Default for AxisTickOption {
         Self {
             show: Some(true),
             align_with_label: None,
+            interval: None,
+            inside: None,
+            length: None,
             line_style: None,
         }
     }
@@ -480,6 +1660,8 @@ impl Default for AxisTickOption {
 #[serde(rename_all = "camelCase")]
 pub struct SplitLineOption {
     pub show: Option<bool>,
+    pub interval: Option<f64>,
+    pub length: Option<f64>,
     pub line_style: Option<LineStyleOption>,
 }
 
@@ -487,6 +1669,8 @@ impl Default for SplitLineOption {
     fn default() -> Self {
         Self {
             show: Some(false),
+            interval: None,
+            length: None,
             line_style: None,
         }
     }
@@ -500,6 +1684,15 @@ pub struct LineStyleOption {
     pub width: Option<f64>,
     #[serde(rename = "type")]
     pub line_type: Option<LineType>,
+    pub opacity: Option<f64>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
+    pub curveness: Option<f64>,
+    pub cap: Option<String>,
+    pub join: Option<String>,
+    pub miter_limit: Option<f64>,
 }
 
 impl Default for LineStyleOption {
@@ -508,6 +1701,15 @@ impl Default for LineStyleOption {
             color: None,
             width: Some(2.0),
             line_type: Some(LineType::Solid),
+            opacity: None,
+            shadow_blur: None,
+            shadow_color: None,
+            shadow_offset_x: None,
+            shadow_offset_y: None,
+            curveness: None,
+            cap: None,
+            join: None,
+            miter_limit: None,
         }
     }
 }
@@ -523,6 +1725,28 @@ pub struct TextStyleOption {
     pub font_style: Option<FontStyle>,
     pub align: Option<TextAlignOption>,
     pub vertical_align: Option<LabelVerticalAlign>,
+    pub line_height: Option<f64>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub text_border_color: Option<ColorOption>,
+    pub text_border_width: Option<f64>,
+    pub text_shadow_blur: Option<f64>,
+    pub text_shadow_color: Option<ColorOption>,
+    pub text_shadow_offset_x: Option<f64>,
+    pub text_shadow_offset_y: Option<f64>,
+    pub overflow: Option<String>,
+    pub ellipsis: Option<bool>,
+    pub rich: Option<serde_json::Value>,
+    pub padding: Option<Vec<f64>>,
+    pub background_color: Option<ColorOption>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+    pub border_radius: Option<f64>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
+    pub tag: Option<String>,
 }
 
 impl Default for TextStyleOption {
@@ -535,6 +1759,28 @@ impl Default for TextStyleOption {
             font_style: None,
             align: None,
             vertical_align: None,
+            line_height: None,
+            width: None,
+            height: None,
+            text_border_color: None,
+            text_border_width: None,
+            text_shadow_blur: None,
+            text_shadow_color: None,
+            text_shadow_offset_x: None,
+            text_shadow_offset_y: None,
+            overflow: None,
+            ellipsis: None,
+            rich: None,
+            padding: None,
+            background_color: None,
+            border_color: None,
+            border_width: None,
+            border_radius: None,
+            shadow_blur: None,
+            shadow_color: None,
+            shadow_offset_x: None,
+            shadow_offset_y: None,
+            tag: None,
         }
     }
 }
@@ -584,6 +1830,16 @@ pub struct TableSeriesOption {
     pub grid_index: Option<usize>,
     /// 是否自动调整 grid 大小以适应表格内容
     pub auto_fit_grid: Option<bool>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub silent: Option<bool>,
+    pub data_group_id: Option<String>,
+    pub page_size: Option<usize>,
+    pub page_button_position: Option<String>,
 }
 
 impl Default for TableSeriesOption {
@@ -602,6 +1858,16 @@ impl Default for TableSeriesOption {
             top: None,
             grid_index: Some(0),
             auto_fit_grid: Some(false),
+            z: None,
+            zlevel: None,
+            tooltip: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
+            silent: None,
+            data_group_id: None,
+            page_size: None,
+            page_button_position: None,
         }
     }
 }
@@ -629,6 +1895,7 @@ impl Default for TableHeaderOption {
                 font_style: None,
                 align: None,
                 vertical_align: None,
+                ..Default::default()
             }),
             background_color: Some(ColorOption::new(248, 248, 248)),
             align: Some(TextAlignOption::Center),
@@ -659,6 +1926,7 @@ impl Default for TableBodyOption {
                 font_style: None,
                 align: None,
                 vertical_align: None,
+                ..Default::default()
             }),
             row_height: Some(32.0),
             even_row_background_color: Some(ColorOption::new(255, 255, 255)),
@@ -697,6 +1965,10 @@ impl Default for TableCellStyleOption {
 }
 
 /// Abstract series type that dispatches to concrete variants (bar, line, pie, etc.).
+///
+/// 未识别的 series 类型（如 `heatmap`、`funnel`、`treemap`、`graph` 等）会被解析为
+/// [`SeriesOption::Unknown`]，下游 pipeline 会跳过这些系列而不报错，
+/// 以保证任意 LLM 输出的 ECharts JSON 都能成功解析。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SeriesOption {
@@ -706,6 +1978,8 @@ pub enum SeriesOption {
     Bar(BarSeriesOption),
     #[serde(rename = "candlestick")]
     Candlestick(CandlestickSeriesOption),
+    #[serde(rename = "boxplot")]
+    Boxplot(BoxplotSeriesOption),
     #[serde(rename = "pie")]
     Pie(PieSeriesOption),
     #[serde(rename = "scatter")]
@@ -722,6 +1996,9 @@ pub enum SeriesOption {
     Gauge(GaugeSeriesOption),
     #[serde(rename = "table")]
     Table(TableSeriesOption),
+    /// 未识别的 series 类型。解析时不报错，渲染时跳过。
+    #[serde(other)]
+    Unknown,
 }
 
 /// Line series configuration.
@@ -729,8 +2006,10 @@ pub enum SeriesOption {
 #[serde(rename_all = "camelCase")]
 pub struct LineSeriesOption {
     pub name: Option<String>,
+    #[serde(default)]
     pub data: Vec<DataPoint>,
     pub stack: Option<String>,
+    pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,
     pub grid_index: Option<usize>,
     pub smooth: Option<bool>,
@@ -739,8 +2018,28 @@ pub struct LineSeriesOption {
     pub line_style: Option<LineStyleOption>,
     pub item_style: Option<ItemStyleOption>,
     pub area_style: Option<AreaStyleOption>,
-    /// Optional data sampling for large datasets.
+    pub label: Option<LabelOption>,
+    pub step: Option<bool>,
+    pub connect_nulls: Option<bool>,
+    pub show_symbol: Option<bool>,
+    pub show_all_symbol: Option<bool>,
+    pub legend_hover_link: Option<bool>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
     pub sampling: Option<SamplingOption>,
+    #[serde(default)]
+    pub dataset_index: Option<usize>,
+    pub series_layout_by: Option<String>,
+    pub data_group_id: Option<String>,
+    pub silent: Option<bool>,
 }
 
 impl Default for LineSeriesOption {
@@ -749,6 +2048,7 @@ impl Default for LineSeriesOption {
             name: None,
             data: Vec::new(),
             stack: None,
+            x_axis_index: None,
             y_axis_index: None,
             grid_index: None,
             smooth: Some(false),
@@ -757,7 +2057,27 @@ impl Default for LineSeriesOption {
             line_style: None,
             item_style: None,
             area_style: None,
+            label: None,
+            step: None,
+            connect_nulls: None,
+            show_symbol: None,
+            show_all_symbol: None,
+            legend_hover_link: Some(true),
+            z: None,
+            zlevel: None,
+            encode: None,
+            mark_point: None,
+            mark_line: None,
+            mark_area: None,
+            tooltip: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
             sampling: None,
+            dataset_index: None,
+            series_layout_by: None,
+            data_group_id: None,
+            silent: None,
         }
     }
 }
@@ -801,17 +2121,39 @@ impl LineSeriesOption {
 #[derive(Default)]
 pub struct BarSeriesOption {
     pub name: Option<String>,
+    #[serde(default)]
     pub data: Vec<DataPoint>,
     pub stack: Option<String>,
+    pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,
     pub grid_index: Option<usize>,
     pub bar_width: Option<String>,
+    pub bar_max_width: Option<String>,
+    pub bar_min_width: Option<String>,
+    pub bar_gap: Option<String>,
+    pub bar_category_gap: Option<String>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
     /// 分组索引，自动分组时无需设置
     pub group_index: Option<usize>,
-    /// Optional data sampling for large datasets.
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
     pub sampling: Option<SamplingOption>,
+    pub dataset_index: Option<usize>,
+    pub series_layout_by: Option<String>,
+    pub data_group_id: Option<String>,
+    pub silent: Option<bool>,
+    pub round_cap: Option<bool>,
+    pub show_background: Option<bool>,
+    pub background_style: Option<ItemStyleOption>,
 }
 
 impl BarSeriesOption {
@@ -848,8 +2190,24 @@ pub struct CandlestickSeriesOption {
     pub grid_index: Option<usize>,
     pub item_style: Option<CandlestickItemStyleOption>,
     pub label: Option<LabelOption>,
-    /// Optional data sampling for large datasets.
+    pub bar_width: Option<String>,
+    pub bar_max_width: Option<String>,
+    pub bar_min_width: Option<String>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
     pub sampling: Option<SamplingOption>,
+    pub dataset_index: Option<usize>,
+    pub series_layout_by: Option<String>,
+    pub data_group_id: Option<String>,
+    pub silent: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -888,16 +2246,200 @@ pub struct CandlestickItemStyleOption {
     pub border_color0: Option<ColorOption>,
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// BoxplotSeriesOption - 箱线图系列
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct BoxplotSeriesOption {
+    pub name: Option<String>,
+    pub data: Vec<BoxplotDataPoint>,
+    pub x_axis_index: Option<usize>,
+    pub y_axis_index: Option<usize>,
+    pub grid_index: Option<usize>,
+    pub item_style: Option<BoxplotItemStyleOption>,
+    pub label: Option<LabelOption>,
+    pub bar_width: Option<String>,
+    pub bar_max_width: Option<String>,
+    pub bar_min_width: Option<String>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub sampling: Option<SamplingOption>,
+    pub dataset_index: Option<usize>,
+    pub series_layout_by: Option<String>,
+    pub data_group_id: Option<String>,
+    pub silent: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct BoxplotDataPoint {
+    pub min: f64,
+    pub q1: f64,
+    pub median: f64,
+    pub q3: f64,
+    pub max: f64,
+    pub name: Option<String>,
+}
+
+impl BoxplotDataPoint {
+    pub fn new(min: f64, q1: f64, median: f64, q3: f64, max: f64) -> Self {
+        Self {
+            min,
+            q1,
+            median,
+            q3,
+            max,
+            name: None,
+        }
+    }
+}
+
+impl From<[f64; 5]> for BoxplotDataPoint {
+    fn from(values: [f64; 5]) -> Self {
+        BoxplotDataPoint::new(values[0], values[1], values[2], values[3], values[4])
+    }
+}
+
+impl<'de> Deserialize<'de> for BoxplotDataPoint {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct BoxplotDataPointVisitor;
+
+        impl<'de> Visitor<'de> for BoxplotDataPointVisitor {
+            type Value = BoxplotDataPoint;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a [min, q1, median, q3, max] array or {value: [...], name?} object")
+            }
+
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                use serde::de::Error;
+                let mut values = [0.0; 5];
+                for (i, slot) in values.iter_mut().enumerate() {
+                    *slot = seq.next_element::<f64>()?.ok_or_else(|| {
+                        A::Error::custom(format!("expected 5 numbers, got only {}", i))
+                    })?;
+                }
+                // 忽略多余元素
+                while seq.next_element::<serde_json::Value>()?.is_some() {}
+                Ok(BoxplotDataPoint::new(
+                    values[0], values[1], values[2], values[3], values[4],
+                ))
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                use serde::de::Error;
+                let mut name: Option<String> = None;
+                let mut value: Option<serde_json::Value> = None;
+
+                while let Some(k) = map.next_key::<String>()? {
+                    match k.as_str() {
+                        "name" => name = Some(map.next_value()?),
+                        "value" => value = Some(map.next_value()?),
+                        _ => {
+                            let _: serde_json::Value = map.next_value()?;
+                        }
+                    }
+                }
+
+                let arr = match value {
+                    Some(serde_json::Value::Array(arr)) => arr,
+                    Some(other) => {
+                        return Err(A::Error::custom(format!(
+                            "boxplot value must be an array, got {:?}",
+                            other
+                        )));
+                    }
+                    None => {
+                        return Err(A::Error::custom("boxplot data object missing value field"));
+                    }
+                };
+
+                if arr.len() < 5 {
+                    return Err(A::Error::custom(format!(
+                        "boxplot value array expected 5 numbers, got {}",
+                        arr.len()
+                    )));
+                }
+
+                let nums: Vec<f64> = arr
+                    .into_iter()
+                    .take(5)
+                    .map(|v| {
+                        v.as_f64().ok_or_else(|| {
+                            A::Error::custom("boxplot value array element must be a number")
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                Ok(BoxplotDataPoint {
+                    min: nums[0],
+                    q1: nums[1],
+                    median: nums[2],
+                    q3: nums[3],
+                    max: nums[4],
+                    name,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(BoxplotDataPointVisitor)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct BoxplotItemStyleOption {
+    pub color: Option<ColorOption>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PieSeriesOption {
     pub name: Option<String>,
+    #[serde(default)]
     pub data: Vec<DataPoint>,
     pub radius: Option<Vec<String>>,
     pub center: Option<Vec<String>>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
+    pub label_line: Option<LabelLineOption>,
+    pub rose_type: Option<String>,
+    pub selected_mode: Option<String>,
+    pub selected_offset: Option<f64>,
+    pub clockwise: Option<bool>,
+    pub start_angle: Option<f64>,
+    pub min_angle: Option<f64>,
+    pub avoid_label_overlap: Option<bool>,
+    pub still_show_zero_sum: Option<bool>,
+    pub percent_precision: Option<usize>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
     pub grid_index: Option<usize>,
+    pub dataset_index: Option<usize>,
+    pub series_layout_by: Option<String>,
+    pub data_group_id: Option<String>,
+    pub silent: Option<bool>,
 }
 
 impl Default for PieSeriesOption {
@@ -909,7 +2451,31 @@ impl Default for PieSeriesOption {
             center: Some(vec!["50%".to_string(), "50%".to_string()]),
             item_style: None,
             label: None,
+            label_line: None,
+            rose_type: None,
+            selected_mode: None,
+            selected_offset: None,
+            clockwise: Some(true),
+            start_angle: Some(90.0),
+            min_angle: None,
+            avoid_label_overlap: Some(true),
+            still_show_zero_sum: Some(true),
+            percent_precision: None,
+            z: None,
+            zlevel: None,
+            encode: None,
+            mark_point: None,
+            mark_line: None,
+            mark_area: None,
+            tooltip: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
             grid_index: None,
+            dataset_index: None,
+            series_layout_by: None,
+            data_group_id: None,
+            silent: None,
         }
     }
 }
@@ -927,18 +2493,64 @@ impl PieSeriesOption {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelLineOption {
+    pub show: Option<bool>,
+    pub length: Option<f64>,
+    pub length2: Option<f64>,
+    pub smooth: Option<bool>,
+    pub min_turn_angle: Option<f64>,
+    pub line_style: Option<LineStyleOption>,
+}
+
+impl Default for LabelLineOption {
+    fn default() -> Self {
+        Self {
+            show: Some(true),
+            length: None,
+            length2: None,
+            smooth: None,
+            min_turn_angle: None,
+            line_style: None,
+        }
+    }
+}
+
 /// Scatter series configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScatterSeriesOption {
     pub name: Option<String>,
+    #[serde(default)]
     pub data: Vec<DataPoint>,
+    pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,
     pub grid_index: Option<usize>,
+    pub symbol: Option<SymbolType>,
     pub symbol_size: Option<f64>,
+    pub symbol_rotate: Option<f64>,
+    pub symbol_keep_aspect: Option<bool>,
+    pub symbol_offset: Option<Vec<f64>>,
     pub item_style: Option<ItemStyleOption>,
-    /// Optional data sampling for large datasets.
+    pub label: Option<LabelOption>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
     pub sampling: Option<SamplingOption>,
+    pub dataset_index: Option<usize>,
+    pub series_layout_by: Option<String>,
+    pub data_group_id: Option<String>,
+    pub silent: Option<bool>,
+    pub large: Option<bool>,
+    pub large_threshold: Option<usize>,
 }
 
 impl ScatterSeriesOption {
@@ -964,11 +2576,33 @@ impl Default for ScatterSeriesOption {
         Self {
             name: None,
             data: Vec::new(),
+            x_axis_index: None,
             y_axis_index: None,
             grid_index: None,
+            symbol: Some(SymbolType::Circle),
             symbol_size: Some(10.0),
+            symbol_rotate: None,
+            symbol_keep_aspect: None,
+            symbol_offset: None,
             item_style: None,
+            label: None,
+            z: None,
+            zlevel: None,
+            encode: None,
+            mark_point: None,
+            mark_line: None,
+            mark_area: None,
+            tooltip: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
             sampling: None,
+            dataset_index: None,
+            series_layout_by: None,
+            data_group_id: None,
+            silent: None,
+            large: None,
+            large_threshold: None,
         }
     }
 }
@@ -1003,14 +2637,126 @@ impl Default for RadarNameOption {
     }
 }
 
+/// 单个值或数组（泛型版本），用于 ECharts 中接受单值或数组的数字类字段
+#[derive(Debug, Clone, PartialEq)]
+pub enum OneOrMany<T> {
+    One(T),
+    Many(Vec<T>),
+}
+
+impl<T> OneOrMany<T> {
+    pub fn as_vec(&self) -> Vec<T>
+    where
+        T: Clone,
+    {
+        match self {
+            OneOrMany::One(v) => vec![v.clone()],
+            OneOrMany::Many(v) => v.clone(),
+        }
+    }
+}
+
+impl<'de, T> serde::Deserialize<'de> for OneOrMany<T>
+where
+    T: serde::Deserialize<'de>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de;
+
+        struct OneOrManyVisitor<T>(std::marker::PhantomData<T>);
+
+        impl<'de, T> de::Visitor<'de> for OneOrManyVisitor<T>
+        where
+            T: serde::Deserialize<'de>,
+        {
+            type Value = OneOrMany<T>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("a single value or an array of values")
+            }
+
+            fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
+                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
+                Ok(OneOrMany::One(v))
+            }
+
+            fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
+                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
+                Ok(OneOrMany::One(v))
+            }
+
+            fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
+                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
+                Ok(OneOrMany::One(v))
+            }
+
+            fn visit_bool<E: de::Error>(self, value: bool) -> Result<Self::Value, E> {
+                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
+                Ok(OneOrMany::One(v))
+            }
+
+            fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
+                Ok(OneOrMany::One(v))
+            }
+
+            fn visit_string<E: de::Error>(self, value: String) -> Result<Self::Value, E> {
+                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
+                Ok(OneOrMany::One(v))
+            }
+
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                let mut items = Vec::new();
+                while let Some(item) = seq.next_element::<T>()? {
+                    items.push(item);
+                }
+                Ok(OneOrMany::Many(items))
+            }
+        }
+
+        deserializer.deserialize_any(OneOrManyVisitor(std::marker::PhantomData))
+    }
+}
+
+impl<T> serde::Serialize for OneOrMany<T>
+where
+    T: serde::Serialize,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            OneOrMany::One(v) => v.serialize(serializer),
+            OneOrMany::Many(v) => v.serialize(serializer),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RadarOption {
     pub indicator: Option<Vec<RadarIndicatorOption>>,
     pub center: Option<Vec<String>>,
-    pub radius: Option<Vec<String>>,
+    pub radius: Option<OneOrMany<String>>,
     pub split_number: Option<usize>,
     pub name: Option<RadarNameOption>,
+    pub shape: Option<String>,
+    pub scale: Option<bool>,
+    pub silent: Option<bool>,
+    pub trigger_event: Option<bool>,
+    pub axis_line: Option<AxisLineOption>,
+    pub axis_tick: Option<AxisTickOption>,
+    pub axis_label: Option<AxisLabelOption>,
+    pub split_line: Option<SplitLineOption>,
+    pub split_area: Option<SplitAreaOption>,
+    pub split_area_color: Option<Vec<ColorOption>>,
+    pub indicator_font_size: Option<f64>,
+    pub radius_axis_index: Option<usize>,
+    pub angle_axis_index: Option<usize>,
 }
 
 impl Default for RadarOption {
@@ -1018,9 +2764,22 @@ impl Default for RadarOption {
         Self {
             indicator: None,
             center: Some(vec!["50%".to_string(), "50%".to_string()]),
-            radius: Some(vec!["0%".to_string(), "75%".to_string()]),
+            radius: Some(OneOrMany::Many(vec!["0%".to_string(), "75%".to_string()])),
             split_number: Some(5),
             name: None,
+            shape: None,
+            scale: None,
+            silent: None,
+            trigger_event: None,
+            axis_line: None,
+            axis_tick: None,
+            axis_label: None,
+            split_line: None,
+            split_area: None,
+            split_area_color: None,
+            indicator_font_size: None,
+            radius_axis_index: None,
+            angle_axis_index: None,
         }
     }
 }
@@ -1035,11 +2794,28 @@ impl Default for RadarOption {
 pub struct RadarSeriesOption {
     pub name: Option<String>,
     pub data: Vec<RadarDataOption>,
+    pub radar_index: Option<usize>,
     pub item_style: Option<ItemStyleOption>,
     pub line_style: Option<LineStyleOption>,
     pub area_style: Option<AreaStyleOption>,
+    pub label: Option<LabelOption>,
     pub symbol: Option<SymbolType>,
     pub symbol_size: Option<f64>,
+    pub symbol_rotate: Option<f64>,
+    pub symbol_keep_aspect: Option<bool>,
+    pub symbol_offset: Option<Vec<f64>>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub silent: Option<bool>,
+    pub data_group_id: Option<String>,
 }
 
 impl Default for RadarSeriesOption {
@@ -1047,11 +2823,28 @@ impl Default for RadarSeriesOption {
         Self {
             name: None,
             data: Vec::new(),
+            radar_index: None,
             item_style: None,
             line_style: None,
             area_style: None,
+            label: None,
             symbol: Some(SymbolType::Circle),
             symbol_size: Some(4.0),
+            symbol_rotate: None,
+            symbol_keep_aspect: None,
+            symbol_offset: None,
+            z: None,
+            zlevel: None,
+            encode: None,
+            mark_point: None,
+            mark_line: None,
+            mark_area: None,
+            tooltip: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
+            silent: None,
+            data_group_id: None,
         }
     }
 }
@@ -1070,14 +2863,28 @@ pub struct RadarDataOption {
 #[serde(rename_all = "camelCase")]
 pub struct PolarBarSeriesOption {
     pub name: Option<String>,
+    #[serde(default)]
     pub data: Vec<DataPoint>,
     pub item_style: Option<ItemStyleOption>,
+    pub label: Option<LabelOption>,
     /// 每个扇区的颜色，按数据索引
     pub color: Option<Vec<ColorOption>>,
     /// 扇区之间的间隔（角度，单位：度）
     pub pad_angle: Option<f64>,
     /// 起始角度（单位：度，0表示12点钟方向）
     pub start_angle: Option<f64>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub silent: Option<bool>,
+    pub data_group_id: Option<String>,
 }
 
 impl Default for PolarBarSeriesOption {
@@ -1086,9 +2893,22 @@ impl Default for PolarBarSeriesOption {
             name: None,
             data: Vec::new(),
             item_style: None,
+            label: None,
             color: None,
             pad_angle: Some(2.0),
             start_angle: Some(0.0),
+            z: None,
+            zlevel: None,
+            encode: None,
+            mark_point: None,
+            mark_line: None,
+            mark_area: None,
+            tooltip: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
+            silent: None,
+            data_group_id: None,
         }
     }
 }
@@ -1117,9 +2937,27 @@ pub struct PolarScatterSeriesOption {
     /// 数据格式：[角度, 半径] 或 [角度, 半径, 大小]
     pub data: Vec<PolarScatterDataPoint>,
     pub item_style: Option<ItemStyleOption>,
+    pub label: Option<LabelOption>,
     pub symbol: Option<SymbolType>,
     /// 默认符号大小
     pub symbol_size: Option<f64>,
+    pub symbol_rotate: Option<f64>,
+    pub symbol_keep_aspect: Option<bool>,
+    pub symbol_offset: Option<Vec<f64>>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub silent: Option<bool>,
+    pub data_group_id: Option<String>,
+    pub large: Option<bool>,
+    pub large_threshold: Option<usize>,
 }
 
 impl Default for PolarScatterSeriesOption {
@@ -1128,8 +2966,26 @@ impl Default for PolarScatterSeriesOption {
             name: None,
             data: Vec::new(),
             item_style: None,
+            label: None,
             symbol: Some(SymbolType::Circle),
             symbol_size: Some(10.0),
+            symbol_rotate: None,
+            symbol_keep_aspect: None,
+            symbol_offset: None,
+            z: None,
+            zlevel: None,
+            encode: None,
+            mark_point: None,
+            mark_line: None,
+            mark_area: None,
+            tooltip: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
+            silent: None,
+            data_group_id: None,
+            large: None,
+            large_threshold: None,
         }
     }
 }
@@ -1156,11 +3012,25 @@ pub struct BubbleSeriesOption {
     pub name: Option<String>,
     /// 数据格式：[x, y, size] 或 [x, y]
     pub data: Vec<BubbleDataPoint>,
+    pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,
     pub grid_index: Option<usize>,
     /// 气泡大小缩放因子
     pub symbol_size_scale: Option<f64>,
     pub item_style: Option<ItemStyleOption>,
+    pub label: Option<LabelOption>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub silent: Option<bool>,
+    pub data_group_id: Option<String>,
 }
 
 impl Default for BubbleSeriesOption {
@@ -1168,10 +3038,24 @@ impl Default for BubbleSeriesOption {
         Self {
             name: None,
             data: Vec::new(),
+            x_axis_index: None,
             y_axis_index: None,
             grid_index: None,
             symbol_size_scale: Some(1.0),
             item_style: None,
+            label: None,
+            z: None,
+            zlevel: None,
+            encode: None,
+            mark_point: None,
+            mark_line: None,
+            mark_area: None,
+            tooltip: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
+            silent: None,
+            data_group_id: None,
         }
     }
 }
@@ -1212,6 +3096,8 @@ pub struct GaugeSeriesOption {
     pub split_number: Option<usize>,
     /// 轴线样式
     pub axis_line: Option<GaugeAxisLineOption>,
+    /// 进度条样式
+    pub progress: Option<GaugeProgressOption>,
     /// 指针样式
     pub pointer: Option<GaugePointerOption>,
     /// 刻度样式
@@ -1226,6 +3112,16 @@ pub struct GaugeSeriesOption {
     pub detail: Option<GaugeDetailOption>,
     /// 渐变色配置
     pub gradient_colors: Option<Vec<GradientColorStopOption>>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub silent: Option<bool>,
+    pub data_group_id: Option<String>,
+    pub item_style: Option<ItemStyleOption>,
+    pub title_label: Option<String>,
 }
 
 impl Default for GaugeSeriesOption {
@@ -1244,6 +3140,7 @@ impl Default for GaugeSeriesOption {
             end_angle: Some(45.0),
             split_number: Some(10),
             axis_line: None,
+            progress: None,
             pointer: None,
             axis_tick: None,
             axis_label: None,
@@ -1251,6 +3148,16 @@ impl Default for GaugeSeriesOption {
             title: None,
             detail: None,
             gradient_colors: None,
+            z: None,
+            zlevel: None,
+            tooltip: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
+            silent: None,
+            data_group_id: None,
+            item_style: None,
+            title_label: None,
         }
     }
 }
@@ -1266,6 +3173,16 @@ pub struct GaugeDataPoint {
 pub struct GaugeAxisLineOption {
     pub show: Option<bool>,
     pub line_style: Option<LineStyleOption>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GaugeProgressOption {
+    pub show: Option<bool>,
+    pub width: Option<f64>,
+    pub round_cap: Option<bool>,
+    pub clip: Option<bool>,
+    pub item_style: Option<ItemStyleOption>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1438,7 +3355,7 @@ impl<'de> Visitor<'de> for DataPointVisitor {
     type Value = DataPoint;
 
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("a number, a [key, value] array, or a {name, value} object")
+        f.write_str("a number, null, a [key, value] array, or a {name, value} object")
     }
 
     fn visit_f64<E: de::Error>(self, v: f64) -> Result<DataPoint, E> {
@@ -1451,6 +3368,15 @@ impl<'de> Visitor<'de> for DataPointVisitor {
 
     fn visit_u64<E: de::Error>(self, v: u64) -> Result<DataPoint, E> {
         Ok(DataPoint::Value(v as f64))
+    }
+
+    /// JSON `null` 数据点 → NaN（在 line 图中会断线，符合 ECharts connect_nulls=false 语义）。
+    fn visit_unit<E: de::Error>(self) -> Result<DataPoint, E> {
+        Ok(DataPoint::Value(f64::NAN))
+    }
+
+    fn visit_none<E: de::Error>(self) -> Result<DataPoint, E> {
+        Ok(DataPoint::Value(f64::NAN))
     }
 
     fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<DataPoint, A::Error> {
@@ -1478,6 +3404,13 @@ impl<'de> Visitor<'de> for DataPointVisitor {
                     .ok_or_else(|| A::Error::custom("second element must be a number"))?;
                 Ok(DataPoint::XY(x, value))
             }
+            // null 第一个元素降级为 Named("", value)，不报错。
+            serde_json::Value::Null => {
+                let value = second
+                    .as_f64()
+                    .ok_or_else(|| A::Error::custom("second element must be a number"))?;
+                Ok(DataPoint::Named(String::new(), value))
+            }
             other => Err(A::Error::custom(format!(
                 "unexpected array element type: {:?}",
                 other
@@ -1488,7 +3421,9 @@ impl<'de> Visitor<'de> for DataPointVisitor {
     fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<DataPoint, A::Error> {
         use serde::de::Error;
         let mut name: Option<String> = None;
-        let mut value: Option<f64> = None;
+        // value 用 serde_json::Value 接受任意类型，后续按类型分支解析，
+        // 兼容 ECharts 的 {value: 10} / {value: [x, y]} / {value: [x, y, z]} / {value: null} 等形态。
+        let mut value: Option<serde_json::Value> = None;
         let mut x: Option<f64> = None;
 
         while let Some(k) = map.next_key::<String>()? {
@@ -1502,10 +3437,51 @@ impl<'de> Visitor<'de> for DataPointVisitor {
             }
         }
 
-        let value = value.ok_or_else(|| A::Error::custom("missing 'value' field"))?;
-        match x {
-            Some(xv) => Ok(DataPoint::XY(xv, value)),
-            None => Ok(DataPoint::Named(name.unwrap_or_default(), value)),
+        // 解析 value：可能是数字、[x, y] 数组、[x, y, z] 数组、null 或缺失。
+        // 数组中的第三个及之后元素（如 bubble 的 z）丢弃以保持兼容。
+        let (vx_from_value, value_num) = match value {
+            Some(serde_json::Value::Number(n)) => {
+                let v = n
+                    .as_f64()
+                    .ok_or_else(|| A::Error::custom("value must be a valid number"))?;
+                (None, v)
+            }
+            Some(serde_json::Value::Array(arr)) => {
+                let mut iter = arr.into_iter();
+                match (iter.next(), iter.next()) {
+                    (Some(f), Some(s)) => {
+                        let xv = f.as_f64().ok_or_else(|| {
+                            A::Error::custom("array value first element must be a number")
+                        })?;
+                        let yv = s.as_f64().ok_or_else(|| {
+                            A::Error::custom("array value second element must be a number")
+                        })?;
+                        (Some(xv), yv)
+                    }
+                    (Some(f), None) => {
+                        let v = f.as_f64().ok_or_else(|| {
+                            A::Error::custom("array value single element must be a number")
+                        })?;
+                        (None, v)
+                    }
+                    _ => (None, f64::NAN),
+                }
+            }
+            // null 或缺失 → NaN（line 图会断线）。
+            Some(serde_json::Value::Null) | None => (None, f64::NAN),
+            Some(other) => {
+                return Err(A::Error::custom(format!(
+                    "unsupported value type: {:?}",
+                    other
+                )));
+            }
+        };
+
+        // 优先使用从 value 数组提取的 x；其次用显式 x 字段。
+        let xv = vx_from_value.or(x);
+        match xv {
+            Some(xv) => Ok(DataPoint::XY(xv, value_num)),
+            None => Ok(DataPoint::Named(name.unwrap_or_default(), value_num)),
         }
     }
 }
@@ -1526,6 +3502,36 @@ pub struct LabelOption {
     pub color: Option<ColorOption>,
     pub font_size: Option<f64>,
     pub font_family: Option<String>,
+    pub font_weight: Option<String>,
+    pub font_style: Option<String>,
+    pub rotate: Option<f64>,
+    pub distance: Option<f64>,
+    pub offset: Option<Vec<f64>>,
+    pub align: Option<String>,
+    pub vertical_align: Option<String>,
+    pub line_height: Option<f64>,
+    pub background_color: Option<ColorOption>,
+    pub border_color: Option<ColorOption>,
+    pub border_width: Option<f64>,
+    pub border_radius: Option<f64>,
+    pub padding: Option<Vec<f64>>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
+    pub width: Option<f64>,
+    pub height: Option<f64>,
+    pub text_border_color: Option<ColorOption>,
+    pub text_border_width: Option<f64>,
+    pub text_shadow_blur: Option<f64>,
+    pub text_shadow_color: Option<ColorOption>,
+    pub text_shadow_offset_x: Option<f64>,
+    pub text_shadow_offset_y: Option<f64>,
+    pub overflow: Option<String>,
+    pub ellipsis: Option<bool>,
+    pub line_over: Option<String>,
+    pub bleed_margin: Option<f64>,
+    pub rich: Option<serde_json::Value>,
 }
 
 /// Item style configuration (fill color, stroke color, opacity, etc.).
@@ -1535,7 +3541,13 @@ pub struct ItemStyleOption {
     pub color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
     pub border_width: Option<f64>,
+    pub border_type: Option<LineType>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
     pub opacity: Option<f64>,
+    pub decal: Option<String>,
 }
 
 impl Default for ItemStyleOption {
@@ -1544,7 +3556,13 @@ impl Default for ItemStyleOption {
             color: None,
             border_color: None,
             border_width: None,
+            border_type: None,
+            shadow_blur: None,
+            shadow_color: None,
+            shadow_offset_x: None,
+            shadow_offset_y: None,
             opacity: Some(1.0),
+            decal: None,
         }
     }
 }
@@ -1554,6 +3572,11 @@ impl Default for ItemStyleOption {
 pub struct AreaStyleOption {
     pub color: Option<ColorOption>,
     pub opacity: Option<f64>,
+    pub origin: Option<String>,
+    pub shadow_blur: Option<f64>,
+    pub shadow_color: Option<ColorOption>,
+    pub shadow_offset_x: Option<f64>,
+    pub shadow_offset_y: Option<f64>,
 }
 
 impl Default for AreaStyleOption {
@@ -1561,6 +3584,11 @@ impl Default for AreaStyleOption {
         Self {
             color: None,
             opacity: Some(0.5),
+            origin: None,
+            shadow_blur: None,
+            shadow_color: None,
+            shadow_offset_x: None,
+            shadow_offset_y: None,
         }
     }
 }
@@ -1690,7 +3718,7 @@ impl<'de> Deserialize<'de> for PositionOption {
                 } else {
                     match value {
                         "auto" => Ok(PositionOption::Preset(PositionPreset::Auto)),
-                        "center" => Ok(PositionOption::Preset(PositionPreset::Center)),
+                        "center" | "middle" => Ok(PositionOption::Preset(PositionPreset::Center)),
                         "left" => Ok(PositionOption::Preset(PositionPreset::Left)),
                         "right" => Ok(PositionOption::Preset(PositionPreset::Right)),
                         "top" => Ok(PositionOption::Preset(PositionPreset::Top)),
@@ -1770,6 +3798,63 @@ impl ColorOption {
         }
     }
 
+    /// 从 rgb() / rgba() 字符串解析颜色
+    pub fn from_rgba(s: &str) -> Option<Self> {
+        let s = s.trim();
+        if !(s.starts_with("rgb(") || s.starts_with("rgba(")) {
+            return None;
+        }
+        let start = if s.starts_with("rgba(") { 5 } else { 4 };
+        let end = s.len() - 1;
+        let inner = &s[start..end];
+        let parts: Vec<&str> = inner.split(',').map(|p| p.trim()).collect();
+
+        if parts.len() == 3 {
+            let r = parts[0].parse::<u8>().ok()?;
+            let g = parts[1].parse::<u8>().ok()?;
+            let b = parts[2].parse::<u8>().ok()?;
+            Some(Self::new(r, g, b))
+        } else if parts.len() == 4 {
+            let r = parts[0].parse::<u8>().ok()?;
+            let g = parts[1].parse::<u8>().ok()?;
+            let b = parts[2].parse::<u8>().ok()?;
+            let a = parts[3].parse::<f64>().ok()?;
+            let a_u8 = (a.clamp(0.0, 1.0) * 255.0).round() as u8;
+            Some(Self::with_alpha(r, g, b, a_u8))
+        } else {
+            None
+        }
+    }
+
+    /// 从 CSS 颜色关键字解析（如 `red`、`blue`、`transparent`）。
+    /// 输入需为小写。返回 None 表示不是已知关键字。
+    pub fn from_css_keyword(keyword: &str) -> Option<Self> {
+        // 仅小写的关键字。返回静态 (r, g, b) 元组以避免分配。
+        let (r, g, b): (u8, u8, u8) = match keyword {
+            "black" => (0, 0, 0),
+            "white" => (255, 255, 255),
+            "red" => (255, 0, 0),
+            "green" => (0, 128, 0),
+            "blue" => (0, 0, 255),
+            "yellow" => (255, 255, 0),
+            "cyan" | "aqua" => (0, 255, 255),
+            "magenta" | "fuchsia" => (255, 0, 255),
+            "gray" | "grey" => (128, 128, 128),
+            "silver" => (192, 192, 192),
+            "maroon" => (128, 0, 0),
+            "olive" => (128, 128, 0),
+            "navy" => (0, 0, 128),
+            "teal" => (0, 128, 128),
+            "purple" => (128, 0, 128),
+            "orange" => (255, 165, 0),
+            "pink" => (255, 192, 203),
+            "brown" => (165, 42, 42),
+            "lime" => (0, 255, 0),
+            _ => return None,
+        };
+        Some(Self::new(r, g, b))
+    }
+
     fn hex_string(&self) -> String {
         if self.a == 255 {
             format!("#{:02x}{:02x}{:02x}", self.r, self.g, self.b)
@@ -1799,16 +3884,96 @@ impl<'de> Deserialize<'de> for ColorOption {
             type Value = ColorOption;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a hex color string like #RRGGBB or #RRGGBBAA")
+                formatter
+                    .write_str("a hex/rgb/rgba color string, a CSS keyword, or a gradient object")
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<ColorOption, E> {
-                ColorOption::from_hex(value)
-                    .ok_or_else(|| de::Error::custom(format!("invalid color: {}", value)))
+                // 1. 直接 hex / rgb / rgba 解析
+                if let Some(c) = ColorOption::from_hex(value) {
+                    return Ok(c);
+                }
+                if let Some(c) = ColorOption::from_rgba(value) {
+                    return Ok(c);
+                }
+                // 2. CSS 关键字
+                let lower = value.trim().to_ascii_lowercase();
+                match lower.as_str() {
+                    "transparent" | "none" => return Ok(ColorOption::with_alpha(0, 0, 0, 0)),
+                    "inherit" | "initial" | "unset" | "revert" | "auto" => {
+                        // 这些值在当前渲染器中没有具体语义，降级为黑色 sentinel
+                        return Ok(ColorOption::new(0, 0, 0));
+                    }
+                    _ => {}
+                }
+                if let Some(c) = ColorOption::from_css_keyword(&lower) {
+                    return Ok(c);
+                }
+                Err(de::Error::custom(format!("invalid color: {}", value)))
+            }
+
+            fn visit_string<E: de::Error>(self, value: String) -> Result<ColorOption, E> {
+                self.visit_str(&value)
+            }
+
+            /// 处理渐变对象：{"type":"linear","colorStops":[{"offset":0,"color":"#xxx"},...]}
+            /// 取首个 colorStop 的 color 作为降级色（暂不支持真实渐变渲染）
+            fn visit_map<A>(self, mut map: A) -> Result<ColorOption, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                use serde_json::Value;
+
+                let mut color_stops: Option<Value> = None;
+                let mut first_color: Option<Value> = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "colorStops" | "color_stops" => {
+                            color_stops = Some(map.next_value::<Value>()?);
+                        }
+                        "color" => {
+                            first_color = Some(map.next_value::<Value>()?);
+                        }
+                        _ => {
+                            let _: Value = map.next_value()?;
+                        }
+                    }
+                }
+
+                // 优先从 colorStops 取首色
+                if let Some(Value::Array(stops)) = color_stops {
+                    for stop in &stops {
+                        if let Some(c) = stop.get("color").or_else(|| stop.get("Color")) {
+                            if let Some(s) = c.as_str() {
+                                if let Some(parsed) =
+                                    ColorOption::from_hex(s).or_else(|| ColorOption::from_rgba(s))
+                                {
+                                    return Ok(parsed);
+                                }
+                            } else if let Value::Object(_) = c {
+                                // 嵌套渐变 colorStop，递归降级
+                                let nested = serde_json::from_value::<ColorOption>(c.clone()).ok();
+                                if let Some(parsed) = nested {
+                                    return Ok(parsed);
+                                }
+                            }
+                        }
+                    }
+                }
+                // 没有 colorStops，但对象本身有 color 字段
+                if let Some(Value::String(s)) = first_color
+                    && let Some(parsed) =
+                        ColorOption::from_hex(&s).or_else(|| ColorOption::from_rgba(&s))
+                {
+                    return Ok(parsed);
+                }
+                // 渐变对象但解析失败：降级为黑色 sentinel，避免报错
+                Ok(ColorOption::new(0, 0, 0))
             }
         }
 
-        deserializer.deserialize_str(ColorVisitor)
+        deserializer.deserialize_any(ColorVisitor)
     }
 }
 

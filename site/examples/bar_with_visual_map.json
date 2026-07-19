@@ -1,0 +1,49 @@
+{
+    "title": {
+        "text": "带 visualMap 的柱状图",
+        "left": "center"
+    },
+    "tooltip": {
+        "trigger": "item",
+        "formatter": "{b}: {c}"
+    },
+    "visualMap": {
+        "show": true,
+        "type": "continuous",
+        "min": 0,
+        "max": 300,
+        "left": 10,
+        "bottom": 10,
+        "text": ["高", "低"],
+        "calculable": true,
+        "inRange": {
+            "color": ["#50a3ba", "#eac736", "#d94e5d"]
+        }
+    },
+    "xAxis": {
+        "type": "category",
+        "data": ["衬衫", "羊毛衫", "雪纺衫", "裤子", "高跟鞋", "袜子"],
+        "axisLabel": {
+            "interval": 0
+        }
+    },
+    "yAxis": {
+        "type": "value",
+        "name": "销量"
+    },
+    "series": [
+        {
+            "name": "销量",
+            "type": "bar",
+            "barWidth": "50%",
+            "itemStyle": {
+                "borderRadius": [4, 4, 0, 0]
+            },
+            "label": {
+                "show": true,
+                "position": "top"
+            },
+            "data": [5, 20, 36, 10, 10, 20]
+        }
+    ]
+}

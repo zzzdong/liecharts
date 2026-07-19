@@ -38,6 +38,7 @@ pub trait Renderer {
     );
 
     /// Draws text at the given position.
+    #[allow(clippy::too_many_arguments)]
     fn draw_text(
         &mut self,
         text: &str,
@@ -118,7 +119,7 @@ pub trait Renderer {
                     style.font_size,
                     &style.font_family,
                     *rotation,
-                    layout.as_ref(),
+                    layout.as_deref(),
                 );
             }
             VisualElement::Group {

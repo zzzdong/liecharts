@@ -1,0 +1,101 @@
+{
+    "title": {
+        "text": "散点图 - 身高体重分布",
+        "subtext": "带有 dataZoom 和 visualMap"
+    },
+    "tooltip": {
+        "trigger": "item",
+        "formatter": "{b}: {c}"
+    },
+    "legend": {
+        "data": ["男性", "女性"],
+        "top": 30
+    },
+    "grid": {
+        "left": "3%",
+        "right": "4%",
+        "bottom": "15%",
+        "containLabel": true
+    },
+    "xAxis": {
+        "type": "value",
+        "name": "身高 (cm)",
+        "min": 150,
+        "max": 200,
+        "axisLabel": {
+            "formatter": "{value}"
+        }
+    },
+    "yAxis": {
+        "type": "value",
+        "name": "体重 (kg)",
+        "min": 40,
+        "max": 100
+    },
+    "dataZoom": [
+        {
+            "type": "inside",
+            "xAxisIndex": 0,
+            "start": 0,
+            "end": 100
+        },
+        {
+            "type": "slider",
+            "xAxisIndex": 0,
+            "start": 0,
+            "end": 100,
+            "bottom": 10,
+            "height": 20
+        }
+    ],
+    "visualMap": {
+        "show": true,
+        "type": "continuous",
+        "min": 18,
+        "max": 35,
+        "text": ["BMI 高", "BMI 低"],
+        "calculable": true,
+        "inRange": {
+            "color": ["#e0f3f8", "#abd9e9", "#74add1", "#4575b4"]
+        }
+    },
+    "series": [
+        {
+            "name": "男性",
+            "type": "scatter",
+            "symbolSize": 10,
+            "itemStyle": {
+                "color": "#5470c6"
+            },
+            "data": [
+                [175, 70],
+                [180, 75],
+                [168, 65],
+                [185, 82],
+                [172, 68],
+                [190, 90],
+                [165, 58],
+                [178, 72]
+            ]
+        },
+        {
+            "name": "女性",
+            "type": "scatter",
+            "symbolSize": 10,
+            "symbol": "diamond",
+            "itemStyle": {
+                "color": "#ee6666"
+            },
+            "data": [
+                [160, 52],
+                [165, 55],
+                [158, 48],
+                [170, 60],
+                [163, 54],
+                [175, 62],
+                [155, 45],
+                [168, 58]
+            ]
+        }
+    ]
+}

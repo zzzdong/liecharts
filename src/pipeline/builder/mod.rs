@@ -12,6 +12,7 @@ use crate::{
 };
 
 pub mod bar;
+pub mod boxplot;
 pub mod bubble;
 pub mod candlestick;
 pub mod gauge;
@@ -25,6 +26,7 @@ pub mod scatter;
 pub mod table;
 
 pub use bar::BarBuilder;
+pub use boxplot::BoxplotBuilder;
 pub use bubble::BubbleBuilder;
 pub use candlestick::CandlestickBuilder;
 pub use gauge::GaugeBuilder;
@@ -51,6 +53,7 @@ pub fn build_typed_series(series: &TypedSeries, ctx: &RenderContext) -> Result<V
         TypedSeries::Scatter(s) => ScatterBuilder::build(s, ctx),
         TypedSeries::Bubble(s) => BubbleBuilder::build(s, ctx),
         TypedSeries::Candlestick(s) => CandlestickBuilder::build(s, ctx),
+        TypedSeries::Boxplot(s) => BoxplotBuilder::build(s, ctx),
         TypedSeries::Pie(s) => PieBuilder::build(s, ctx),
         TypedSeries::Radar(s) => RadarBuilder::build(s, ctx),
         TypedSeries::PolarBar(s) => PolarBarBuilder::build(s, ctx),

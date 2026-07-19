@@ -1,0 +1,82 @@
+{
+    "title": {
+        "text": "带标注的折线图",
+        "subtext": "包含 tooltip 和 markLine/markPoint"
+    },
+    "tooltip": {
+        "show": true,
+        "trigger": "axis",
+        "axisPointer": {
+            "type": "cross"
+        },
+        "backgroundColor": "rgba(50, 50, 50, 0.9)",
+        "borderColor": "#333",
+        "borderWidth": 1,
+        "textStyle": {
+            "color": "#fff",
+            "fontSize": 14
+        }
+    },
+    "legend": {
+        "show": true,
+        "data": ["销售", "目标"],
+        "top": "bottom"
+    },
+    "grid": {
+        "left": "3%",
+        "right": "4%",
+        "bottom": "10%",
+        "containLabel": true
+    },
+    "xAxis": [{
+        "type": "category",
+        "data": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"],
+        "axisLabel": {
+            "rotate": 30
+        }
+    }],
+    "yAxis": [{
+        "type": "value",
+        "name": "销量",
+        "axisLabel": {
+            "formatter": "{value} 件"
+        }
+    }],
+    "series": [
+        {
+            "name": "销售",
+            "type": "line",
+            "smooth": true,
+            "symbol": "circle",
+            "symbolSize": 8,
+            "itemStyle": {
+                "color": "#5470c6"
+            },
+            "lineStyle": {
+                "width": 2
+            },
+            "markPoint": {
+                "data": [
+                    { "type": "max", "name": "Max" },
+                    { "type": "min", "name": "Min" }
+                ]
+            },
+            "markLine": {
+                "data": [
+                    { "type": "average", "name": "Avg" }
+                ]
+            },
+            "data": [120, 132, 101, 134, 90, 230, 210]
+        },
+        {
+            "name": "目标",
+            "type": "line",
+            "symbol": "diamond",
+            "symbolSize": 6,
+            "lineStyle": {
+                "type": "dashed"
+            },
+            "data": [200, 200, 200, 200, 200, 200, 200]
+        }
+    ]
+}

@@ -5,12 +5,12 @@
 
 use crate::{
     option::{
-        self, AxisConfig, AxisOption, AxisType, BarSeriesOption, BubbleDataPoint,
-        BubbleSeriesOption, CandlestickSeriesOption, ChartOption, GaugeSeriesOption, GridConfig,
-        GridOption, LegendOption, LineSeriesOption, PieSeriesOption, PolarBarSeriesOption,
-        PolarScatterSeriesOption, PositionOption, PositionPreset, RadarIndicatorOption,
-        RadarOption, RadarSeriesOption, ScatterSeriesOption, SeriesOption, TableSeriesOption,
-        TitleOption,
+        self, AxisConfig, AxisOption, AxisType, BarSeriesOption, BoxplotSeriesOption,
+        BubbleDataPoint, BubbleSeriesOption, CandlestickSeriesOption, ChartOption,
+        GaugeSeriesOption, GridConfig, GridOption, LegendOption, LineSeriesOption, PieSeriesOption,
+        PolarBarSeriesOption, PolarScatterSeriesOption, PositionOption, PositionPreset,
+        RadarIndicatorOption, RadarOption, RadarSeriesOption, ScatterSeriesOption, SeriesOption,
+        TableSeriesOption, TitleOption,
     },
     pipeline::{
         dataframe::DataValue,
@@ -24,56 +24,68 @@ use crate::{
 
 /// 将 ChartSpec 转换为旧的 ChartOption
 pub fn chart_spec_to_chart_option(spec: &ChartSpec) -> ChartOption {
-    let mut option = ChartOption::default();
-
     // Title
-    option.title = spec.title.as_ref().map(|t| TitleOption {
+    let title = spec.title.as_ref().map(|t| TitleOption {
         text: t.text.clone(),
         subtext: t.subtext.clone(),
         left: Some(PositionOption::Preset(PositionPreset::Center)),
         top: Some(PositionOption::Pixel(20.0)),
         text_style: None,
         subtext_style: None,
+        ..Default::default()
     });
 
     // Legend
-    if let Some(legend) = &spec.legend {
-        option.legend = Some(LegendOption {
-            show: Some(true),
-            data: Some(legend.data.clone()),
-            left: Some(PositionOption::Preset(PositionPreset::Center)),
-            top: Some(PositionOption::Preset(PositionPreset::Auto)),
-            orient: None,
-            text_style: None,
-            item_width: None,
-            item_height: None,
-            symbol_size: None,
-        });
-    }
+    let legend = spec.legend.as_ref().map(|legend| LegendOption {
+        show: Some(true),
+        data: Some(
+            legend
+                .data
+                .iter()
+                .cloned()
+                .map(crate::option::LegendDataItem::Str)
+                .collect(),
+        ),
+        left: Some(PositionOption::Preset(PositionPreset::Center)),
+        top: Some(PositionOption::Preset(PositionPreset::Auto)),
+        ..Default::default()
+    });
 
     // Grids
-    let grid_options: Vec<GridOption> = spec.grids.iter().map(grid_to_grid_option).collect();
-    if !grid_options.is_empty() {
-        option.grid = GridConfig::Multiple(grid_options);
-    }
+    let grid = {
+        let grid_options: Vec<GridOption> = spec.grids.iter().map(grid_to_grid_option).collect();
+        if grid_options.is_empty() {
+            GridConfig::default()
+        } else {
+            GridConfig::Multiple(grid_options)
+        }
+    };
 
     // X Axes
-    let x_axis_options: Vec<AxisOption> = spec.x_axes.iter().map(axis_to_axis_option).collect();
-    if !x_axis_options.is_empty() {
-        option.x_axis = AxisConfig::Multiple(x_axis_options);
-    }
+    let x_axis = {
+        let x_axis_options: Vec<AxisOption> = spec.x_axes.iter().map(axis_to_axis_option).collect();
+        if x_axis_options.is_empty() {
+            AxisConfig::default()
+        } else {
+            AxisConfig::Multiple(x_axis_options)
+        }
+    };
 
     // Y Axes
-    let y_axis_options: Vec<AxisOption> = spec.y_axes.iter().map(axis_to_axis_option).collect();
-    if !y_axis_options.is_empty() {
-        option.y_axis = AxisConfig::Multiple(y_axis_options);
-    }
+    let y_axis = {
+        let y_axis_options: Vec<AxisOption> = spec.y_axes.iter().map(axis_to_axis_option).collect();
+        if y_axis_options.is_empty() {
+            AxisConfig::default()
+        } else {
+            AxisConfig::Multiple(y_axis_options)
+        }
+    };
 
     // Series
-    option.series = spec.series.iter().map(series_to_series_option).collect();
+    let series = spec.series.iter().map(series_to_series_option).collect();
 
     // Radar: 如果有雷达图系列，设置 radar 配置
-    for series in &spec.series {
+    let radar = spec.series.iter().find_map(|series| {
         if let SeriesConfig::Radar(cfg) = &series.config {
             let indicators: Vec<RadarIndicatorOption> = cfg
                 .indicators
@@ -83,15 +95,25 @@ pub fn chart_spec_to_chart_option(spec: &ChartSpec) -> ChartOption {
                     max: Some(100.0),
                 })
                 .collect();
-            option.radar = Some(RadarOption {
+            Some(RadarOption {
                 indicator: Some(indicators),
                 ..Default::default()
-            });
-            break; // 只需要设置一次
+            })
+        } else {
+            None
         }
-    }
+    });
 
-    option
+    ChartOption {
+        title,
+        legend,
+        grid,
+        x_axis,
+        y_axis,
+        series,
+        radar,
+        ..Default::default()
+    }
 }
 
 fn grid_to_grid_option(g: &GridSpec) -> GridOption {
@@ -101,6 +123,7 @@ fn grid_to_grid_option(g: &GridSpec) -> GridOption {
         top: g.top.map(PositionOption::Pixel),
         bottom: g.bottom.map(PositionOption::Pixel),
         contain_label: if g.contain_label { Some(true) } else { None },
+        ..Default::default()
     }
 }
 
@@ -227,6 +250,12 @@ fn series_to_series_option(s: &SeriesSpec) -> SeriesOption {
         ChartType::Candlestick => SeriesOption::Candlestick(CandlestickSeriesOption {
             name: Some(s.name.clone()),
             data: vec![], // Candlestick 需要特殊处理
+            grid_index: Some(s.grid_index),
+            ..Default::default()
+        }),
+        ChartType::Boxplot => SeriesOption::Boxplot(BoxplotSeriesOption {
+            name: Some(s.name.clone()),
+            data: vec![], // Boxplot 需要特殊处理
             grid_index: Some(s.grid_index),
             ..Default::default()
         }),
@@ -371,6 +400,29 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
             }
         })
         .collect();
+    // 如果没有指定 grid，为所有非极坐标/非雷达/非仪表盘系列创建一个默认 grid
+    let has_cartesian_series = option.series.iter().any(|s| {
+        matches!(
+            s,
+            SeriesOption::Line(_)
+                | SeriesOption::Bar(_)
+                | SeriesOption::Scatter(_)
+                | SeriesOption::Bubble(_)
+                | SeriesOption::Candlestick(_)
+                | SeriesOption::Boxplot(_)
+        )
+    });
+    let grids = if grids.is_empty() && has_cartesian_series {
+        vec![GridSpec {
+            left: Some(60.0),
+            right: Some(60.0),
+            top: Some(60.0),
+            bottom: Some(60.0),
+            contain_label: false,
+        }]
+    } else {
+        grids
+    };
 
     // X Axes
     let x_axes: Vec<AxisSpec> = option
@@ -432,11 +484,73 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         })
         .collect();
 
-    // Series
+    // Resolve datasets
+    let datasets: Vec<crate::pipeline::dataframe::DataFrame> = option
+        .dataset
+        .as_ref()
+        .map(|ds| ds.as_slice().iter().map(dataset_to_dataframe).collect())
+        .unwrap_or_default();
+
+    /// 尝试从系列中获取 dataset_index 和 encode
+    fn get_series_dataset_info(
+        s: &SeriesOption,
+    ) -> (Option<usize>, Option<option::SeriesEncodeOption>) {
+        match s {
+            SeriesOption::Line(ls) => (ls.dataset_index, ls.encode.clone()),
+            SeriesOption::Bar(bs) => (bs.dataset_index, bs.encode.clone()),
+            SeriesOption::Pie(ps) => (ps.dataset_index, ps.encode.clone()),
+            SeriesOption::Scatter(ss) => (ss.dataset_index, ss.encode.clone()),
+            _ => (None, None),
+        }
+    }
+
+    /// 从 dataset 解析数据，或回退到 series.data
+    fn resolve_series_data<'a>(
+        s: &'a SeriesOption,
+        datasets: &'a [crate::pipeline::dataframe::DataFrame],
+        fallback_data: impl FnOnce() -> crate::pipeline::dataframe::DataFrame,
+        x_col: &str,
+        y_col: &str,
+    ) -> crate::pipeline::dataframe::DataFrame {
+        let (ds_idx, encode) = get_series_dataset_info(s);
+        if let Some(idx) = ds_idx
+            && let Some(ds_df) = datasets.get(idx)
+        {
+            if let Some(enc) = &encode {
+                return extract_encoded_columns(ds_df, enc).0;
+            }
+            // 没有 encode：直接使用 dataset 的 x/y 列（如果存在）
+            if ds_df.get_column("x").is_some() && ds_df.get_column("y").is_some() {
+                return ds_df.clone();
+            }
+            // 如果 dataset 有列名，尝试用 fallback 的列名
+            if ds_df.column_count() >= 2 {
+                let cols = ds_df.column_names().to_vec();
+                let mut df = crate::pipeline::dataframe::DataFrame::new();
+                df.add_column(crate::pipeline::dataframe::Series::new(
+                    x_col,
+                    ds_df.get_column(&cols[0]).unwrap().data.clone(),
+                ));
+                df.add_column(crate::pipeline::dataframe::Series::new(
+                    y_col,
+                    ds_df.get_column(&cols[1]).unwrap().data.clone(),
+                ));
+                return df;
+            }
+            return ds_df.clone();
+        }
+        fallback_data()
+    }
+
+    // Series — Unknown 系列会被跳过（不渲染，但解析不报错）
     let series: Vec<SeriesSpec> = option
         .series
         .iter()
-        .map(|s| {
+        .filter_map(|s| {
+            // 未识别的 series 类型（heatmap/funnel/treemap/...）：解析不报错，渲染时跳过
+            if matches!(s, SeriesOption::Unknown) {
+                return None;
+            }
             let name = match s {
                 SeriesOption::Line(ls) => ls.name.clone().unwrap_or_default(),
                 SeriesOption::Bar(bs) => bs.name.clone().unwrap_or_default(),
@@ -444,11 +558,13 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 SeriesOption::Scatter(ss) => ss.name.clone().unwrap_or_default(),
                 SeriesOption::Bubble(bs) => bs.name.clone().unwrap_or_default(),
                 SeriesOption::Candlestick(cs) => cs.name.clone().unwrap_or_default(),
+                SeriesOption::Boxplot(bs) => bs.name.clone().unwrap_or_default(),
                 SeriesOption::Radar(rs) => rs.name.clone().unwrap_or_default(),
                 SeriesOption::PolarBar(pb) => pb.name.clone().unwrap_or_default(),
                 SeriesOption::PolarScatter(ps) => ps.name.clone().unwrap_or_default(),
                 SeriesOption::Gauge(gs) => gs.name.clone().unwrap_or_default(),
                 SeriesOption::Table(ts) => ts.name.clone().unwrap_or_default(),
+                SeriesOption::Unknown => unreachable!(),
             };
 
             let sampling = match s {
@@ -473,9 +589,15 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 _ => None,
             };
 
-            match s {
+            let spec = match s {
                 SeriesOption::Line(ls) => {
-                    let data = datapoints_to_dataframe(&ls.data, "x", "y");
+                    let data = resolve_series_data(
+                        s,
+                        &datasets,
+                        || datapoints_to_dataframe(&ls.data, "x", "y"),
+                        "x",
+                        "y",
+                    );
                     let config = LineConfig {
                         x_col: "x".into(),
                         y_col: "y".into(),
@@ -533,8 +655,17 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         .map(|a| matches!(a.axis_type, NewAxisType::Category))
                         .unwrap_or(false);
 
-                    // 根据方向决定数据转换方式
-                    let (data, x_col, y_col) = if is_horizontal {
+                    // dataset 模式下数据来自 dataset，不需要水平/垂直转换
+                    let (data, x_col, y_col) = if bs.dataset_index.is_some() {
+                        let df = resolve_series_data(
+                            s,
+                            &datasets,
+                            || datapoints_to_dataframe(&bs.data, "x", "y"),
+                            "x",
+                            "y",
+                        );
+                        (df, "x".into(), "y".into())
+                    } else if is_horizontal {
                         // 水平柱状图：X轴是数值，Y轴是分类
                         // 将数据放入 X 列，索引放入 Y 列
                         let df = datapoints_to_dataframe_horizontal(&bs.data);
@@ -574,7 +705,13 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     }
                 }
                 SeriesOption::Pie(ps) => {
-                    let data = datapoints_to_dataframe(&ps.data, "name", "value");
+                    let data = resolve_series_data(
+                        s,
+                        &datasets,
+                        || datapoints_to_dataframe(&ps.data, "name", "value"),
+                        "name",
+                        "value",
+                    );
                     let label = ps.label.as_ref();
                     // 解析 center 和 radius (从 Vec<String> 转换为 (f64, f64))
                     let center = ps
@@ -638,7 +775,13 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     }
                 }
                 SeriesOption::Scatter(ss) => {
-                    let data = datapoints_to_dataframe(&ss.data, "x", "y");
+                    let data = resolve_series_data(
+                        s,
+                        &datasets,
+                        || datapoints_to_dataframe(&ss.data, "x", "y"),
+                        "x",
+                        "y",
+                    );
                     let config = ScatterConfig {
                         x_col: "x".into(),
                         y_col: "y".into(),
@@ -658,23 +801,251 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         config: SeriesConfig::Scatter(config),
                     }
                 }
-                _ => {
-                    // 其他类型暂时用默认配置
+                SeriesOption::Bubble(bs) => {
+                    let data = DataFrame::new();
+                    let config = crate::pipeline::types::BubbleConfig {
+                        x_col: "x".into(),
+                        y_col: "y".into(),
+                        size_col: None,
+                        name_col: None,
+                        symbol_size_scale: 1.0,
+                    };
                     SeriesSpec {
                         name,
-                        chart_type: ChartType::Line,
-                        data: DataFrame::new(),
+                        chart_type: ChartType::Bubble,
+                        data,
+                        grid_index: bs.grid_index.unwrap_or(0),
+                        x_axis_index: bs.x_axis_index.unwrap_or(0),
+                        y_axis_index: bs.y_axis_index.unwrap_or(0),
+                        stack: None,
+                        group_index: 0,
+                        sampling: None,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Bubble(config),
+                    }
+                }
+                SeriesOption::Candlestick(cs) => {
+                    let data = DataFrame::new();
+                    let config = crate::pipeline::types::CandlestickConfig {
+                        category_col: "category".into(),
+                        open_col: "open".into(),
+                        close_col: "close".into(),
+                        low_col: "low".into(),
+                        high_col: "high".into(),
+                    };
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Candlestick,
+                        data,
+                        grid_index: cs.grid_index.unwrap_or(0),
+                        x_axis_index: cs.x_axis_index.unwrap_or(0),
+                        y_axis_index: cs.y_axis_index.unwrap_or(0),
+                        stack: None,
+                        group_index: 0,
+                        sampling: None,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Candlestick(config),
+                    }
+                }
+                SeriesOption::Boxplot(bs) => {
+                    let mut data = DataFrame::new();
+                    let categories: Vec<DataValue> = bs
+                        .data
+                        .iter()
+                        .enumerate()
+                        .map(|(i, d)| {
+                            DataValue::from(d.name.clone().unwrap_or_else(|| (i + 1).to_string()))
+                        })
+                        .collect();
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "category", categories,
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "min",
+                        bs.data.iter().map(|d| DataValue::from(d.min)).collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "q1",
+                        bs.data.iter().map(|d| DataValue::from(d.q1)).collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "median",
+                        bs.data.iter().map(|d| DataValue::from(d.median)).collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "q3",
+                        bs.data.iter().map(|d| DataValue::from(d.q3)).collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "max",
+                        bs.data.iter().map(|d| DataValue::from(d.max)).collect(),
+                    ));
+                    let config = crate::pipeline::types::BoxplotConfig {
+                        category_col: "category".into(),
+                        min_col: "min".into(),
+                        q1_col: "q1".into(),
+                        median_col: "median".into(),
+                        q3_col: "q3".into(),
+                        max_col: "max".into(),
+                    };
+                    let item_style = ItemStyleSpec {
+                        color: bs.item_style.as_ref().and_then(|is| {
+                            is.color
+                                .as_ref()
+                                .map(|c| crate::visual::Color::new(c.r, c.g, c.b))
+                        }),
+                        border_color: bs.item_style.as_ref().and_then(|is| {
+                            is.border_color
+                                .as_ref()
+                                .map(|c| crate::visual::Color::new(c.r, c.g, c.b))
+                        }),
+                        border_width: bs.item_style.as_ref().and_then(|is| is.border_width),
+                        opacity: None,
+                    };
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Boxplot,
+                        data,
+                        grid_index: bs.grid_index.unwrap_or(0),
+                        x_axis_index: bs.x_axis_index.unwrap_or(0),
+                        y_axis_index: bs.y_axis_index.unwrap_or(0),
+                        stack: None,
+                        group_index: 0,
+                        sampling: None,
+                        item_style,
+                        config: SeriesConfig::Boxplot(config),
+                    }
+                }
+                SeriesOption::Radar(rs) => {
+                    let mut data = DataFrame::new();
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "value",
+                        rs.data
+                            .iter()
+                            .flat_map(|d| d.value.iter().cloned().map(DataValue::from))
+                            .collect(),
+                    ));
+                    let indicators: Vec<String> = option
+                        .radar
+                        .as_ref()
+                        .map(|r| {
+                            r.indicator
+                                .as_ref()
+                                .map(|v| {
+                                    v.iter().filter_map(|i| i.name.clone()).collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default()
+                        })
+                        .unwrap_or_default();
+                    let config = crate::pipeline::types::RadarConfig {
+                        value_col: "value".into(),
+                        indicators,
+                    };
+                    // 雷达图不使用 grid/axis，但需要设置默认索引
+                    let grid_index = 0;
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Radar,
+                        data,
+                        grid_index,
+                        x_axis_index: 0,
+                        y_axis_index: 0,
+                        stack: None,
+                        group_index: 0,
+                        sampling: None,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Radar(config),
+                    }
+                }
+                SeriesOption::PolarBar(pb) => {
+                    let data = datapoints_to_dataframe(&pb.data, "angle", "radius");
+                    let config = crate::pipeline::types::PolarBarConfig {
+                        angle_col: "angle".into(),
+                        radius_col: "radius".into(),
+                        pad_angle: 2.0,
+                        start_angle: 90.0,
+                    };
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::PolarBar,
+                        data,
                         grid_index: 0,
                         x_axis_index: 0,
                         y_axis_index: 0,
                         stack: None,
                         group_index: 0,
-                        sampling,
+                        sampling: None,
                         item_style: ItemStyleSpec::default(),
-                        config: SeriesConfig::Line(LineConfig::default()),
+                        config: SeriesConfig::PolarBar(config),
                     }
                 }
-            }
+                SeriesOption::PolarScatter(_ps) => {
+                    let data = DataFrame::new();
+                    let config = crate::pipeline::types::PolarScatterConfig {
+                        angle_col: "angle".into(),
+                        radius_col: "radius".into(),
+                        symbol_size: 8.0,
+                    };
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::PolarScatter,
+                        data,
+                        grid_index: 0,
+                        x_axis_index: 0,
+                        y_axis_index: 0,
+                        stack: None,
+                        group_index: 0,
+                        sampling: None,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::PolarScatter(config),
+                    }
+                }
+                SeriesOption::Gauge(_gs) => {
+                    let data = DataFrame::new();
+                    let config = crate::pipeline::types::GaugeConfig {
+                        value_col: "value".into(),
+                        min: 0.0,
+                        max: 100.0,
+                        center: (50.0, 50.0),
+                        radius: 75.0,
+                        start_angle: 225.0,
+                        end_angle: -45.0,
+                        split_number: 10,
+                    };
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Gauge,
+                        data,
+                        grid_index: 0,
+                        x_axis_index: 0,
+                        y_axis_index: 0,
+                        stack: None,
+                        group_index: 0,
+                        sampling: None,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Gauge(config),
+                    }
+                }
+                SeriesOption::Table(_ts) => {
+                    let data = DataFrame::new();
+                    let config = crate::pipeline::types::TableConfig;
+                    SeriesSpec {
+                        name,
+                        chart_type: ChartType::Table,
+                        data,
+                        grid_index: 0,
+                        x_axis_index: 0,
+                        y_axis_index: 0,
+                        stack: None,
+                        group_index: 0,
+                        sampling: None,
+                        item_style: ItemStyleSpec::default(),
+                        config: SeriesConfig::Table(config),
+                    }
+                }
+                SeriesOption::Unknown => unreachable!(),
+            };
+            Some(spec)
         })
         .collect();
 
@@ -691,7 +1062,13 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         }),
         legend: option.legend.as_ref().map(|l| LegendSpec {
             show: l.show.unwrap_or(true),
-            data: l.data.clone().unwrap_or_default(),
+            data: l
+                .data
+                .clone()
+                .unwrap_or_default()
+                .iter()
+                .map(|i| i.name().to_string())
+                .collect(),
             symbol_size: l.symbol_size.unwrap_or(10.0),
         }),
         background: crate::visual::Color::new(255, 255, 255),
@@ -863,6 +1240,182 @@ fn datapoints_to_dataframe_horizontal(
     }
 
     df
+}
+
+/// 将 serde_json::Value 转换为 DataValue
+fn serde_value_to_data_value(v: &serde_json::Value) -> DataValue {
+    match v {
+        serde_json::Value::Null => DataValue::Null,
+        serde_json::Value::Bool(b) => DataValue::Bool(*b),
+        serde_json::Value::Number(n) => {
+            if let Some(f) = n.as_f64() {
+                DataValue::Float(f)
+            } else {
+                DataValue::Null
+            }
+        }
+        serde_json::Value::String(s) => DataValue::String(s.clone()),
+        _ => DataValue::Null,
+    }
+}
+
+/// 将 DatasetOption.source 转换为 DataFrame
+///
+/// 如果 source_header 为 true（默认），第一行作为列名；
+/// 否则使用 column0, column1, ... 作为列名。
+fn dataset_to_dataframe(dataset: &option::DatasetOption) -> crate::pipeline::dataframe::DataFrame {
+    use crate::pipeline::dataframe::{DataFrame, Series as DfSeries};
+
+    let source = match &dataset.source {
+        Some(s) => s,
+        None => return DataFrame::new(),
+    };
+
+    if source.is_empty() {
+        return DataFrame::new();
+    }
+
+    let has_header = dataset.source_header.unwrap_or(true);
+    let data_start = if has_header && !source.is_empty() {
+        1
+    } else {
+        0
+    };
+
+    let mut df = DataFrame::new();
+
+    if data_start > 0 {
+        // 第一行是列名
+        let header_row = &source[0];
+        let col_names: Vec<String> = header_row
+            .iter()
+            .map(|v| match v {
+                serde_json::Value::String(s) => s.clone(),
+                other => format!("{}", other),
+            })
+            .collect();
+
+        let num_cols = col_names.len();
+        let mut col_data: Vec<Vec<DataValue>> = vec![Vec::new(); num_cols];
+
+        for row in source.iter().skip(data_start) {
+            for (i, val) in row.iter().enumerate() {
+                if i < num_cols {
+                    col_data[i].push(serde_value_to_data_value(val));
+                }
+            }
+        }
+
+        // 补齐短行
+        for row_data in col_data.iter_mut() {
+            while row_data.len() < source.len() - data_start {
+                row_data.push(DataValue::Null);
+            }
+        }
+
+        for (i, name) in col_names.iter().enumerate() {
+            df.add_column(DfSeries::new(name.clone(), col_data[i].clone()));
+        }
+    } else {
+        // 无列名，使用 column0, column1, ...
+        let num_cols = source[0].len();
+        let mut col_data: Vec<Vec<DataValue>> = vec![Vec::new(); num_cols];
+
+        for row in source.iter() {
+            for (i, val) in row.iter().enumerate() {
+                if i < num_cols {
+                    col_data[i].push(serde_value_to_data_value(val));
+                }
+            }
+        }
+
+        for (i, data) in col_data.iter().enumerate() {
+            df.add_column(DfSeries::new(format!("column{}", i), data.clone()));
+        }
+    }
+
+    df
+}
+
+/// 从 DataFrame 中按 encode 映射提取 x/y 列，构造新的 DataFrame
+fn extract_encoded_columns(
+    df: &crate::pipeline::dataframe::DataFrame,
+    encode: &option::SeriesEncodeOption,
+) -> (crate::pipeline::dataframe::DataFrame, String, String) {
+    use crate::pipeline::dataframe::{DataFrame, Series as DfSeries};
+
+    let col_names = df.column_names().to_vec();
+    let mut result_df = DataFrame::new();
+    let mut x_col = String::from("x");
+    let mut y_col = String::from("y");
+
+    /// 从 OneOrMany<StringOrInt> 中取第一个值并解析为列名（既支持索引，也支持列名字符串）
+    fn first_column_name(
+        v: &Option<option::OneOrMany<option::StringOrInt>>,
+        col_names: &[String],
+    ) -> Option<String> {
+        let first: Option<&option::StringOrInt> = match v {
+            Some(option::OneOrMany::One(item)) => Some(item),
+            Some(option::OneOrMany::Many(vec)) => vec.first(),
+            None => None,
+        };
+        first.and_then(|si| match si {
+            option::StringOrInt::Str(s) => Some(s.clone()),
+            option::StringOrInt::Int(idx) => col_names.get(*idx).cloned(),
+        })
+    }
+
+    /// 判断 OneOrMany 是否为空或 None
+    fn is_empty_or_none(v: &Option<option::OneOrMany<option::StringOrInt>>) -> bool {
+        match v {
+            None => true,
+            Some(option::OneOrMany::One(_)) => false,
+            Some(option::OneOrMany::Many(vec)) => vec.is_empty(),
+        }
+    }
+
+    // 处理 encode.x → 取对应列重命名为 "x"
+    if let Some(src_name) = first_column_name(&encode.x, &col_names)
+        && let Some(col) = df.get_column(&src_name)
+    {
+        result_df.add_column(DfSeries::new("x", col.data.clone()));
+        x_col = "x".into();
+    }
+
+    // 处理 encode.y → 取对应列重命名为 "y"
+    if let Some(src_name) = first_column_name(&encode.y, &col_names)
+        && let Some(col) = df.get_column(&src_name)
+    {
+        result_df.add_column(DfSeries::new("y", col.data.clone()));
+        y_col = "y".into();
+    }
+
+    // 如果 encode 没有指定 x，但指定了 itemName，用 itemName 作为 x
+    if is_empty_or_none(&encode.x)
+        && let Some(src_name) = first_column_name(&encode.item_name, &col_names)
+        && let Some(col) = df.get_column(&src_name)
+        && result_df.get_column("x").is_none()
+    {
+        result_df.add_column(DfSeries::new("x", col.data.clone()));
+        x_col = "x".into();
+    }
+
+    // 如果 encode 没有指定 y，但指定了 value，用 value 作为 y
+    if is_empty_or_none(&encode.y)
+        && let Some(src_name) = first_column_name(&encode.value, &col_names)
+        && let Some(col) = df.get_column(&src_name)
+        && result_df.get_column("y").is_none()
+    {
+        result_df.add_column(DfSeries::new("y", col.data.clone()));
+        y_col = "y".into();
+    }
+
+    // 如果 result_df 为空（没有 encode 或 encode 无效），复制整个 DataFrame
+    if result_df.column_count() == 0 {
+        return (df.clone(), "x".into(), "y".into());
+    }
+
+    (result_df, x_col, y_col)
 }
 
 #[cfg(test)]

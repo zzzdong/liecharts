@@ -50,7 +50,7 @@ pub enum VisualElement {
         style: crate::visual::TextStyle,
         rotation: f64, // 弧度
         max_width: Option<f64>,
-        layout: Option<TextLayout>, // 预排版结果
+        layout: Option<Box<TextLayout>>, // 预排版结果
         z_index: i32,
     },
 

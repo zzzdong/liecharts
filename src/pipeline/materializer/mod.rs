@@ -18,6 +18,7 @@ use crate::{
 };
 
 pub mod bar;
+pub mod boxplot;
 pub mod bubble;
 pub mod candlestick;
 pub mod gauge;
@@ -30,6 +31,7 @@ pub mod scatter;
 pub mod table;
 
 pub use bar::BarMaterializer;
+pub use boxplot::BoxplotMaterializer;
 pub use bubble::BubbleMaterializer;
 pub use candlestick::CandlestickMaterializer;
 pub use gauge::GaugeMaterializer;
@@ -65,6 +67,7 @@ pub fn create_materializer(chart_type: ChartType) -> MaterializerFn {
         ChartType::Pie => pie_materializer_fn,
         ChartType::Bubble => bubble_materializer_fn,
         ChartType::Candlestick => candlestick_materializer_fn,
+        ChartType::Boxplot => boxplot_materializer_fn,
         ChartType::Radar => radar_materializer_fn,
         ChartType::PolarBar => polar_bar_materializer_fn,
         ChartType::PolarScatter => polar_scatter_materializer_fn,
@@ -131,6 +134,16 @@ fn candlestick_materializer_fn(
     colors: &ColorContext,
 ) -> Result<TypedSeries> {
     CandlestickMaterializer::materialize(spec, bounds, axis_ranges, color, colors)
+}
+
+fn boxplot_materializer_fn(
+    spec: &SeriesSpec,
+    bounds: Rect,
+    axis_ranges: &ResolvedAxisRanges,
+    color: Color,
+    colors: &ColorContext,
+) -> Result<TypedSeries> {
+    BoxplotMaterializer::materialize(spec, bounds, axis_ranges, color, colors)
 }
 
 fn radar_materializer_fn(
@@ -512,12 +525,19 @@ fn materialize_side_by_side_bars(
         let y_col = series.config.y_col_name();
         let x_col = series.config.x_col_name();
 
-        if let (Some(y_series), Some(x_series)) =
-            (series.data.get_column(y_col), series.data.get_column(x_col))
-        {
+        let (value_col, category_col) = if is_horizontal {
+            (x_col, y_col)
+        } else {
+            (y_col, x_col)
+        };
+
+        if let (Some(value_series), Some(cat_series)) = (
+            series.data.get_column(value_col),
+            series.data.get_column(category_col),
+        ) {
             for i in 0..series.data.row_count() {
-                let value = y_series.as_f64(i).unwrap_or(0.0);
-                let category = x_series.as_string(i).unwrap_or_default();
+                let value = value_series.as_f64(i).unwrap_or(0.0);
+                let category = cat_series.as_string(i).unwrap_or_default();
                 let cat_idx = if is_horizontal {
                     cat_count - 1 - (i % cat_count)
                 } else {
@@ -617,15 +637,17 @@ fn materialize_stacked_bars(
     for (sub_idx, &series_idx) in series_indices.iter().enumerate() {
         let series = &spec.series[series_idx];
         let y_col = series.config.y_col_name();
+        let x_col = series.config.x_col_name();
+        let value_col = if is_horizontal { x_col } else { y_col };
 
-        if let Some(y_series) = series.data.get_column(y_col) {
+        if let Some(value_series) = series.data.get_column(value_col) {
             for i in 0..series.data.row_count() {
                 let cat_idx = if is_horizontal {
                     cat_count - 1 - (i % cat_count)
                 } else {
                     i % cat_count
                 };
-                let value = y_series.as_f64(i).unwrap_or(0.0);
+                let value = value_series.as_f64(i).unwrap_or(0.0);
                 category_stacks[cat_idx].push((sub_idx, value, 0.0));
             }
         }
@@ -672,7 +694,9 @@ fn materialize_stacked_bars(
             for &(sub_idx, value, base) in stack {
                 let series_idx = series_indices[sub_idx];
                 let color = colors.get_series_color(series_idx);
+                let y_col = spec.series[series_idx].config.y_col_name();
                 let x_col = spec.series[series_idx].config.x_col_name();
+                let category_col = if is_horizontal { y_col } else { x_col };
 
                 let data_row_idx = if is_horizontal {
                     cat_count - 1 - cat_idx
@@ -681,7 +705,7 @@ fn materialize_stacked_bars(
                 };
                 let category = spec.series[series_idx]
                     .data
-                    .get_column(x_col)
+                    .get_column(category_col)
                     .and_then(|s| s.as_string(data_row_idx))
                     .unwrap_or_default();
 
@@ -712,11 +736,13 @@ fn materialize_stacked_bars(
             for &(sub_idx, value, base) in stack {
                 let series_idx = series_indices[sub_idx];
                 let color = colors.get_series_color(series_idx);
+                let y_col = spec.series[series_idx].config.y_col_name();
                 let x_col = spec.series[series_idx].config.x_col_name();
+                let category_col = if is_horizontal { y_col } else { x_col };
 
                 let category = spec.series[series_idx]
                     .data
-                    .get_column(x_col)
+                    .get_column(category_col)
                     .and_then(|s| s.as_string(cat_idx))
                     .unwrap_or_default();
 
@@ -831,7 +857,7 @@ fn materialize_one_stacked_line_group(
         let mut points = Vec::new();
         let mut values = Vec::new();
         let y_col = s.config.y_col_name();
-        for i in 0..row_count {
+        for (i, cumulative) in running_total.iter_mut().enumerate().take(row_count) {
             // X 坐标
             let x = if is_numeric_x {
                 x_vals.as_f64(i)
@@ -844,9 +870,9 @@ fn materialize_one_stacked_line_group(
             if let Some(col) = s.data.get_column(y_col)
                 && let Some(v) = col.as_f64(i)
             {
-                running_total[i] += v;
+                *cumulative += v;
             }
-            let cumulative_y = running_total[i];
+            let cumulative_y = *cumulative;
 
             if let Some(x) = x {
                 let px = map_x_to_pixel(x, x_range, bounds);

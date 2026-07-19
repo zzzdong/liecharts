@@ -1,6 +1,6 @@
 use super::layer::{
-    Bar, Bubble, Candlestick, Gauge, LayerSpec, Line, Pie, PolarBar, PolarScatter, Radar, Scatter,
-    SymbolType as LayerSymbol, Table,
+    Bar, Boxplot, Bubble, Candlestick, Gauge, LayerSpec, Line, Pie, PolarBar, PolarScatter, Radar,
+    Scatter, SymbolType as LayerSymbol, Table,
 };
 use crate::{
     error::Result,
@@ -123,9 +123,9 @@ impl Position {
     }
 
     /// 将 Position 转换为像素值（对 Percent 根据容器尺寸换算）
-    pub(crate) fn to_pixels(&self, container_size: f64) -> f64 {
+    pub(crate) fn to_pixels(self, container_size: f64) -> f64 {
         match self {
-            Position::Pixel(v) => *v,
+            Position::Pixel(v) => v,
             Position::Percent(v) => container_size * v / 100.0,
             Position::Auto | Position::Center => container_size / 2.0,
             Position::Left | Position::Top => 0.0,
@@ -472,6 +472,7 @@ impl Chart {
     add_layer_method!(add_scatter, Scatter, Scatter);
     add_layer_method!(add_bubble, Bubble, Bubble);
     add_layer_method!(add_candlestick, Candlestick, Candlestick);
+    add_layer_method!(add_boxplot, Boxplot, Boxplot);
     add_layer_method!(add_radar, Radar, Radar);
     add_layer_method!(add_polar_bar, PolarBar, PolarBar);
     add_layer_method!(add_polar_scatter, PolarScatter, PolarScatter);
@@ -532,7 +533,7 @@ impl Chart {
             Some("dark") => Theme::dark(),
             _ => Theme::echarts(),
         };
-        crate::pipeline::pipeline::build_chart_from_spec(&spec, &theme)
+        crate::pipeline::chart_pipeline::build_chart_from_spec(&spec, &theme)
     }
 
     /// Render to SVG string.
@@ -592,8 +593,8 @@ impl Chart {
     /// 直接转换为 ChartSpec（新管线入口）
     pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
         use crate::pipeline::types::{
-            AxisSpec, BarConfig, BubbleConfig, CandlestickConfig, ChartSpec, ChartType,
-            GaugeConfig, GridSpec, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
+            AxisSpec, BarConfig, BoxplotConfig, BubbleConfig, CandlestickConfig, ChartSpec,
+            ChartType, GaugeConfig, GridSpec, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
             PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
             SeriesSpec, SymbolType, TableConfig, TitleSpec,
         };
@@ -630,6 +631,10 @@ impl Chart {
                     (l.data.clone().or_else(|| self.data.clone()), l.x.clone())
                 }
                 LayerSpec::Candlestick(l) => (
+                    l.data.clone().or_else(|| self.data.clone()),
+                    l.category.clone(),
+                ),
+                LayerSpec::Boxplot(l) => (
                     l.data.clone().or_else(|| self.data.clone()),
                     l.category.clone(),
                 ),
@@ -781,16 +786,30 @@ impl Chart {
                             }),
                         )
                     }
-                    LayerSpec::Bar(l) => (
-                        ChartType::Bar,
-                        SeriesConfig::Bar(BarConfig {
-                            x_col: l.x.clone(),
-                            y_col: l.y.clone(),
-                            bar_width: 0.6,
-                            label_show: l.label_show,
-                            label_font_size: l.label_font_size,
-                        }),
-                    ),
+                    LayerSpec::Bar(l) => {
+                        let y_axis_idx = l.y_axis_index;
+                        let is_horizontal = y_axes
+                            .get(y_axis_idx)
+                            .map(|a| {
+                                matches!(a.axis_type, crate::pipeline::types::AxisType::Category)
+                            })
+                            .unwrap_or(false);
+                        let (x_col, y_col) = if is_horizontal {
+                            (l.y.clone(), l.x.clone())
+                        } else {
+                            (l.x.clone(), l.y.clone())
+                        };
+                        (
+                            ChartType::Bar,
+                            SeriesConfig::Bar(BarConfig {
+                                x_col,
+                                y_col,
+                                bar_width: 0.6,
+                                label_show: l.label_show,
+                                label_font_size: l.label_font_size,
+                            }),
+                        )
+                    }
                     LayerSpec::Scatter(l) => (
                         ChartType::Scatter,
                         SeriesConfig::Scatter(ScatterConfig {
@@ -817,6 +836,17 @@ impl Chart {
                             close_col: l.close.clone(),
                             low_col: l.low.clone(),
                             high_col: l.high.clone(),
+                        }),
+                    ),
+                    LayerSpec::Boxplot(l) => (
+                        ChartType::Boxplot,
+                        SeriesConfig::Boxplot(BoxplotConfig {
+                            category_col: l.category.clone(),
+                            min_col: l.min.clone(),
+                            q1_col: l.q1.clone(),
+                            median_col: l.median.clone(),
+                            q3_col: l.q3.clone(),
+                            max_col: l.max.clone(),
                         }),
                     ),
                     LayerSpec::Pie(l) => (
@@ -897,6 +927,11 @@ impl Chart {
                         .clone()
                         .or_else(|| shared_data.cloned())
                         .unwrap_or_default(),
+                    LayerSpec::Boxplot(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
                     LayerSpec::Pie(l) => l
                         .data
                         .clone()
@@ -935,6 +970,7 @@ impl Chart {
                     LayerSpec::Scatter(l) => l.name.clone(),
                     LayerSpec::Bubble(l) => l.name.clone(),
                     LayerSpec::Candlestick(l) => l.name.clone(),
+                    LayerSpec::Boxplot(l) => l.name.clone(),
                     LayerSpec::Pie(l) => l.name.clone(),
                     LayerSpec::Radar(l) => l.name.clone(),
                     LayerSpec::PolarBar(l) => l.name.clone(),
@@ -949,6 +985,7 @@ impl Chart {
                     LayerSpec::Scatter(l) => l.grid_index,
                     LayerSpec::Bubble(l) => l.grid_index,
                     LayerSpec::Candlestick(l) => l.grid_index,
+                    LayerSpec::Boxplot(l) => l.grid_index,
                     LayerSpec::Pie(_) => 0,
                     LayerSpec::Radar(_) => 0,
                     LayerSpec::PolarBar(_) => 0,
@@ -963,6 +1000,7 @@ impl Chart {
                     LayerSpec::Scatter(l) => l.y_axis_index,
                     LayerSpec::Bubble(l) => l.y_axis_index,
                     LayerSpec::Candlestick(l) => l.y_axis_index,
+                    LayerSpec::Boxplot(l) => l.y_axis_index,
                     _ => 0,
                 };
 
@@ -1051,6 +1089,7 @@ impl_from_layer!(Pie, Pie);
 impl_from_layer!(Scatter, Scatter);
 impl_from_layer!(Bubble, Bubble);
 impl_from_layer!(Candlestick, Candlestick);
+impl_from_layer!(Boxplot, Boxplot);
 impl_from_layer!(Radar, Radar);
 impl_from_layer!(PolarBar, PolarBar);
 impl_from_layer!(PolarScatter, PolarScatter);

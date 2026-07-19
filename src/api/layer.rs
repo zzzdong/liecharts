@@ -43,6 +43,7 @@ pub enum LayerSpec {
     Scatter(Scatter),
     Bubble(Bubble),
     Candlestick(Candlestick),
+    Boxplot(Boxplot),
     Radar(Radar),
     PolarBar(PolarBar),
     PolarScatter(PolarScatter),
@@ -58,6 +59,7 @@ impl LayerSpec {
             LayerSpec::Scatter(l) => l.grid_index = idx,
             LayerSpec::Bubble(l) => l.grid_index = idx,
             LayerSpec::Candlestick(l) => l.grid_index = idx,
+            LayerSpec::Boxplot(l) => l.grid_index = idx,
             _ => {}
         }
     }
@@ -552,6 +554,90 @@ impl Candlestick {
 }
 
 impl Default for Candlestick {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ── Boxplot ──
+
+#[derive(Debug, Clone)]
+pub struct Boxplot {
+    pub name: String,
+    pub data: Option<DataFrame>,
+    pub category: String,
+    pub min: String,
+    pub q1: String,
+    pub median: String,
+    pub q3: String,
+    pub max: String,
+    pub y_axis_index: usize,
+    pub grid_index: usize,
+}
+
+impl Boxplot {
+    pub fn new() -> Self {
+        Self {
+            name: String::new(),
+            data: None,
+            category: "category".into(),
+            min: "min".into(),
+            q1: "q1".into(),
+            median: "median".into(),
+            q3: "q3".into(),
+            max: "max".into(),
+            y_axis_index: 0,
+            grid_index: 0,
+        }
+    }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn category(mut self, col: impl Into<String>) -> Self {
+        self.category = col.into();
+        self
+    }
+    pub fn min(mut self, col: impl Into<String>) -> Self {
+        self.min = col.into();
+        self
+    }
+    pub fn q1(mut self, col: impl Into<String>) -> Self {
+        self.q1 = col.into();
+        self
+    }
+    pub fn median(mut self, col: impl Into<String>) -> Self {
+        self.median = col.into();
+        self
+    }
+    pub fn q3(mut self, col: impl Into<String>) -> Self {
+        self.q3 = col.into();
+        self
+    }
+    pub fn max(mut self, col: impl Into<String>) -> Self {
+        self.max = col.into();
+        self
+    }
+    pub fn y_axis_index(mut self, idx: usize) -> Self {
+        self.y_axis_index = idx;
+        self
+    }
+    pub fn grid_index(mut self, idx: usize) -> Self {
+        self.grid_index = idx;
+        self
+    }
+    /// Shortcut for `y_axis_index(1)`: bind this series to the right y-axis.
+    pub fn right_axis(mut self) -> Self {
+        self.y_axis_index = 1;
+        self
+    }
+}
+
+impl Default for Boxplot {
     fn default() -> Self {
         Self::new()
     }

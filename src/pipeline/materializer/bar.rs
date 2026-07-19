@@ -48,7 +48,7 @@ impl SeriesMaterializer for BarMaterializer {
 
         if is_horizontal {
             // 横向柱状图：Y轴是分类，X轴是数值
-            // 数据布局：X列是数值，Y列是索引
+            // 数据布局：x_col 是数值，y_col 是分类索引
             let x_vals = spec
                 .data
                 .get_column(&cfg.x_col)

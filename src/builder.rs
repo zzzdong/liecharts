@@ -3,7 +3,8 @@ use crate::{
     error::{ChartError, Result},
     option::{
         AxisConfig, AxisOption, ChartOption, ColorOption, DataPoint, GridConfig, GridOption,
-        LegendOption, LineSeriesOption, RadarOption, SeriesOption, TextStyleOption, TitleOption,
+        LegendOption, LineSeriesOption, OneOrMany, RadarOption, SeriesOption, TextStyleOption,
+        TitleOption,
     },
     theme::{Theme, ThemeRegistry},
 };
@@ -177,7 +178,7 @@ impl ChartBuilder {
     }
 
     pub fn with_color(mut self, colors: Vec<ColorOption>) -> Self {
-        self.option.color = Some(colors);
+        self.option.color = Some(OneOrMany::Many(colors));
         self
     }
 

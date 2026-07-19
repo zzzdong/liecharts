@@ -280,6 +280,7 @@ impl CartesianAxisRenderer {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn draw_y_tick_labels_side(
         elements: &mut Vec<VisualElement>,
         bounds: Rect,
