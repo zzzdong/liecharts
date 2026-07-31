@@ -15,6 +15,8 @@ categories = ["graphics", "visualization"]
 exclude = ["site/", "examples/", "*.png", "*.svg"]
 
 [dependencies]
+anyhow = "1.0"
+clap = { version = "4", features = ["derive"] }
 vello_cpu = "0.0.9"
 parley = "0.11.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -22,8 +24,14 @@ serde_json = "1.0"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 thiserror = "2.0"
 
-[dev-dependencies]
-anyhow = "1.0"
+[[bin]]
+name = "liecharts"
+path = "src/bin/liecharts.rs"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
 
 [workspace]
 members = ["site"]
