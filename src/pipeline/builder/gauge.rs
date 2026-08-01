@@ -159,6 +159,40 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             z_index: Z_SERIES_LINE + 2,
         });
 
+        // 中心数值显示
+        let value_text = format!("{:.1}%", series.value);
+        elements.push(VisualElement::TextRun {
+            text: value_text,
+            position: Point::new(center.x, center.y + 4.0),
+            style: TextStyle {
+                color: Color::new(60, 60, 65),
+                font_size: 28.0,
+                align: TextAlign::Center,
+                vertical_align: TextBaseline::Middle,
+                ..Default::default()
+            },
+            rotation: 0.0,
+            max_width: None,
+            layout: None,
+            z_index: Z_LABEL,
+        });
+        // 数值单位标签
+        elements.push(VisualElement::TextRun {
+            text: series.name.clone(),
+            position: Point::new(center.x, center.y - 28.0),
+            style: TextStyle {
+                color: Color::new(132, 132, 138),
+                font_size: 12.0,
+                align: TextAlign::Center,
+                vertical_align: TextBaseline::Middle,
+                ..Default::default()
+            },
+            rotation: 0.0,
+            max_width: None,
+            layout: None,
+            z_index: Z_LABEL,
+        });
+
         Ok(elements)
     }
 }

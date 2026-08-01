@@ -55,9 +55,10 @@ pub enum FontSource {
 ///
 /// # 示例
 ///
-/// ```ignore
+/// ```no_run
 /// // 从内存加载（例如从 CDN 下载的字节）
-/// liecharts::register_font(liecharts::FontSource::Memory(font_bytes), Some("MyFont")).unwrap();
+/// # let font_bytes = vec![0u8; 1024];
+/// liecharts::text::register_font(liecharts::text::FontSource::Memory(font_bytes), Some("MyFont")).unwrap();
 /// ```
 pub fn register_font(
     source: FontSource,

@@ -9,7 +9,7 @@ use crate::{
             SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, Z_SERIES_LINE, Z_SERIES_POINT,
             fill_stroke_style,
         },
-        typed_series::{LineSeries, RenderContext, SeriesLabelPosition, SymbolType},
+        typed_series::{LineSeries, RenderContext, SeriesLabelPosition, StepType, SymbolType},
     },
     visual::{FillStrokeStyle, TextAlign, TextBaseline, TextStyle, VisualElement},
 };
@@ -31,10 +31,10 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
             fill.a = alpha;
             let area_path = if let Some(ref baseline_points) = series.baseline_points {
                 // 堆叠面积：使用上一系列的轮廓作为底部边界
-                build_stacked_area_path(&series.points, baseline_points, series.smooth)
+                build_stacked_area_path(&series.points, baseline_points, series.smooth, series.step)
             } else {
                 // 普通面积：使用平坦基线
-                build_area_path(&series.points, series.baseline_y, series.smooth)
+                build_area_path(&series.points, series.baseline_y, series.smooth, series.step)
             };
             elements.push(VisualElement::Path {
                 path: area_path,
@@ -47,7 +47,9 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
         }
 
         // 2. 线条
-        let path = if series.smooth {
+        let path = if let Some(step) = series.step {
+            build_step_path(&series.points, step)
+        } else if series.smooth {
             build_smooth_path(&series.points)
         } else {
             build_polyline_path(&series.points)
@@ -117,7 +119,12 @@ fn format_value(v: f64) -> String {
 }
 
 /// 构建堆叠面积填充路径（顶部和底部都是轮廓线）
-fn build_stacked_area_path(top_points: &[Point], bottom_points: &[Point], smooth: bool) -> BezPath {
+fn build_stacked_area_path(
+    top_points: &[Point],
+    bottom_points: &[Point],
+    smooth: bool,
+    step: Option<StepType>,
+) -> BezPath {
     let mut path = BezPath::new();
 
     if top_points.is_empty() {
@@ -126,7 +133,9 @@ fn build_stacked_area_path(top_points: &[Point], bottom_points: &[Point], smooth
 
     // 顶部轮廓：从左到右
     path.move_to(top_points[0]);
-    if smooth {
+    if let Some(st) = step {
+        append_step_segments(&mut path, top_points, st);
+    } else if smooth {
         append_smooth_segments(&mut path, top_points);
     } else {
         for point in &top_points[1..] {
@@ -146,7 +155,7 @@ fn build_stacked_area_path(top_points: &[Point], bottom_points: &[Point], smooth
 }
 
 /// 构建面积填充路径
-fn build_area_path(points: &[Point], baseline_y: f64, smooth: bool) -> BezPath {
+fn build_area_path(points: &[Point], baseline_y: f64, smooth: bool, step: Option<StepType>) -> BezPath {
     let mut path = BezPath::new();
 
     if points.is_empty() {
@@ -157,7 +166,9 @@ fn build_area_path(points: &[Point], baseline_y: f64, smooth: bool) -> BezPath {
     path.move_to(points[0]);
 
     // 绘制线条（顶部轮廓）
-    if smooth {
+    if let Some(st) = step {
+        append_step_segments(&mut path, points, st);
+    } else if smooth {
         append_smooth_segments(&mut path, points);
     } else {
         for point in &points[1..] {
@@ -230,6 +241,46 @@ fn build_polyline_path(points: &[Point]) -> BezPath {
     }
 
     path
+}
+
+/// 构建步进折线路径
+fn build_step_path(points: &[Point], step: StepType) -> BezPath {
+    let mut path = BezPath::new();
+
+    if points.is_empty() {
+        return path;
+    }
+
+    path.move_to(points[0]);
+    append_step_segments(&mut path, points, step);
+    path
+}
+
+/// 追加步进线段到已有路径
+fn append_step_segments(path: &mut BezPath, points: &[Point], step: StepType) {
+    for i in 0..points.len() - 1 {
+        let p1 = points[i];
+        let p2 = points[i + 1];
+        match step {
+            StepType::Start => {
+                // 先垂直再水平
+                path.line_to(Point::new(p1.x, p2.y));
+                path.line_to(p2);
+            }
+            StepType::Middle => {
+                // 水平 → 垂直 → 水平
+                let mid_x = (p1.x + p2.x) / 2.0;
+                path.line_to(Point::new(mid_x, p1.y));
+                path.line_to(Point::new(mid_x, p2.y));
+                path.line_to(p2);
+            }
+            StepType::End => {
+                // 先水平再垂直
+                path.line_to(Point::new(p2.x, p1.y));
+                path.line_to(p2);
+            }
+        }
+    }
 }
 
 /// 构建符号元素

@@ -250,7 +250,7 @@ pub fn materialize_all(
 
     for &global_idx in series_indices {
         let s = &spec.series[global_idx];
-        match s.chart_type {
+        match s.chart_type() {
             ChartType::Bar => {
                 bar_specs.push((global_idx, s));
             }
@@ -260,7 +260,7 @@ pub fn materialize_all(
             }
             _ => {
                 let color = colors.get_series_color(global_idx);
-                let materializer = create_materializer(s.chart_type);
+                let materializer = create_materializer(s.chart_type());
                 let typed = materializer(s, bounds, axis_ranges, color, colors)?;
                 result.push((global_idx, typed));
             }
@@ -531,10 +531,9 @@ fn materialize_side_by_side_bars(
             (y_col, x_col)
         };
 
-        if let (Some(value_series), Some(cat_series)) = (
-            series.data.get_column(value_col),
-            series.data.get_column(category_col),
-        ) {
+        if let (Some(value_series), Some(cat_series)) =
+            (series.data.get_column(value_col), series.data.get_column(category_col))
+        {
             for i in 0..series.data.row_count() {
                 let value = value_series.as_f64(i).unwrap_or(0.0);
                 let category = cat_series.as_string(i).unwrap_or_default();
@@ -897,6 +896,17 @@ fn materialize_one_stacked_line_group(
             color,
             line_width: cfg.line_width,
             smooth: cfg.smooth,
+            step: cfg.step.map(|s| match s {
+                crate::pipeline::types::StepType::Start => {
+                    crate::pipeline::typed_series::StepType::Start
+                }
+                crate::pipeline::types::StepType::Middle => {
+                    crate::pipeline::typed_series::StepType::Middle
+                }
+                crate::pipeline::types::StepType::End => {
+                    crate::pipeline::typed_series::StepType::End
+                }
+            }),
             area_color,
             area_opacity: cfg.area_opacity,
             symbol_type: line::map_symbol_type(cfg.symbol_type),

@@ -135,6 +135,39 @@ impl Position {
     }
 }
 
+/// A size value that can be specified in pixels or as a percentage of the container.
+///
+/// Used for dimensions like radius, symbol sizes, etc.
+/// Analogous to `Position` but without directional semantics.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Size {
+    Pixel(f64),
+    Percent(f64),
+}
+
+impl Size {
+    pub fn px(v: f64) -> Self {
+        Size::Pixel(v)
+    }
+    pub fn pct(v: f64) -> Self {
+        Size::Percent(v)
+    }
+
+    /// Convert to a percentage value (0-100) relative to the container size.
+    pub(crate) fn to_percent(self, container_size: f64) -> f64 {
+        match self {
+            Size::Percent(v) => v,
+            Size::Pixel(v) => {
+                if container_size > 0.0 {
+                    v / container_size * 100.0
+                } else {
+                    0.0
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Orient {
     Horizontal,
@@ -443,9 +476,14 @@ impl Chart {
     }
 
     pub fn y_axis(mut self, mut axis: Axis) -> Self {
-        // Auto-set position based on index: first -> Left, second -> Right
-        let y_axis_idx = self.y_axes.len();
-        if y_axis_idx == 0 {
+        // Auto-set position based on per-subplot index: first -> Left, second -> Right
+        let grid_idx = axis.grid_index;
+        let per_subplot_idx = self
+            .y_axes
+            .iter()
+            .filter(|a| a.grid_index == grid_idx)
+            .count();
+        if per_subplot_idx == 0 {
             axis.position = AxisPosition::Left;
         } else {
             axis.position = AxisPosition::Right;
@@ -594,7 +632,7 @@ impl Chart {
     pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
         use crate::pipeline::types::{
             AxisSpec, BarConfig, BoxplotConfig, BubbleConfig, CandlestickConfig, ChartSpec,
-            ChartType, GaugeConfig, GridSpec, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
+            GaugeConfig, GridSpec, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
             PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
             SeriesSpec, SymbolType, TableConfig, TitleSpec,
         };
@@ -661,8 +699,17 @@ impl Chart {
                 min: None,
                 max: None,
                 name: None,
+                name_location: None,
                 categories: default_categories.clone(),
                 boundary_gap: true,
+                inverse: false,
+                split_number: None,
+                label_show: true,
+                label_formatter: None,
+                label_rotate: None,
+                axis_line_show: true,
+                split_line_show: true,
+                z: None,
             }]
         } else {
             self.x_axes
@@ -692,12 +739,21 @@ impl Chart {
                     min: a.min,
                     max: a.max,
                     name: a.name.clone(),
+                    name_location: None,
                     categories: if a.data.is_empty() {
                         default_categories.clone()
                     } else {
                         a.data.clone()
                     },
                     boundary_gap: a.boundary_gap,
+                    inverse: false,
+                    split_number: None,
+                    label_show: true,
+                    label_formatter: None,
+                    label_rotate: None,
+                    axis_line_show: true,
+                    split_line_show: true,
+                    z: None,
                 })
                 .collect()
         };
@@ -711,8 +767,17 @@ impl Chart {
                 min: None,
                 max: None,
                 name: None,
+                name_location: None,
                 categories: vec![],
                 boundary_gap: true,
+                inverse: false,
+                split_number: None,
+                label_show: true,
+                label_formatter: None,
+                label_rotate: None,
+                axis_line_show: true,
+                split_line_show: true,
+                z: None,
             }]
         } else {
             self.y_axes
@@ -742,8 +807,17 @@ impl Chart {
                     min: a.min,
                     max: a.max,
                     name: a.name.clone(),
+                    name_location: None,
                     categories: a.data.clone(),
                     boundary_gap: a.boundary_gap,
+                    inverse: false,
+                    split_number: None,
+                    label_show: true,
+                    label_formatter: None,
+                    label_rotate: None,
+                    axis_line_show: true,
+                    split_line_show: true,
+                    z: None,
                 })
                 .collect()
         };
@@ -754,7 +828,7 @@ impl Chart {
             .layers
             .iter()
             .map(|layer| {
-                let (chart_type, config): (ChartType, SeriesConfig) = match layer {
+                let config: SeriesConfig = match layer {
                     LayerSpec::Line(l) => {
                         let sym = match l.symbol {
                             LayerSymbol::Circle => SymbolType::Circle,
@@ -769,12 +843,15 @@ impl Chart {
                         // 面积填充：使用系列颜色（由 ColorAssigner 分配），用户可指定颜色
                         let area = l.area;
                         let area_color = l.color; // 用户指定的颜色，None 时使用系列颜色
-                        (
-                            ChartType::Line,
-                            SeriesConfig::Line(LineConfig {
+                        SeriesConfig::Line(LineConfig {
                                 x_col: l.x.clone(),
                                 y_col: l.y.clone(),
                                 smooth: l.smooth,
+                                step: l.step.map(|s| match s {
+                                    crate::api::layer::StepType::Start => crate::pipeline::types::StepType::Start,
+                                    crate::api::layer::StepType::Middle => crate::pipeline::types::StepType::Middle,
+                                    crate::api::layer::StepType::End => crate::pipeline::types::StepType::End,
+                                }),
                                 line_width: 2.0,
                                 area,
                                 area_color,
@@ -783,63 +860,56 @@ impl Chart {
                                 symbol_size: l.symbol_size,
                                 label_show: l.label_show,
                                 label_font_size: l.label_font_size,
-                            }),
-                        )
+                            })
                     }
                     LayerSpec::Bar(l) => {
                         let y_axis_idx = l.y_axis_index;
                         let is_horizontal = y_axes
                             .get(y_axis_idx)
-                            .map(|a| {
-                                matches!(a.axis_type, crate::pipeline::types::AxisType::Category)
-                            })
+                            .map(|a| matches!(a.axis_type, crate::pipeline::types::AxisType::Category))
                             .unwrap_or(false);
                         let (x_col, y_col) = if is_horizontal {
                             (l.y.clone(), l.x.clone())
                         } else {
                             (l.x.clone(), l.y.clone())
                         };
-                        (
-                            ChartType::Bar,
-                            SeriesConfig::Bar(BarConfig {
+                        SeriesConfig::Bar(BarConfig {
                                 x_col,
                                 y_col,
-                                bar_width: 0.6,
+                                bar_width: l.bar_width.map_or(0.6, |bw| match bw {
+                                    crate::api::Size::Percent(p) => p / 100.0,
+                                    crate::api::Size::Pixel(p) => p / 100.0,
+                                }),
                                 label_show: l.label_show,
                                 label_font_size: l.label_font_size,
-                            }),
-                        )
-                    }
-                    LayerSpec::Scatter(l) => (
-                        ChartType::Scatter,
+                            })
+                    },
+                    LayerSpec::Scatter(l) => {
                         SeriesConfig::Scatter(ScatterConfig {
                             x_col: l.x.clone(),
                             y_col: l.y.clone(),
                             symbol_size: l.symbol_size,
-                        }),
-                    ),
-                    LayerSpec::Bubble(l) => (
-                        ChartType::Bubble,
+                        })
+                    },
+                    LayerSpec::Bubble(l) => {
                         SeriesConfig::Bubble(BubbleConfig {
                             x_col: "x".into(),
                             y_col: "y".into(),
                             size_col: l.size_col.clone(),
                             name_col: l.name_col.clone(),
                             symbol_size_scale: l.symbol_size_scale,
-                        }),
-                    ),
-                    LayerSpec::Candlestick(l) => (
-                        ChartType::Candlestick,
+                        })
+                    },
+                    LayerSpec::Candlestick(l) => {
                         SeriesConfig::Candlestick(CandlestickConfig {
                             category_col: l.category.clone(),
                             open_col: l.open.clone(),
                             close_col: l.close.clone(),
                             low_col: l.low.clone(),
                             high_col: l.high.clone(),
-                        }),
-                    ),
-                    LayerSpec::Boxplot(l) => (
-                        ChartType::Boxplot,
+                        })
+                    },
+                    LayerSpec::Boxplot(l) => {
                         SeriesConfig::Boxplot(BoxplotConfig {
                             category_col: l.category.clone(),
                             min_col: l.min.clone(),
@@ -847,58 +917,64 @@ impl Chart {
                             median_col: l.median.clone(),
                             q3_col: l.q3.clone(),
                             max_col: l.max.clone(),
-                        }),
-                    ),
-                    LayerSpec::Pie(l) => (
-                        ChartType::Pie,
+                        })
+                    },
+                    LayerSpec::Pie(l) => {
+                        let min_dim = self.width.min(self.height) as f64 * 0.5;
                         SeriesConfig::Pie(PieConfig {
                             category_col: l.category.clone(),
                             value_col: l.value.clone(),
-                            center: l.center,
-                            radius: l.radius,
+                            center: (
+                                l.center.0.to_percent(self.width as f64),
+                                l.center.1.to_percent(self.height as f64),
+                            ),
+                            radius: (
+                                l.radius.0.to_percent(min_dim),
+                                l.radius.1.to_percent(min_dim),
+                            ),
                             label_show: l.label_show,
                             label_position: l.label_position,
                             label_font_size: 12.0,
-                        }),
-                    ),
-                    LayerSpec::Radar(l) => (
-                        ChartType::Radar,
+                        })
+                    },
+                    LayerSpec::Radar(l) => {
                         SeriesConfig::Radar(RadarConfig {
                             value_col: l.values.clone(),
                             indicators: l.indicators.clone(),
-                        }),
-                    ),
-                    LayerSpec::PolarBar(l) => (
-                        ChartType::PolarBar,
+                        })
+                    },
+                    LayerSpec::PolarBar(l) => {
                         SeriesConfig::PolarBar(PolarBarConfig {
                             angle_col: l.angle.clone(),
                             radius_col: l.radius.clone(),
                             pad_angle: l.pad_angle,
                             start_angle: l.start_angle,
-                        }),
-                    ),
-                    LayerSpec::PolarScatter(l) => (
-                        ChartType::PolarScatter,
+                        })
+                    },
+                    LayerSpec::PolarScatter(l) => {
                         SeriesConfig::PolarScatter(PolarScatterConfig {
                             angle_col: l.angle.clone(),
                             radius_col: l.radius.clone(),
                             symbol_size: l.symbol_size.unwrap_or(8.0),
-                        }),
-                    ),
-                    LayerSpec::Gauge(l) => (
-                        ChartType::Gauge,
+                        })
+                    },
+                    LayerSpec::Gauge(l) => {
+                        let min_dim = self.width.min(self.height) as f64 * 0.5;
                         SeriesConfig::Gauge(GaugeConfig {
                             value_col: l.value.clone(),
                             min: l.min,
                             max: l.max,
-                            center: l.center,
-                            radius: l.radius,
+                            center: (
+                                l.center.0.to_percent(self.width as f64),
+                                l.center.1.to_percent(self.height as f64),
+                            ),
+                            radius: l.radius.to_percent(min_dim),
                             start_angle: l.start_angle,
                             end_angle: l.end_angle,
                             split_number: l.split_number,
-                        }),
-                    ),
-                    LayerSpec::Table(_) => (ChartType::Table, SeriesConfig::Table(TableConfig)),
+                        })
+                    },
+                    LayerSpec::Table(_) => SeriesConfig::Table(TableConfig),
                 };
 
                 let data = match layer {
@@ -1044,7 +1120,6 @@ impl Chart {
 
                 SeriesSpec {
                     name,
-                    chart_type,
                     data,
                     grid_index: grid_idx,
                     x_axis_index: 0,
@@ -1068,11 +1143,16 @@ impl Chart {
             title: self.title.as_ref().map(|t| TitleSpec {
                 text: Some(t.text.clone()),
                 subtext: t.subtext.clone(),
+                font_size: None,
+                subfont_size: None,
+                color: None,
+                subcolor: None,
             }),
             legend: self.legend.as_ref().map(|l| LegendSpec {
                 show: l.show,
                 data: l.data.clone(),
                 symbol_size: 10.0,
+                item_gap: 10.0,
             }),
             background: self.background_color.unwrap_or(Color::new(255, 255, 255)),
             palette: vec![],

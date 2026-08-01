@@ -39,7 +39,7 @@ impl PixmapRenderer {
         self.render_elements(elements);
 
         let mut pixmap = Pixmap::new(self.width as u16, self.height as u16);
-        self.ctx.render_to_pixmap(&mut self.resources, &mut pixmap);
+        self.ctx.render(&mut pixmap, &mut self.resources);
 
         Ok(pixmap)
     }

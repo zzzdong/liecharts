@@ -67,7 +67,7 @@ mod chart;
 mod layer;
 
 pub use chart::{
-    Axis, AxisPosition, AxisType, Chart, Grid, GridBuilder, Legend, Orient, Position, Title,
+    Axis, AxisPosition, AxisType, Chart, Grid, GridBuilder, Legend, Orient, Position, Size, Title,
 };
 pub use layer::*;
 

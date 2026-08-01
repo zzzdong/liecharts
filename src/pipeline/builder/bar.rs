@@ -8,7 +8,7 @@ use crate::{
         builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style},
         typed_series::{BarSeries, RenderContext, SeriesLabelPosition},
     },
-    visual::{TextAlign, TextBaseline, TextStyle, VisualElement},
+    visual::{Color, TextAlign, TextBaseline, TextStyle, VisualElement},
 };
 
 pub struct BarBuilder;
@@ -29,28 +29,49 @@ impl SeriesBuilder<BarSeries> for BarBuilder {
                 && label_cfg.show
             {
                 let text = format_value(bar.value);
-                let (x, y) = match label_cfg.position {
-                    SeriesLabelPosition::Top => {
-                        // 在柱子顶部上方
-                        (bar.rect.x0 + bar.rect.width() / 2.0, bar.rect.y0 - 4.0)
-                    }
-                    SeriesLabelPosition::Inside => {
-                        // 在柱子内部居中
-                        (
-                            bar.rect.x0 + bar.rect.width() / 2.0,
-                            bar.rect.y0 + bar.rect.height() / 2.0,
-                        )
-                    }
+                let bar_height = bar.rect.height();
+                // 高柱子（>25px）：内部顶部，白色文字
+                // 矮柱子（≤25px）：外部上方，柱子同色文字
+                let (x, y, label_color, va) = if bar_height > 25.0 {
+                    let y = if label_cfg.position == SeriesLabelPosition::Top
+                        && (bar.value >= 0.0
+                            || (bar.value < 0.0 && bar_height > 25.0))
+                    {
+                        // Inside top: 4px from top of bar
+                        bar.rect.y0 + 14.0
+                    } else {
+                        // Inside middle
+                        bar.rect.y0 + bar.rect.height() / 2.0
+                    };
+                    let va = if label_cfg.position == SeriesLabelPosition::Top {
+                        TextBaseline::Top
+                    } else {
+                        TextBaseline::Middle
+                    };
+                    (
+                        bar.rect.x0 + bar.rect.width() / 2.0,
+                        y,
+                        Color::new(255, 255, 255),
+                        va,
+                    )
+                } else {
+                    // 外部上方，柱子同色文字
+                    (
+                        bar.rect.x0 + bar.rect.width() / 2.0,
+                        bar.rect.y0 - 4.0,
+                        series.color,
+                        TextBaseline::Bottom,
+                    )
                 };
 
                 elements.push(VisualElement::TextRun {
                     text,
                     position: Point::new(x, y),
                     style: TextStyle {
-                        color: label_cfg.color,
+                        color: label_color,
                         font_size: label_cfg.font_size,
                         align: TextAlign::Center,
-                        vertical_align: TextBaseline::Bottom,
+                        vertical_align: va,
                         ..Default::default()
                     },
                     rotation: 0.0,

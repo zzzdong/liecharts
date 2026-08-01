@@ -1,7 +1,20 @@
 use crate::{
+    api::Size,
     pipeline::{dataframe::DataFrame, types::LabelPosition},
     visual::Color,
 };
+
+// ── StepType ──
+
+/// Step line style for line charts.
+///
+/// Controls whether the step appears at the start, middle, or end of each segment.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StepType {
+    Start,
+    Middle,
+    End,
+}
 
 // ── Sampling ──
 
@@ -74,6 +87,7 @@ pub struct Line {
     pub x: String,
     pub y: String,
     pub smooth: bool,
+    pub step: Option<StepType>,
     pub stack: Option<String>,
     pub symbol: SymbolType,
     pub symbol_size: f64,
@@ -94,6 +108,7 @@ impl Line {
             x: "x".into(),
             y: "y".into(),
             smooth: false,
+            step: None,
             stack: None,
             symbol: SymbolType::Circle,
             symbol_size: 4.0,
@@ -124,6 +139,10 @@ impl Line {
     }
     pub fn smooth(mut self, val: bool) -> Self {
         self.smooth = val;
+        self
+    }
+    pub fn step(mut self, val: StepType) -> Self {
+        self.step = Some(val);
         self
     }
     pub fn stack(mut self, name: impl Into<String>) -> Self {
@@ -188,6 +207,7 @@ pub struct Bar {
     pub data: Option<DataFrame>,
     pub x: String,
     pub y: String,
+    pub bar_width: Option<Size>,
     pub stack: Option<String>,
     pub group_index: Option<usize>,
     pub color: Option<Color>,
@@ -204,6 +224,7 @@ impl Bar {
             data: None,
             x: "x".into(),
             y: "y".into(),
+            bar_width: None,
             stack: None,
             group_index: None,
             color: None,
@@ -227,6 +248,10 @@ impl Bar {
     }
     pub fn y(mut self, col: impl Into<String>) -> Self {
         self.y = col.into();
+        self
+    }
+    pub fn bar_width(mut self, width: Size) -> Self {
+        self.bar_width = Some(width);
         self
     }
     pub fn stack(mut self, name: impl Into<String>) -> Self {
@@ -278,8 +303,8 @@ pub struct Pie {
     pub data: Option<DataFrame>,
     pub category: String,
     pub value: String,
-    pub radius: (f64, f64),
-    pub center: (f64, f64),
+    pub radius: (Size, Size),
+    pub center: (Size, Size),
     pub label_show: bool,
     pub label_position: LabelPosition,
 }
@@ -291,8 +316,8 @@ impl Pie {
             data: None,
             category: "category".into(),
             value: "value".into(),
-            radius: (0.0, 75.0),
-            center: (50.0, 50.0),
+            radius: (Size::Percent(0.0), Size::Percent(75.0)),
+            center: (Size::Percent(50.0), Size::Percent(50.0)),
             label_show: false,
             label_position: LabelPosition::Outside,
         }
@@ -313,11 +338,11 @@ impl Pie {
         self.value = col.into();
         self
     }
-    pub fn radius(mut self, inner: f64, outer: f64) -> Self {
+    pub fn radius(mut self, inner: Size, outer: Size) -> Self {
         self.radius = (inner, outer);
         self
     }
-    pub fn center(mut self, x: f64, y: f64) -> Self {
+    pub fn center(mut self, x: Size, y: Size) -> Self {
         self.center = (x, y);
         self
     }
@@ -797,8 +822,8 @@ pub struct Gauge {
     pub value: String,
     pub min: f64,
     pub max: f64,
-    pub center: (f64, f64),
-    pub radius: f64,
+    pub center: (Size, Size),
+    pub radius: Size,
     pub start_angle: f64,
     pub end_angle: f64,
     pub split_number: usize,
@@ -812,8 +837,8 @@ impl Gauge {
             value: "value".into(),
             min: 0.0,
             max: 100.0,
-            center: (50.0, 75.0),
-            radius: 75.0,
+            center: (Size::Percent(50.0), Size::Percent(75.0)),
+            radius: Size::Percent(75.0),
             start_angle: -225.0,
             end_angle: 45.0,
             split_number: 10,
@@ -844,11 +869,11 @@ impl Gauge {
         self.max = max;
         self
     }
-    pub fn center(mut self, x: f64, y: f64) -> Self {
+    pub fn center(mut self, x: Size, y: Size) -> Self {
         self.center = (x, y);
         self
     }
-    pub fn radius(mut self, r: f64) -> Self {
+    pub fn radius(mut self, r: Size) -> Self {
         self.radius = r;
         self
     }

@@ -114,6 +114,17 @@ impl SeriesMaterializer for LineMaterializer {
             color,
             line_width: cfg.line_width,
             smooth: cfg.smooth,
+            step: cfg.step.map(|s| match s {
+                crate::pipeline::types::StepType::Start => {
+                    crate::pipeline::typed_series::StepType::Start
+                }
+                crate::pipeline::types::StepType::Middle => {
+                    crate::pipeline::typed_series::StepType::Middle
+                }
+                crate::pipeline::types::StepType::End => {
+                    crate::pipeline::typed_series::StepType::End
+                }
+            }),
             area_color,
             area_opacity: cfg.area_opacity,
             symbol_type: map_symbol_type(cfg.symbol_type),

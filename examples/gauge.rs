@@ -12,8 +12,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .name("完成率")
                 .value("value")
                 .range(0.0, 100.0)
-                .center(50.0, 55.0)
-                .radius(75.0),
+                .center(Size::pct(50.0), Size::pct(55.0))
+                .radius(Size::pct(75.0)),
         )
         .render_to_svg("gauge.svg")?;
     println!("仪表盘已保存到 gauge.svg");

@@ -4,7 +4,8 @@ use crate::pipeline::types::{AxisSpec, GridSpec, SeriesSpec, SubplotSpec};
 
 /// 纯数学画布切分器
 ///
-/// 职责：根据 grid 配置和画布尺寸，计算每个 subplot 的像素边界。
+/// 职责：根据 grid 配置和画布尺寸，计算每个 subplot 的像素边界，
+/// 并将 series/axis 按 grid_index 绑定到对应的 subplot。
 /// **完全不接触系列数据、轴标签、文本测量、刻度计算**。
 ///
 /// header_height 参数告诉 planner 顶部有多少空间被标题/图例占据，
@@ -14,9 +15,6 @@ pub struct GridPlanner<'a> {
     total_height: u32,
     header_height: f64,
     grids: &'a [GridSpec],
-    series: &'a [SeriesSpec],
-    x_axes: &'a [AxisSpec],
-    y_axes: &'a [AxisSpec],
 }
 
 impl<'a> GridPlanner<'a> {
@@ -25,23 +23,24 @@ impl<'a> GridPlanner<'a> {
         height: u32,
         header_height: f64,
         grids: &'a [GridSpec],
-        series: &'a [SeriesSpec],
-        x_axes: &'a [AxisSpec],
-        y_axes: &'a [AxisSpec],
     ) -> Self {
         Self {
             total_width: width,
             total_height: height,
             header_height: header_height.max(0.0),
             grids,
-            series,
-            x_axes,
-            y_axes,
         }
     }
 
     /// 执行画布切分，返回每个 subplot 的分配结果
-    pub fn plan(&self) -> Vec<SubplotSpec> {
+    ///
+    /// `series`、`x_axes`、`y_axes` 按各自的 grid_index 绑定到对应 subplot。
+    pub fn plan(
+        &self,
+        series: &[SeriesSpec],
+        x_axes: &[AxisSpec],
+        y_axes: &[AxisSpec],
+    ) -> Vec<SubplotSpec> {
         let specs = if self.grids.is_empty() {
             vec![SubplotSpec {
                 id: 0,
@@ -70,7 +69,7 @@ impl<'a> GridPlanner<'a> {
         let mut specs = specs;
 
         // 绑定 series 到 grid
-        for (series_idx, series) in self.series.iter().enumerate() {
+        for (series_idx, series) in series.iter().enumerate() {
             let grid_idx = series.grid_index;
             if grid_idx < specs.len() {
                 specs[grid_idx].series_indices.push(series_idx);
@@ -78,7 +77,7 @@ impl<'a> GridPlanner<'a> {
         }
 
         // 绑定 xAxis 到 grid
-        for (axis_idx, axis) in self.x_axes.iter().enumerate() {
+        for (axis_idx, axis) in x_axes.iter().enumerate() {
             let grid_idx = axis.grid_index;
             if grid_idx < specs.len() {
                 specs[grid_idx].x_axis_indices.push(axis_idx);
@@ -86,7 +85,7 @@ impl<'a> GridPlanner<'a> {
         }
 
         // 绑定 yAxis 到 grid
-        for (axis_idx, axis) in self.y_axes.iter().enumerate() {
+        for (axis_idx, axis) in y_axes.iter().enumerate() {
             let grid_idx = axis.grid_index;
             if grid_idx < specs.len() {
                 specs[grid_idx].y_axis_indices.push(axis_idx);
@@ -170,14 +169,13 @@ mod tests {
     use super::*;
     use crate::pipeline::types::*;
 
-    fn make_series(name: &str, chart_type: ChartType, grid_index: usize) -> SeriesSpec {
+    fn make_series(name: &str, grid_index: usize) -> SeriesSpec {
         use crate::pipeline::dataframe::{DataFrame, DataValue, Series};
         let mut df = DataFrame::new();
         df.add_column(Series::new("x", vec![DataValue::Float(0.0)]));
         df.add_column(Series::new("y", vec![DataValue::Float(0.0)]));
         SeriesSpec {
             name: name.to_string(),
-            chart_type,
             data: df,
             grid_index,
             x_axis_index: 0,
@@ -205,8 +203,8 @@ mod tests {
     #[test]
     fn test_single_grid_default() {
         let grids = vec![];
-        let planner = GridPlanner::new(800, 600, 100.0, &grids, &[], &[], &[]);
-        let specs = planner.plan();
+        let planner = GridPlanner::new(800, 600, 100.0, &grids);
+        let specs = planner.plan(&[], &[], &[]);
 
         assert_eq!(specs.len(), 1);
         let s = &specs[0];
@@ -220,8 +218,8 @@ mod tests {
     #[test]
     fn test_single_grid_no_header() {
         let grids = vec![];
-        let planner = GridPlanner::new(800, 600, 0.0, &grids, &[], &[], &[]);
-        let specs = planner.plan();
+        let planner = GridPlanner::new(800, 600, 0.0, &grids);
+        let specs = planner.plan(&[], &[], &[]);
 
         let s = &specs[0];
         // top 回退到 60.0（因为 0.0 < margin 60.0）
@@ -247,11 +245,11 @@ mod tests {
             },
         ];
         let series = vec![
-            make_series("S1", ChartType::Bar, 0),
-            make_series("S2", ChartType::Bar, 1),
+            make_series("S1", 0),
+            make_series("S2", 1),
         ];
-        let planner = GridPlanner::new(800, 600, 100.0, &grids, &series, &[], &[]);
-        let specs = planner.plan();
+        let planner = GridPlanner::new(800, 600, 100.0, &grids);
+        let specs = planner.plan(&series, &[], &[]);
 
         assert_eq!(specs.len(), 2);
         // Grid 0: left=0 → effective_left=50, right=400 → effective_right=440, width=310, x1=360
@@ -268,12 +266,12 @@ mod tests {
     fn test_series_binding_to_grid() {
         let grids = make_grids(2);
         let series = vec![
-            make_series("Line1", ChartType::Line, 0),
-            make_series("Pie1", ChartType::Pie, 1),
-            make_series("Bar1", ChartType::Bar, 0),
+            make_series("Line1", 0),
+            make_series("Pie1", 1),
+            make_series("Bar1", 0),
         ];
-        let planner = GridPlanner::new(800, 600, 100.0, &grids, &series, &[], &[]);
-        let specs = planner.plan();
+        let planner = GridPlanner::new(800, 600, 100.0, &grids);
+        let specs = planner.plan(&series, &[], &[]);
 
         assert_eq!(specs[0].series_indices, vec![0, 2]);
         assert_eq!(specs[1].series_indices, vec![1]);
@@ -284,47 +282,65 @@ mod tests {
         let grids = make_grids(2);
         let x_axes = vec![
             AxisSpec {
-                grid_index: 0,
-                ..AxisSpec {
-                    axis_type: AxisType::Category,
-                    position: AxisPosition::Bottom,
-                    grid_index: 0,
-                    min: None,
-                    max: None,
-                    name: None,
-                    categories: vec![],
-                    boundary_gap: true,
-                }
-            },
-            AxisSpec {
-                grid_index: 1,
-                ..AxisSpec {
-                    axis_type: AxisType::Value,
-                    position: AxisPosition::Bottom,
-                    grid_index: 1,
-                    min: None,
-                    max: None,
-                    name: None,
-                    categories: vec![],
-                    boundary_gap: true,
-                }
-            },
-        ];
-        let y_axes = vec![AxisSpec {
-            grid_index: 0,
-            ..AxisSpec {
-                axis_type: AxisType::Value,
-                position: AxisPosition::Left,
+                axis_type: AxisType::Category,
+                position: AxisPosition::Bottom,
                 grid_index: 0,
                 min: None,
                 max: None,
                 name: None,
+                name_location: None,
                 categories: vec![],
                 boundary_gap: true,
-            }
+                inverse: false,
+                split_number: None,
+                label_show: true,
+                label_formatter: None,
+                label_rotate: None,
+                axis_line_show: true,
+                split_line_show: true,
+                z: None,
+            },
+            AxisSpec {
+                axis_type: AxisType::Value,
+                position: AxisPosition::Bottom,
+                grid_index: 1,
+                min: None,
+                max: None,
+                name: None,
+                name_location: None,
+                categories: vec![],
+                boundary_gap: true,
+                inverse: false,
+                split_number: None,
+                label_show: true,
+                label_formatter: None,
+                label_rotate: None,
+                axis_line_show: true,
+                split_line_show: true,
+                z: None,
+            },
+        ];
+        let y_axes = vec![AxisSpec {
+            axis_type: AxisType::Value,
+            position: AxisPosition::Left,
+            grid_index: 0,
+            min: None,
+            max: None,
+            name: None,
+            name_location: None,
+            categories: vec![],
+            boundary_gap: true,
+            inverse: false,
+            split_number: None,
+            label_show: true,
+            label_formatter: None,
+            label_rotate: None,
+            axis_line_show: true,
+            split_line_show: true,
+            z: None,
         }];
-        let planner = GridPlanner::new(800, 600, 100.0, &grids, &[], &x_axes, &y_axes);
-        let specs = planner.plan();
+        let planner = GridPlanner::new(800, 600, 100.0, &grids);
+        let specs = planner.plan(&[], &x_axes, &y_axes);
 
         assert_eq!(specs[0].x_axis_indices, vec![0]);
         assert_eq!(specs[1].x_axis_indices, vec![1]);
@@ -341,8 +357,8 @@ mod tests {
             bottom: None,
             contain_label: true,
         }];
-        let planner = GridPlanner::new(800, 600, 100.0, &grids, &[], &[], &[]);
-        let specs = planner.plan();
+        let planner = GridPlanner::new(800, 600, 100.0, &grids);
+        let specs = planner.plan(&[], &[], &[]);
         let s = &specs[0];
 
         // contain_label=true 时 left 默认 70，right 默认 50，bottom 默认 60

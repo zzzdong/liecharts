@@ -8,14 +8,59 @@
 //! 调度函数 `render_axes` 根据图表类型自动选择渲染器。
 
 use crate::{
-    option::{ChartOption, SeriesOption},
-    pipeline::types::{ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer},
+    pipeline::types::{AxisSpec, ChartType, ColorContext, ResolvedAxisRanges, SeriesSpec, SubplotSpec, TextMeasurer},
     visual::VisualElement,
 };
 
 mod cartesian;
 mod polar;
 mod radar;
+
+/// 计算"美观"的刻度值，用于坐标轴网格线和标签
+///
+/// 在 `[min, max]` 范围内生成约 `count` 个刻度，每个刻度是"整洁"的数值
+///（如 0, 10, 20 而非 0, 7, 14）。
+///
+/// 返回的刻度严格落在 `[min, max]` 区间内，避免超出画布。
+fn compute_nice_ticks(min: f64, max: f64, count: usize) -> Vec<f64> {
+    if (max - min).abs() < f64::EPSILON {
+        return vec![min];
+    }
+    let range = nice_number(max - min, false);
+    let tick_spacing = nice_number(range / count as f64, true);
+    let mut ticks = Vec::new();
+    // 从最接近 min 的 tick 开始，向下取整到 spacing 倍数
+    let mut v = (min / tick_spacing).floor() * tick_spacing;
+    while v <= max {
+        if v >= min {
+            ticks.push(v);
+        }
+        v += tick_spacing;
+    }
+    ticks
+}
+
+/// 计算"整洁"数值
+fn nice_number(range: f64, round: bool) -> f64 {
+    let exponent = range.abs().log10().floor();
+    let fraction = range / 10.0_f64.powf(exponent);
+    let nice_fraction = if round {
+        match fraction {
+            f if f <= 1.5 => 1.0,
+            f if f <= 3.0 => 2.0,
+            f if f <= 7.0 => 5.0,
+            _ => 10.0,
+        }
+    } else {
+        match fraction {
+            f if f <= 1.0 => 1.0,
+            f if f <= 2.0 => 2.0,
+            f if f <= 5.0 => 5.0,
+            _ => 10.0,
+        }
+    };
+    nice_fraction * 10.0_f64.powf(exponent)
+}
 
 pub use cartesian::CartesianAxisRenderer;
 pub use polar::PolarAxisRenderer;
@@ -29,7 +74,9 @@ pub use radar::RadarAxisRenderer;
 /// - 极坐标图 → 极坐标轴
 pub fn render_axes(
     subplot: &SubplotSpec,
-    option: &ChartOption,
+    series: &[SeriesSpec],
+    x_axes: &[AxisSpec],
+    y_axes: &[AxisSpec],
     axis_ranges: &ResolvedAxisRanges,
     colors: &ColorContext,
     text_measurer: &mut TextMeasurer,
@@ -40,32 +87,13 @@ pub fn render_axes(
     }
 
     // 检查当前 subplot 包含的图表类型
-    let has_radar = option
-        .series
-        .iter()
-        .any(|s| matches!(s, SeriesOption::Radar(_)));
-    let has_polar = option
-        .series
-        .iter()
-        .any(|s| matches!(s, SeriesOption::PolarBar(_) | SeriesOption::PolarScatter(_)));
-    let has_normal_chart = option.series.iter().any(|s| {
-        !matches!(
-            s,
-            SeriesOption::Pie(_)
-                | SeriesOption::Radar(_)
-                | SeriesOption::Gauge(_)
-                | SeriesOption::PolarBar(_)
-                | SeriesOption::PolarScatter(_)
-        )
+    let has_radar = series.iter().any(|s| s.chart_type() == ChartType::Radar);
+    let has_polar = series.iter().any(|s| matches!(s.chart_type(), ChartType::PolarBar | ChartType::PolarScatter));
+    let has_normal_chart = series.iter().any(|s| {
+        !matches!(s.chart_type(), ChartType::Pie | ChartType::Radar | ChartType::Gauge | ChartType::PolarBar | ChartType::PolarScatter)
     });
-    let has_pie = option
-        .series
-        .iter()
-        .any(|s| matches!(s, SeriesOption::Pie(_)));
-    let has_gauge = option
-        .series
-        .iter()
-        .any(|s| matches!(s, SeriesOption::Gauge(_)));
+    let has_pie = series.iter().any(|s| s.chart_type() == ChartType::Pie);
+    let has_gauge = series.iter().any(|s| s.chart_type() == ChartType::Gauge);
 
     // 纯饼图/仪表盘不需要坐标轴
     if (has_pie || has_gauge) && !has_radar && !has_polar && !has_normal_chart {
@@ -75,11 +103,10 @@ pub fn render_axes(
     let mut elements = Vec::new();
 
     // 雷达图坐标轴
-    if has_radar
-        && let Some(ref radar_option) = option.radar
-        && let Some(ref indicators) = radar_option.indicator
-    {
-        elements.extend(RadarAxisRenderer::render(subplot, indicators, colors));
+    if has_radar {
+        // 雷达指示器从雷达系列的 config 中获取
+        // 框架内目前不渲染雷达图专用网格，但保留调度入口
+        elements.extend(RadarAxisRenderer::render(subplot, &[], colors));
     }
 
     // 极坐标轴
@@ -87,11 +114,12 @@ pub fn render_axes(
         elements.extend(PolarAxisRenderer::render(subplot, colors, text_measurer));
     }
 
-    // 笛卡尔坐标轴
+    // 标准笛卡尔坐标轴
     if has_normal_chart {
         elements.extend(CartesianAxisRenderer::render(
             subplot,
-            option,
+            x_axes,
+            y_axes,
             axis_ranges,
             colors,
             text_measurer,
@@ -99,48 +127,4 @@ pub fn render_axes(
     }
 
     elements
-}
-
-/// 计算"美观"的刻度值序列
-fn compute_nice_ticks(min: f64, max: f64, max_ticks: usize) -> Vec<f64> {
-    if max <= min || max_ticks == 0 {
-        return vec![min];
-    }
-
-    let range = max - min;
-    let rough_step = range / max_ticks as f64;
-
-    // 取整到"美观"的步长
-    let magnitude = 10_f64.powf(rough_step.log10().floor());
-    let residual = rough_step / magnitude;
-
-    let nice_step = if residual < 1.5 {
-        magnitude
-    } else if residual < 3.5 {
-        2.0 * magnitude
-    } else if residual < 7.5 {
-        5.0 * magnitude
-    } else {
-        10.0 * magnitude
-    };
-
-    // 生成刻度
-    let start = (min / nice_step).floor() * nice_step;
-    let end = (max / nice_step).ceil() * nice_step;
-    let count = ((end - start) / nice_step).round() as usize;
-
-    let mut ticks = Vec::with_capacity(count + 1);
-    let mut v = start;
-    for _ in 0..=count {
-        if v >= min - nice_step * 1e-10 && v <= max + nice_step * 1e-10 {
-            ticks.push(v);
-        }
-        v += nice_step;
-    }
-
-    if ticks.is_empty() {
-        vec![min, max]
-    } else {
-        ticks
-    }
 }

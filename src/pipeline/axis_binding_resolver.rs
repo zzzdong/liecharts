@@ -29,6 +29,18 @@ impl<'a> AxisBindingResolver<'a> {
         // 处理 x 轴
         for axis_idx in 0..self.x_axes.len() {
             let axis = &self.x_axes[axis_idx];
+
+            // 判断该轴关联的 subplot 中是否有非 Candlestick 的系列
+            // 对 value 轴强制包含 0，确保 nice_ticks 不会延伸到数据范围之外
+            let force_include_zero = specs.iter().any(|s| {
+                s.x_axis_indices.contains(&axis_idx)
+                    && s.series_indices.iter().any(|&si| {
+                        self.series
+                            .get(si)
+                            .is_some_and(|ser| !matches!(ser.chart_type(), ChartType::Candlestick))
+                    })
+            });
+
             let (data_min, data_max) = self.collect_x_axis_range(axis_idx, specs);
 
             // Category 轴：collect_x_axis_range 已经返回正确范围
@@ -43,7 +55,7 @@ impl<'a> AxisBindingResolver<'a> {
                     axis.axis_type,
                     axis.categories.len(),
                     axis.boundary_gap,
-                    false,
+                    force_include_zero,
                 )
             };
 
@@ -70,7 +82,7 @@ impl<'a> AxisBindingResolver<'a> {
                     && s.series_indices.iter().any(|&si| {
                         self.series
                             .get(si)
-                            .is_some_and(|ser| !matches!(ser.chart_type, ChartType::Candlestick))
+                            .is_some_and(|ser| !matches!(ser.chart_type(), ChartType::Candlestick))
                     })
             });
 
@@ -212,6 +224,12 @@ impl<'a> AxisBindingResolver<'a> {
         // 收集绑定到该轴的所有 series
         let mut bound_series: Vec<&SeriesSpec> = Vec::new();
 
+        // 找到该轴所属的 subplot
+        let axis_subplot_id = specs
+            .iter()
+            .find(|s| s.y_axis_indices.contains(&axis_idx))
+            .map(|s| s.id);
+
         for series in self.series {
             // 检查该 series 是否属于当前处理的 subplot 之一
             let _spec = match specs.iter().find(|s| s.id == series.grid_index) {
@@ -219,8 +237,17 @@ impl<'a> AxisBindingResolver<'a> {
                 None => continue,
             };
 
-            // 直接使用 series 的 y_axis_index 来判断绑定关系
-            if series.y_axis_index != axis_idx {
+            // 判断绑定关系：优先按 y_axis_index，否则按 subplot
+            let is_bound = if series.y_axis_index == axis_idx {
+                true
+            } else if let Some(subplot_id) = axis_subplot_id {
+                // 同一 subplot 内，没有显式 y_axis_index 绑定的系列也属于该轴
+                series.grid_index == subplot_id
+            } else {
+                false
+            };
+
+            if !is_bound {
                 continue;
             }
 
@@ -278,12 +305,12 @@ impl<'a> AxisBindingResolver<'a> {
         // 检查是否有堆叠面积图（Line/Stack 系列）
         let has_stacked_areas = bound_series
             .iter()
-            .any(|s| s.stack.is_some() && matches!(s.chart_type, super::ChartType::Line));
+            .any(|s| s.stack.is_some() && matches!(s.chart_type(), super::ChartType::Line));
         if has_stacked_areas {
             use std::collections::HashMap;
             let mut stack_groups: HashMap<Option<String>, Vec<&SeriesSpec>> = HashMap::new();
             for s in &bound_series {
-                if s.stack.is_some() && matches!(s.chart_type, super::ChartType::Line) {
+                if s.stack.is_some() && matches!(s.chart_type(), super::ChartType::Line) {
                     stack_groups.entry(s.stack.clone()).or_default().push(s);
                 }
             }
@@ -401,8 +428,17 @@ mod tests {
             min: None,
             max: None,
             name: None,
+            name_location: None,
             categories: vec![],
             boundary_gap: true,
+            inverse: false,
+            split_number: None,
+            label_show: true,
+            label_formatter: None,
+            label_rotate: None,
+            axis_line_show: true,
+            split_line_show: true,
+            z: None,
         }
     }
 

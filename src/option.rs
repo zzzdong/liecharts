@@ -292,11 +292,327 @@ impl<'de> Deserialize<'de> for NumberOrPercent {
     }
 }
 
+/// 容错数字：接受 number、"auto" 或百分比字符串。
+///
+/// 用于 ECharts 中既可以是数字、也可以是 "auto" 或 "50%" 的字段，
+/// 例如 `symbolSize`、`lineStyle.width`、`borderWidth` 等。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LenientNumber {
+    /// 具体数值
+    Number(f64),
+    /// "auto" 关键字
+    Auto,
+    /// 百分比字符串（如 "50%"）
+    Percent(f64),
+    /// 任意字符串（如分类轴引用 "Mon"）
+    Category(String),
+}
+
+impl LenientNumber {
+    /// 解析为最终数值。
+    /// - `Number(n)` 返回 `n`
+    /// - `Auto` 返回 `default_value`
+    /// - `Percent(p)` 返回 `base * p / 100.0`
+    /// - `Category(_)` 返回 `default_value`
+    pub fn resolve(&self, base: f64, default_value: f64) -> f64 {
+        match self {
+            LenientNumber::Number(n) => *n,
+            LenientNumber::Auto => default_value,
+            LenientNumber::Percent(p) => base * *p / 100.0,
+            LenientNumber::Category(_) => default_value,
+        }
+    }
+
+    /// 如果是 Number，返回数值；否则返回 None。
+    pub fn as_number(&self) -> Option<f64> {
+        match self {
+            LenientNumber::Number(n) => Some(*n),
+            _ => None,
+        }
+    }
+
+    /// 如果是 Category，返回字符串引用。
+    pub fn as_category(&self) -> Option<&str> {
+        match self {
+            LenientNumber::Category(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
+}
+
+impl Default for LenientNumber {
+    fn default() -> Self {
+        LenientNumber::Number(0.0)
+    }
+}
+
+impl Serialize for LenientNumber {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            LenientNumber::Number(n) => serializer.serialize_f64(*n),
+            LenientNumber::Auto => serializer.serialize_str("auto"),
+            LenientNumber::Percent(p) => serializer.serialize_str(&format!("{}%", p)),
+            LenientNumber::Category(s) => serializer.serialize_str(s),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientNumber {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LenientNumberVisitor;
+
+        impl<'de> Visitor<'de> for LenientNumberVisitor {
+            type Value = LenientNumber;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a number, \"auto\", a percentage string like \"50%\", or a category string")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                let v = v.trim();
+                if v.eq_ignore_ascii_case("auto") {
+                    Ok(LenientNumber::Auto)
+                } else if let Some(stripped) = v.strip_suffix('%') {
+                    let p = stripped
+                        .trim()
+                        .parse::<f64>()
+                        .map_err(|_| de::Error::custom(format!("invalid percentage: {}", v)))?;
+                    Ok(LenientNumber::Percent(p))
+                } else if let Ok(n) = v.parse::<f64>() {
+                    Ok(LenientNumber::Number(n))
+                } else {
+                    // 任意字符串，作为分类引用
+                    Ok(LenientNumber::Category(v.to_string()))
+                }
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(LenientNumber::Number(v))
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(LenientNumber::Number(v as f64))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(LenientNumber::Number(v as f64))
+            }
+        }
+
+        deserializer.deserialize_any(LenientNumberVisitor)
+    }
+}
+
+/// 容错内边距：接受 number、string 或 array。
+///
+/// 用于 ECharts 中的 padding 字段，可以是：
+/// - 单个数字：`10`
+/// - 字符串：`"10"` 或 `"10%"`
+/// - 数组：`[10, 20]` 或 `[10, 20, 30, 40]`
+#[derive(Debug, Clone, PartialEq)]
+pub enum LenientPadding {
+    /// 单值（像素）
+    Single(f64),
+    /// 百分比
+    Percent(f64),
+    /// 四边独立值 [top, right, bottom, left]
+    Array(Vec<LenientNumber>),
+}
+
+impl LenientPadding {
+    /// 解析为 [top, right, bottom, left] 四值数组。
+    pub fn resolve(&self, base: f64, default_value: f64) -> [f64; 4] {
+        match self {
+            LenientPadding::Single(v) => [*v; 4],
+            LenientPadding::Percent(p) => {
+                let v = base * *p / 100.0;
+                [v; 4]
+            }
+            LenientPadding::Array(arr) => match arr.len() {
+                0 => [default_value; 4],
+                1 => [arr[0].resolve(base, default_value); 4],
+                2 => {
+                    let v = [
+                        arr[0].resolve(base, default_value),
+                        arr[1].resolve(base, default_value),
+                    ];
+                    [v[0], v[1], v[0], v[1]]
+                }
+                3 => {
+                    let v0 = arr[0].resolve(base, default_value);
+                    let v1 = arr[1].resolve(base, default_value);
+                    let v2 = arr[2].resolve(base, default_value);
+                    [v0, v1, v2, v1]
+                }
+                _ => {
+                    let v0 = arr[0].resolve(base, default_value);
+                    let v1 = arr[1].resolve(base, default_value);
+                    let v2 = arr[2].resolve(base, default_value);
+                    let v3 = arr[3].resolve(base, default_value);
+                    [v0, v1, v2, v3]
+                }
+            },
+        }
+    }
+}
+
+impl Default for LenientPadding {
+    fn default() -> Self {
+        LenientPadding::Single(0.0)
+    }
+}
+
+impl Serialize for LenientPadding {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            LenientPadding::Single(v) => serializer.serialize_f64(*v),
+            LenientPadding::Percent(p) => serializer.serialize_str(&format!("{}%", p)),
+            LenientPadding::Array(arr) => arr.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientPadding {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LenientPaddingVisitor;
+
+        impl<'de> Visitor<'de> for LenientPaddingVisitor {
+            type Value = LenientPadding;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a number, string, or array for padding")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                let v = v.trim();
+                if let Some(stripped) = v.strip_suffix('%') {
+                    let p = stripped
+                        .trim()
+                        .parse::<f64>()
+                        .map_err(|_| de::Error::custom(format!("invalid percentage: {}", v)))?;
+                    Ok(LenientPadding::Percent(p))
+                } else {
+                    let n = v
+                        .parse::<f64>()
+                        .map_err(|_| de::Error::custom(format!("invalid number: {}", v)))?;
+                    Ok(LenientPadding::Single(n))
+                }
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(LenientPadding::Single(v))
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(LenientPadding::Single(v as f64))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(LenientPadding::Single(v as f64))
+            }
+
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                let mut arr = Vec::new();
+                while let Some(v) = seq.next_element::<LenientNumber>()? {
+                    arr.push(v);
+                }
+                Ok(LenientPadding::Array(arr))
+            }
+        }
+
+        deserializer.deserialize_any(LenientPaddingVisitor)
+    }
+}
+
 /// 容错 bool：接受 bool 或 "true"/"false" 字符串。
 ///
 /// LLM 偶尔会输出 `"animation":"true"`，此类型用于让解析不报错。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LenientBool(pub bool);
+
+/// 支持单个值或数组的灵活类型。
+///
+/// 用于 ECharts 中的 `radius` 等字段，可以是：
+/// - 单个值：`"75%"` 或 `75`
+/// - 数组：`["40%", "70%"]` 或 `[40, 70]`
+#[derive(Debug, Clone, PartialEq)]
+pub enum SingleOrArray<T> {
+    Single(T),
+    Array(Vec<T>),
+}
+
+impl<T: Clone> SingleOrArray<T> {
+    /// 转换为数组形式。
+    pub fn to_vec(&self) -> Vec<T> {
+        match self {
+            SingleOrArray::Single(v) => vec![v.clone()],
+            SingleOrArray::Array(v) => v.clone(),
+        }
+    }
+}
+
+impl<T: Serialize> Serialize for SingleOrArray<T> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            SingleOrArray::Single(v) => v.serialize(serializer),
+            SingleOrArray::Array(v) => v.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SingleOrArray<LenientNumber> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct SingleOrArrayVisitor;
+
+        impl<'de> Visitor<'de> for SingleOrArrayVisitor {
+            type Value = SingleOrArray<LenientNumber>;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a single value or an array")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                let ln = LenientNumber::deserialize(de::value::StrDeserializer::new(v))?;
+                Ok(SingleOrArray::Single(ln))
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                let ln = LenientNumber::deserialize(de::value::StringDeserializer::new(v))?;
+                Ok(SingleOrArray::Single(ln))
+            }
+
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(SingleOrArray::Single(LenientNumber::Number(v)))
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(SingleOrArray::Single(LenientNumber::Number(v as f64)))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(SingleOrArray::Single(LenientNumber::Number(v as f64)))
+            }
+
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                let mut arr = Vec::new();
+                while let Some(v) = seq.next_element::<LenientNumber>()? {
+                    arr.push(v);
+                }
+                Ok(SingleOrArray::Array(arr))
+            }
+        }
+
+        deserializer.deserialize_any(SingleOrArrayVisitor)
+    }
+}
 
 impl From<bool> for LenientBool {
     fn from(b: bool) -> Self {
@@ -356,6 +672,281 @@ impl<'de> Deserialize<'de> for LenientBool {
     }
 }
 
+/// 布尔值或字符串，用于 `selectedMode` 等同时支持 bool/string 的字段。
+///
+/// ECharts 的 `legend.selectedMode` / `pie.selectedMode` 支持：
+/// - 布尔值：`true`（多选）/ `false`（禁用）
+/// - 字符串：`"single"` / `"multiple"`
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum LenientBoolOrString {
+    Bool(bool),
+    Str(String),
+}
+
+impl<'de> Deserialize<'de> for LenientBoolOrString {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct Visitor;
+        impl<'de> de::Visitor<'de> for Visitor {
+            type Value = LenientBoolOrString;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a boolean or a string")
+            }
+            fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(LenientBoolOrString::Bool(v))
+            }
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(LenientBoolOrString::Str(v.to_string()))
+            }
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                Ok(LenientBoolOrString::Str(v))
+            }
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(LenientBoolOrString::Bool(v != 0))
+            }
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(LenientBoolOrString::Bool(v != 0))
+            }
+        }
+        deserializer.deserialize_any(Visitor)
+    }
+}
+
+/// 灵活的轴数据：接受字符串数组或数字数组。
+///
+/// ECharts 的 `axis.data` 可以是 `["a", "b"]` 或 `[1, 2, 3]`。
+#[derive(Debug, Clone)]
+pub struct LenientAxisData(pub Vec<String>);
+
+impl std::ops::Deref for LenientAxisData {
+    type Target = Vec<String>;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Serialize for LenientAxisData {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientAxisData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LenientAxisDataVisitor;
+        impl<'de> de::Visitor<'de> for LenientAxisDataVisitor {
+            type Value = LenientAxisData;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string array or number array")
+            }
+            fn visit_seq<A: de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
+                let mut result = Vec::new();
+                while let Some(v) = seq.next_element::<serde_json::Value>()? {
+                    match v {
+                        serde_json::Value::String(s) => result.push(s),
+                        serde_json::Value::Number(n) => result.push(n.to_string()),
+                        _ => {
+                            return Err(de::Error::custom(
+                                "expected string or number in axis data",
+                            ))
+                        }
+                    }
+                }
+                Ok(LenientAxisData(result))
+            }
+        }
+        deserializer.deserialize_seq(LenientAxisDataVisitor)
+    }
+}
+
+/// 灵活的轴范围值：接受数字或 `"dataMin"` / `"dataMax"` 字符串。
+///
+/// ECharts 的 `axis.min` / `axis.max` 支持数值和特殊字符串。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LenientAxisLimit {
+    Value(f64),
+    DataMin,
+    DataMax,
+}
+
+impl Serialize for LenientAxisLimit {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            LenientAxisLimit::Value(v) => v.serialize(serializer),
+            LenientAxisLimit::DataMin => "dataMin".serialize(serializer),
+            LenientAxisLimit::DataMax => "dataMax".serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientAxisLimit {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LenientAxisLimitVisitor;
+        impl<'de> de::Visitor<'de> for LenientAxisLimitVisitor {
+            type Value = LenientAxisLimit;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a number or \"dataMin\"/\"dataMax\" string")
+            }
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(LenientAxisLimit::Value(v))
+            }
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(LenientAxisLimit::Value(v as f64))
+            }
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(LenientAxisLimit::Value(v as f64))
+            }
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match v {
+                    "dataMin" => Ok(LenientAxisLimit::DataMin),
+                    "dataMax" => Ok(LenientAxisLimit::DataMax),
+                    _ => Err(de::Error::custom(format!("unknown axis limit: {}", v))),
+                }
+            }
+        }
+        deserializer.deserialize_any(LenientAxisLimitVisitor)
+    }
+}
+
+/// 灵活的边界间隙：接受布尔值或 `[string, string]` 数组。
+///
+/// ECharts 的 `boundaryGap` 可以是 `true` / `false` 或 `["20%", "20%"]`。
+#[derive(Debug, Clone, PartialEq)]
+pub enum LenientBoundaryGap {
+    Bool(bool),
+    Gap(LenientNumber, LenientNumber),
+}
+
+impl Default for LenientBoundaryGap {
+    fn default() -> Self {
+        LenientBoundaryGap::Bool(true)
+    }
+}
+
+impl Serialize for LenientBoundaryGap {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            LenientBoundaryGap::Bool(b) => b.serialize(serializer),
+            LenientBoundaryGap::Gap(a, b) => [a, b].serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientBoundaryGap {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LenientBoundaryGapVisitor;
+        impl<'de> de::Visitor<'de> for LenientBoundaryGapVisitor {
+            type Value = LenientBoundaryGap;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a boolean or a [number|string, number|string] array")
+            }
+            fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(LenientBoundaryGap::Bool(v))
+            }
+            fn visit_seq<A: de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
+                let a = seq
+                    .next_element::<LenientNumber>()?
+                    .ok_or_else(|| de::Error::custom("expected at least 2 elements"))?;
+                let b = seq
+                    .next_element::<LenientNumber>()?
+                    .ok_or_else(|| de::Error::custom("expected at least 2 elements"))?;
+                Ok(LenientBoundaryGap::Gap(a, b))
+            }
+        }
+        deserializer.deserialize_any(LenientBoundaryGapVisitor)
+    }
+}
+
+/// 灵活的 step 类型：接受布尔值或 `"start"` / `"middle"` / `"end"` 字符串。
+///
+/// ECharts 的 `step` 可以是 `true` / `false` 或 `'start'` / `'middle'` / `'end'`。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LenientStep {
+    Bool(bool),
+    Start,
+    Middle,
+    End,
+}
+
+impl Serialize for LenientStep {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            LenientStep::Bool(b) => b.serialize(serializer),
+            LenientStep::Start => "start".serialize(serializer),
+            LenientStep::Middle => "middle".serialize(serializer),
+            LenientStep::End => "end".serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientStep {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LenientStepVisitor;
+        impl<'de> de::Visitor<'de> for LenientStepVisitor {
+            type Value = LenientStep;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a boolean or \"start\"/\"middle\"/\"end\" string")
+            }
+            fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(LenientStep::Bool(v))
+            }
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match v {
+                    "start" => Ok(LenientStep::Start),
+                    "middle" => Ok(LenientStep::Middle),
+                    "end" => Ok(LenientStep::End),
+                    _ => Err(de::Error::custom(format!("unknown step value: {}", v))),
+                }
+            }
+        }
+        deserializer.deserialize_any(LenientStepVisitor)
+    }
+}
+
+/// 灵活的 bar 尺寸：接受数字或字符串（如 `"20%"`）。
+///
+/// ECharts 的 `barWidth` / `barMaxWidth` / `barMinWidth` / `barGap` / `barCategoryGap`
+/// 可以是数字（像素值）或字符串（如 `"20%"`）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct LenientBarSize(pub String);
+
+impl Serialize for LenientBarSize {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientBarSize {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LenientBarSizeVisitor;
+        impl<'de> de::Visitor<'de> for LenientBarSizeVisitor {
+            type Value = LenientBarSize;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a number or a string like \"20%\"")
+            }
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(LenientBarSize(v.to_string()))
+            }
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(LenientBarSize(v.to_string()))
+            }
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(LenientBarSize(v.to_string()))
+            }
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(LenientBarSize(v.to_string()))
+            }
+        }
+        deserializer.deserialize_any(LenientBarSizeVisitor)
+    }
+}
+
 /// 图例数据项：字符串或 `{name, icon}` 对象。
 ///
 /// ECharts 允许 `legend.data` 同时包含字符串和对象。
@@ -385,11 +976,16 @@ impl LegendDataItem {
 /// 区间值：数字或 "auto"。
 ///
 /// 用于 `axisLabel.interval` 等 ECharts 字段。
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum IntervalOption {
-    #[default]
     Auto,
     Fixed(f64),
+}
+
+impl Default for IntervalOption {
+    fn default() -> Self {
+        IntervalOption::Auto
+    }
 }
 
 impl Serialize for IntervalOption {
@@ -469,8 +1065,8 @@ pub struct TooltipOption {
     pub value_formatter: Option<String>,
     pub background_color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
-    pub padding: Option<f64>,
+    pub border_width: Option<LenientNumber>,
+    pub padding: Option<LenientPadding>,
     pub text_style: Option<TextStyleOption>,
     pub axis_pointer: Option<AxisPointerOption>,
     pub always_show_content: Option<bool>,
@@ -567,10 +1163,10 @@ pub struct AxisPointerLabelOption {
     pub font_size: Option<f64>,
     pub font_family: Option<String>,
     pub font_weight: Option<FontWeight>,
-    pub padding: Option<f64>,
+    pub padding: Option<LenientPadding>,
     pub background_color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
+    pub border_width: Option<LenientNumber>,
 }
 
 impl Default for AxisPointerLabelOption {
@@ -592,7 +1188,6 @@ impl Default for AxisPointerLabelOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct HandleOption {
     pub show: Option<bool>,
     pub icon: Option<String>,
@@ -602,13 +1197,25 @@ pub struct HandleOption {
     pub throttle: Option<f64>,
 }
 
+impl Default for HandleOption {
+    fn default() -> Self {
+        Self {
+            show: None,
+            icon: None,
+            size: None,
+            margin: None,
+            color: None,
+            throttle: None,
+        }
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // Dataset — 数据集声明
 // ═══════════════════════════════════════════════════════════════════
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct DatasetOption {
     pub id: Option<String>,
     pub source: Option<Vec<Vec<serde_json::Value>>>,
@@ -616,6 +1223,19 @@ pub struct DatasetOption {
     pub dimensions: Option<Vec<String>>,
     pub from_dataset_index: Option<usize>,
     pub from_transform_result: Option<usize>,
+}
+
+impl Default for DatasetOption {
+    fn default() -> Self {
+        Self {
+            id: None,
+            source: None,
+            source_header: None,
+            dimensions: None,
+            from_dataset_index: None,
+            from_transform_result: None,
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -694,7 +1314,7 @@ pub struct VisualMapOption {
     pub min: Option<f64>,
     pub max: Option<f64>,
     pub calculable: Option<bool>,
-    pub series_index: Option<Vec<usize>>,
+    pub series_index: Option<OneOrMany<usize>>,
     pub dimension: Option<usize>,
     pub in_range: Option<VisualMapRangeOption>,
     pub out_of_range: Option<VisualMapRangeOption>,
@@ -707,7 +1327,7 @@ pub struct VisualMapOption {
     pub item_width: Option<f64>,
     pub item_height: Option<f64>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
+    pub border_width: Option<LenientNumber>,
     pub handle_icon: Option<String>,
     pub handle_size: Option<f64>,
     pub indicator_icon: Option<String>,
@@ -717,7 +1337,7 @@ pub struct VisualMapOption {
     pub right: Option<PositionOption>,
     pub bottom: Option<PositionOption>,
     pub orient: Option<Orient>,
-    pub padding: Option<f64>,
+    pub padding: Option<LenientPadding>,
     pub background_color: Option<ColorOption>,
 }
 
@@ -761,13 +1381,13 @@ impl Default for VisualMapOption {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VisualMapRangeOption {
-    pub color: Option<Vec<ColorOption>>,
+    pub color: Option<OneOrMany<ColorOption>>,
     pub symbol: Option<String>,
-    pub symbol_size: Option<Vec<f64>>,
-    pub color_alpha: Option<Vec<f64>>,
-    pub color_lightness: Option<Vec<f64>>,
-    pub color_saturation: Option<Vec<f64>>,
-    pub color_hue: Option<Vec<f64>>,
+    pub symbol_size: Option<OneOrMany<f64>>,
+    pub color_alpha: Option<OneOrMany<f64>>,
+    pub color_lightness: Option<OneOrMany<f64>>,
+    pub color_saturation: Option<OneOrMany<f64>>,
+    pub color_hue: Option<OneOrMany<f64>>,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -807,11 +1427,11 @@ pub struct DataZoomOption {
     pub bottom: Option<PositionOption>,
     pub background_color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
+    pub border_width: Option<LenientNumber>,
     pub filler_color: Option<ColorOption>,
     pub handle_icon: Option<String>,
     /// 缩放条手柄尺寸，接受数字或百分比字符串（如 `100%`）
-    pub handle_size: Option<NumberOrPercent>,
+    pub handle_size: Option<LenientNumber>,
     pub handle_style: Option<ItemStyleOption>,
     pub data_background_color: Option<ColorOption>,
     pub selected_data_background_color: Option<ColorOption>,
@@ -953,7 +1573,6 @@ impl Default for SplitAreaOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct ShadowStyleOption {
     pub color: Option<ColorOption>,
     pub shadow_blur: Option<f64>,
@@ -961,6 +1580,19 @@ pub struct ShadowStyleOption {
     pub shadow_offset_x: Option<f64>,
     pub shadow_offset_y: Option<f64>,
     pub opacity: Option<f64>,
+}
+
+impl Default for ShadowStyleOption {
+    fn default() -> Self {
+        Self {
+            color: None,
+            shadow_blur: None,
+            shadow_color: None,
+            shadow_offset_x: None,
+            shadow_offset_y: None,
+            opacity: None,
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -972,7 +1604,7 @@ pub struct ShadowStyleOption {
 pub struct MarkPointOption {
     pub data: Option<Vec<MarkPointDataOption>>,
     pub symbol: Option<SymbolType>,
-    pub symbol_size: Option<f64>,
+    pub symbol_size: Option<LenientNumber>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
     pub animation: Option<LenientBool>,
@@ -985,7 +1617,7 @@ impl Default for MarkPointOption {
         Self {
             data: None,
             symbol: Some(SymbolType::Pin),
-            symbol_size: Some(50.0),
+            symbol_size: Some(LenientNumber::Number(50.0)),
             item_style: None,
             label: None,
             animation: None,
@@ -997,7 +1629,6 @@ impl Default for MarkPointOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct MarkPointDataOption {
     pub name: Option<String>,
     #[serde(rename = "type")]
@@ -1011,14 +1642,32 @@ pub struct MarkPointDataOption {
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
     pub symbol: Option<SymbolType>,
-    pub symbol_size: Option<f64>,
+    pub symbol_size: Option<LenientNumber>,
+}
+
+impl Default for MarkPointDataOption {
+    fn default() -> Self {
+        Self {
+            name: None,
+            data_type: None,
+            value_index: None,
+            value_dim: None,
+            coord: None,
+            x: None,
+            y: None,
+            value: None,
+            item_style: None,
+            label: None,
+            symbol: None,
+            symbol_size: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct MarkLineOption {
-    pub data: Option<Vec<MarkLineDataOption>>,
+    pub data: Option<Vec<OneOrMany<MarkLineDataOption>>>,
     pub symbol: Option<Vec<SymbolType>>,
     pub symbol_size: Option<Vec<f64>>,
     pub line_style: Option<LineStyleOption>,
@@ -1030,20 +1679,36 @@ pub struct MarkLineOption {
     pub silent: Option<bool>,
 }
 
+impl Default for MarkLineOption {
+    fn default() -> Self {
+        Self {
+            data: None,
+            symbol: None,
+            symbol_size: None,
+            line_style: None,
+            label: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
+            precision: None,
+            silent: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct MarkLineDataOption {
     pub name: Option<String>,
     #[serde(rename = "type")]
     pub data_type: Option<String>,
     pub value_index: Option<usize>,
     pub value_dim: Option<String>,
-    pub x_axis: Option<f64>,
-    pub y_axis: Option<f64>,
-    pub coord: Option<Vec<f64>>,
-    pub x: Option<f64>,
-    pub y: Option<f64>,
+    pub x_axis: Option<LenientNumber>,
+    pub y_axis: Option<LenientNumber>,
+    pub coord: Option<Vec<LenientNumber>>,
+    pub x: Option<LenientNumber>,
+    pub y: Option<LenientNumber>,
     pub value: Option<f64>,
     pub line_style: Option<LineStyleOption>,
     pub label: Option<LabelOption>,
@@ -1051,9 +1716,29 @@ pub struct MarkLineDataOption {
     pub symbol_size: Option<Vec<f64>>,
 }
 
+impl Default for MarkLineDataOption {
+    fn default() -> Self {
+        Self {
+            name: None,
+            data_type: None,
+            value_index: None,
+            value_dim: None,
+            x_axis: None,
+            y_axis: None,
+            coord: None,
+            x: None,
+            y: None,
+            value: None,
+            line_style: None,
+            label: None,
+            symbol: None,
+            symbol_size: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct MarkAreaOption {
     pub data: Option<Vec<Vec<MarkAreaDataOption>>>,
     pub item_style: Option<ItemStyleOption>,
@@ -1064,23 +1749,55 @@ pub struct MarkAreaOption {
     pub silent: Option<bool>,
 }
 
+impl Default for MarkAreaOption {
+    fn default() -> Self {
+        Self {
+            data: None,
+            item_style: None,
+            label: None,
+            animation: None,
+            animation_duration: None,
+            animation_delay: None,
+            silent: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct MarkAreaDataOption {
     pub name: Option<String>,
     #[serde(rename = "type")]
     pub data_type: Option<String>,
     pub value_index: Option<usize>,
     pub value_dim: Option<String>,
-    pub x_axis: Option<f64>,
-    pub y_axis: Option<f64>,
-    pub coord: Option<Vec<f64>>,
-    pub x: Option<f64>,
-    pub y: Option<f64>,
+    pub x_axis: Option<LenientNumber>,
+    pub y_axis: Option<LenientNumber>,
+    pub coord: Option<Vec<LenientNumber>>,
+    pub x: Option<LenientNumber>,
+    pub y: Option<LenientNumber>,
     pub value: Option<f64>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
+}
+
+impl Default for MarkAreaDataOption {
+    fn default() -> Self {
+        Self {
+            name: None,
+            data_type: None,
+            value_index: None,
+            value_dim: None,
+            x_axis: None,
+            y_axis: None,
+            coord: None,
+            x: None,
+            y: None,
+            value: None,
+            item_style: None,
+            label: None,
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1089,7 +1806,6 @@ pub struct MarkAreaDataOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[derive(Default)]
 pub struct SeriesEncodeOption {
     pub x: Option<OneOrMany<StringOrInt>>,
     pub y: Option<OneOrMany<StringOrInt>>,
@@ -1102,6 +1818,24 @@ pub struct SeriesEncodeOption {
     pub item_group_id: Option<OneOrMany<StringOrInt>>,
     pub tooltip: Option<OneOrMany<StringOrInt>>,
     pub series_name: Option<OneOrMany<StringOrInt>>,
+}
+
+impl Default for SeriesEncodeOption {
+    fn default() -> Self {
+        Self {
+            x: None,
+            y: None,
+            width: None,
+            height: None,
+            angle: None,
+            radius: None,
+            value: None,
+            item_name: None,
+            item_group_id: None,
+            tooltip: None,
+            series_name: None,
+        }
+    }
 }
 
 /// Root chart configuration.
@@ -1154,10 +1888,10 @@ pub struct TitleOption {
     pub z: Option<f64>,
     pub zlevel: Option<f64>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
-    pub border_radius: Option<f64>,
+    pub border_width: Option<LenientNumber>,
+    pub border_radius: Option<LenientNumber>,
     pub background_color: Option<ColorOption>,
-    pub padding: Option<Vec<f64>>,
+    pub padding: Option<LenientPadding>,
     pub shadow_blur: Option<f64>,
     pub shadow_color: Option<ColorOption>,
     pub shadow_offset_x: Option<f64>,
@@ -1249,12 +1983,12 @@ pub struct LegendOption {
     pub text_style: Option<TextStyleOption>,
     pub item_width: Option<f64>,
     pub item_height: Option<f64>,
-    pub symbol_size: Option<f64>,
+    pub symbol_size: Option<LenientNumber>,
     pub icon: Option<String>,
     pub align: Option<String>,
     pub item_gap: Option<f64>,
     pub formatter: Option<String>,
-    pub selected_mode: Option<String>,
+    pub selected_mode: Option<LenientBoolOrString>,
     pub inactive_color: Option<ColorOption>,
     pub inactive_border_color: Option<ColorOption>,
     pub inactive_border_width: Option<f64>,
@@ -1269,10 +2003,10 @@ pub struct LegendOption {
     pub z: Option<f64>,
     pub zlevel: Option<f64>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
-    pub border_radius: Option<f64>,
+    pub border_width: Option<LenientNumber>,
+    pub border_radius: Option<LenientNumber>,
     pub background_color: Option<ColorOption>,
-    pub padding: Option<Vec<f64>>,
+    pub padding: Option<LenientPadding>,
     pub shadow_blur: Option<f64>,
     pub shadow_color: Option<ColorOption>,
     pub shadow_offset_x: Option<f64>,
@@ -1282,7 +2016,7 @@ pub struct LegendOption {
     pub page_button_gap: Option<f64>,
     pub page_icon_color: Option<String>,
     pub page_icon_inactive_color: Option<String>,
-    pub page_icon_size: Option<f64>,
+    pub page_icon_size: Option<OneOrMany<f64>>,
     pub animation_duration_update: Option<f64>,
     pub type_: Option<String>,
     pub selected: Option<std::collections::HashMap<String, bool>>,
@@ -1331,7 +2065,7 @@ pub struct GridOption {
     pub contain_label: Option<bool>,
     pub background_color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
+    pub border_width: Option<LenientNumber>,
     pub shadow_blur: Option<f64>,
     pub shadow_color: Option<ColorOption>,
     pub shadow_offset_x: Option<f64>,
@@ -1398,7 +2132,7 @@ impl GridOption {
 pub struct AxisOption {
     #[serde(rename = "type")]
     pub axis_type: Option<AxisType>,
-    pub data: Option<Vec<String>>,
+    pub data: Option<LenientAxisData>,
     pub name: Option<String>,
     pub name_location: Option<NameLocation>,
     pub name_text_style: Option<TextStyleOption>,
@@ -1409,12 +2143,12 @@ pub struct AxisOption {
     pub axis_tick: Option<AxisTickOption>,
     pub split_line: Option<SplitLineOption>,
     pub split_area: Option<SplitAreaOption>,
-    pub min: Option<f64>,
-    pub max: Option<f64>,
+    pub min: Option<LenientAxisLimit>,
+    pub max: Option<LenientAxisLimit>,
     pub min_interval: Option<f64>,
     pub max_interval: Option<f64>,
     pub interval: Option<f64>,
-    pub boundary_gap: Option<bool>,
+    pub boundary_gap: Option<LenientBoundaryGap>,
     pub position: Option<AxisPosition>,
     pub grid_index: Option<usize>,
     pub align_ticks: Option<bool>,
@@ -1448,7 +2182,7 @@ impl Default for AxisOption {
             min_interval: None,
             max_interval: None,
             interval: None,
-            boundary_gap: Some(true),
+            boundary_gap: Some(LenientBoundaryGap::Bool(true)),
             position: None,
             align_ticks: None,
             axis_pointer: None,
@@ -1480,7 +2214,9 @@ impl AxisOption {
     }
 
     pub fn data(mut self, data: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.data = Some(data.into_iter().map(Into::into).collect());
+        self.data = Some(LenientAxisData(
+            data.into_iter().map(Into::into).collect(),
+        ));
         self
     }
 
@@ -1490,12 +2226,12 @@ impl AxisOption {
     }
 
     pub fn min(mut self, min: f64) -> Self {
-        self.min = Some(min);
+        self.min = Some(LenientAxisLimit::Value(min));
         self
     }
 
     pub fn max(mut self, max: f64) -> Self {
-        self.max = Some(max);
+        self.max = Some(LenientAxisLimit::Value(max));
         self
     }
 
@@ -1510,7 +2246,7 @@ impl AxisOption {
     }
 
     pub fn boundary_gap(mut self, gap: bool) -> Self {
-        self.boundary_gap = Some(gap);
+        self.boundary_gap = Some(LenientBoundaryGap::Bool(gap));
         self
     }
 
@@ -1551,9 +2287,9 @@ pub struct AxisLabelOption {
     pub line_height: Option<f64>,
     pub background_color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
-    pub border_radius: Option<f64>,
-    pub padding: Option<Vec<f64>>,
+    pub border_width: Option<LenientNumber>,
+    pub border_radius: Option<LenientNumber>,
+    pub padding: Option<LenientPadding>,
     pub shadow_blur: Option<f64>,
     pub shadow_color: Option<ColorOption>,
     pub shadow_offset_x: Option<f64>,
@@ -1561,7 +2297,7 @@ pub struct AxisLabelOption {
     pub width: Option<f64>,
     pub height: Option<f64>,
     pub overflow: Option<String>,
-    pub ellipsis: Option<bool>,
+    pub ellipsis: Option<String>,
     pub rich: Option<serde_json::Value>,
 }
 
@@ -1676,12 +2412,92 @@ impl Default for SplitLineOption {
     }
 }
 
+/// 兼容的线条颜色类型：支持单色或仪表盘分段颜色（如 [[0.3,"#67e0e3"],[1,"#fd666d"]]）
+#[derive(Debug, Clone)]
+pub enum LenientLineColor {
+    Single(ColorOption),
+    Segments(Vec<(LenientNumber, ColorOption)>),
+}
+
+impl Serialize for LenientLineColor {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            LenientLineColor::Single(c) => c.serialize(serializer),
+            LenientLineColor::Segments(segs) => {
+                let arr: Vec<(LenientNumber, ColorOption)> = segs.clone();
+                arr.serialize(serializer)
+            }
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientLineColor {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct LineColorVisitor;
+        impl<'de> Visitor<'de> for LineColorVisitor {
+            type Value = LenientLineColor;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str(
+                    "a color string/object, or an array of [number, color] segment pairs, or a color array",
+                )
+            }
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                let c = ColorOption::deserialize(de::IntoDeserializer::<E>::into_deserializer(v))?;
+                Ok(LenientLineColor::Single(c))
+            }
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+            fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<Self::Value, A::Error> {
+                let c = ColorOption::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(LenientLineColor::Single(c))
+            }
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                // 先尝试解析为分段：[[n, color], ...]
+                // 收集所有元素先
+                let mut elems: Vec<serde_json::Value> = Vec::new();
+                while let Some(e) = seq.next_element::<serde_json::Value>()? {
+                    elems.push(e);
+                }
+                if elems.is_empty() {
+                    return Ok(LenientLineColor::Segments(Vec::new()));
+                }
+                // 看第一个元素是否是数组（表明是分段格式）
+                let first_is_array = matches!(elems.first(), Some(serde_json::Value::Array(_)));
+                if first_is_array {
+                    let mut segs = Vec::with_capacity(elems.len());
+                    for e in &elems {
+                        if let serde_json::Value::Array(pair) = e {
+                            if pair.len() >= 2 {
+                                let n = LenientNumber::deserialize(&pair[0])
+                                    .unwrap_or(LenientNumber::Number(0.0));
+                                let c = ColorOption::deserialize(&pair[1]).unwrap_or_default();
+                                segs.push((n, c));
+                            }
+                        }
+                    }
+                    Ok(LenientLineColor::Segments(segs))
+                } else {
+                    // 单色数组（区域配色），取第一个
+                    if let Some(first) = elems.into_iter().next() {
+                        if let Ok(c) = ColorOption::deserialize(first) {
+                            return Ok(LenientLineColor::Single(c));
+                        }
+                    }
+                    Ok(LenientLineColor::Single(ColorOption::default()))
+                }
+            }
+        }
+        deserializer.deserialize_any(LineColorVisitor)
+    }
+}
+
 /// Line style configuration (color, width, dash, etc.).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LineStyleOption {
-    pub color: Option<ColorOption>,
-    pub width: Option<f64>,
+    pub color: Option<LenientLineColor>,
+    pub width: Option<LenientNumber>,
     #[serde(rename = "type")]
     pub line_type: Option<LineType>,
     pub opacity: Option<f64>,
@@ -1699,7 +2515,7 @@ impl Default for LineStyleOption {
     fn default() -> Self {
         Self {
             color: None,
-            width: Some(2.0),
+            width: Some(LenientNumber::Number(2.0)),
             line_type: Some(LineType::Solid),
             opacity: None,
             shadow_blur: None,
@@ -1735,13 +2551,13 @@ pub struct TextStyleOption {
     pub text_shadow_offset_x: Option<f64>,
     pub text_shadow_offset_y: Option<f64>,
     pub overflow: Option<String>,
-    pub ellipsis: Option<bool>,
+    pub ellipsis: Option<String>,
     pub rich: Option<serde_json::Value>,
-    pub padding: Option<Vec<f64>>,
+    pub padding: Option<LenientPadding>,
     pub background_color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
-    pub border_radius: Option<f64>,
+    pub border_width: Option<LenientNumber>,
+    pub border_radius: Option<LenientNumber>,
     pub shadow_blur: Option<f64>,
     pub shadow_color: Option<ColorOption>,
     pub shadow_offset_x: Option<f64>,
@@ -1812,13 +2628,58 @@ impl TextStyleOption {
     }
 }
 
+/// 表格 header 配置：支持字符串数组（列名）或完整配置对象
+#[derive(Debug, Clone)]
+pub enum LenientTableHeader {
+    Columns(Vec<String>),
+    Config(TableHeaderOption),
+}
+
+impl Serialize for LenientTableHeader {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            LenientTableHeader::Columns(v) => v.serialize(serializer),
+            LenientTableHeader::Config(v) => v.serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientTableHeader {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct HeaderVisitor;
+        impl<'de> Visitor<'de> for HeaderVisitor {
+            type Value = LenientTableHeader;
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a string array (column names) or a header config object")
+            }
+            fn visit_seq<A: de::SeqAccess<'de>>(self, seq: A) -> Result<Self::Value, A::Error> {
+                let items: Vec<serde_json::Value> =
+                    Vec::deserialize(de::value::SeqAccessDeserializer::new(seq))?;
+                let mut cols = Vec::with_capacity(items.len());
+                for item in items {
+                    match item {
+                        serde_json::Value::String(s) => cols.push(s),
+                        other => cols.push(other.to_string()),
+                    }
+                }
+                Ok(LenientTableHeader::Columns(cols))
+            }
+            fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<Self::Value, A::Error> {
+                let cfg = TableHeaderOption::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(LenientTableHeader::Config(cfg))
+            }
+        }
+        deserializer.deserialize_any(HeaderVisitor)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableSeriesOption {
     pub name: Option<String>,
-    pub data: Option<Vec<Vec<serde_json::Value>>>,
+    pub data: Option<Vec<serde_json::Value>>,
     pub columns: Option<Vec<String>>,
-    pub header: Option<TableHeaderOption>,
+    pub header: Option<LenientTableHeader>,
     pub body: Option<TableBodyOption>,
     pub row_style: Option<TableRowStyleOption>,
     pub cell_style: Option<TableCellStyleOption>,
@@ -1848,7 +2709,7 @@ impl Default for TableSeriesOption {
             name: None,
             data: None,
             columns: None,
-            header: Some(TableHeaderOption::default()),
+            header: Some(LenientTableHeader::Config(TableHeaderOption::default())),
             body: Some(TableBodyOption::default()),
             row_style: Some(TableRowStyleOption::default()),
             cell_style: Some(TableCellStyleOption::default()),
@@ -1955,12 +2816,12 @@ impl Default for TableRowStyleOption {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TableCellStyleOption {
-    pub padding: Option<f64>,
+    pub padding: Option<LenientPadding>,
 }
 
 impl Default for TableCellStyleOption {
     fn default() -> Self {
-        Self { padding: Some(8.0) }
+        Self { padding: Some(LenientPadding::Single(8.0)) }
     }
 }
 
@@ -2014,12 +2875,12 @@ pub struct LineSeriesOption {
     pub grid_index: Option<usize>,
     pub smooth: Option<bool>,
     pub symbol: Option<SymbolType>,
-    pub symbol_size: Option<f64>,
+    pub symbol_size: Option<LenientNumber>,
     pub line_style: Option<LineStyleOption>,
     pub item_style: Option<ItemStyleOption>,
     pub area_style: Option<AreaStyleOption>,
     pub label: Option<LabelOption>,
-    pub step: Option<bool>,
+    pub step: Option<LenientStep>,
     pub connect_nulls: Option<bool>,
     pub show_symbol: Option<bool>,
     pub show_all_symbol: Option<bool>,
@@ -2053,7 +2914,7 @@ impl Default for LineSeriesOption {
             grid_index: None,
             smooth: Some(false),
             symbol: Some(SymbolType::Circle),
-            symbol_size: Some(4.0),
+            symbol_size: Some(LenientNumber::Number(4.0)),
             line_style: None,
             item_style: None,
             area_style: None,
@@ -2127,11 +2988,11 @@ pub struct BarSeriesOption {
     pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,
     pub grid_index: Option<usize>,
-    pub bar_width: Option<String>,
-    pub bar_max_width: Option<String>,
-    pub bar_min_width: Option<String>,
-    pub bar_gap: Option<String>,
-    pub bar_category_gap: Option<String>,
+    pub bar_width: Option<LenientBarSize>,
+    pub bar_max_width: Option<LenientBarSize>,
+    pub bar_min_width: Option<LenientBarSize>,
+    pub bar_gap: Option<LenientBarSize>,
+    pub bar_category_gap: Option<LenientBarSize>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
     /// 分组索引，自动分组时无需设置
@@ -2190,9 +3051,9 @@ pub struct CandlestickSeriesOption {
     pub grid_index: Option<usize>,
     pub item_style: Option<CandlestickItemStyleOption>,
     pub label: Option<LabelOption>,
-    pub bar_width: Option<String>,
-    pub bar_max_width: Option<String>,
-    pub bar_min_width: Option<String>,
+    pub bar_width: Option<LenientBarSize>,
+    pub bar_max_width: Option<LenientBarSize>,
+    pub bar_min_width: Option<LenientBarSize>,
     pub z: Option<f64>,
     pub zlevel: Option<f64>,
     pub encode: Option<SeriesEncodeOption>,
@@ -2210,7 +3071,7 @@ pub struct CandlestickSeriesOption {
     pub silent: Option<bool>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CandlestickDataPoint {
     pub open: f64,
@@ -2218,6 +3079,70 @@ pub struct CandlestickDataPoint {
     pub low: f64,
     pub high: f64,
     pub name: Option<String>,
+}
+
+impl<'de> Deserialize<'de> for CandlestickDataPoint {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            open: f64,
+            close: f64,
+            low: f64,
+            high: f64,
+            name: Option<String>,
+        }
+
+        struct CandlestickVisitor;
+
+        impl<'de> de::Visitor<'de> for CandlestickVisitor {
+            type Value = CandlestickDataPoint;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("an array [open, close, low, high] or an object")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let open = seq.next_element::<f64>()?
+                    .ok_or_else(|| de::Error::invalid_length(0, &"at least 4 elements"))?;
+                let close = seq.next_element::<f64>()?
+                    .ok_or_else(|| de::Error::invalid_length(1, &"at least 4 elements"))?;
+                let low = seq.next_element::<f64>()?
+                    .ok_or_else(|| de::Error::invalid_length(2, &"at least 4 elements"))?;
+                let high = seq.next_element::<f64>()?
+                    .ok_or_else(|| de::Error::invalid_length(3, &"at least 4 elements"))?;
+                
+                Ok(CandlestickDataPoint {
+                    open,
+                    close,
+                    low,
+                    high,
+                    name: None,
+                })
+            }
+
+            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                let helper = Helper::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(CandlestickDataPoint {
+                    open: helper.open,
+                    close: helper.close,
+                    low: helper.low,
+                    high: helper.high,
+                    name: helper.name,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(CandlestickVisitor)
+    }
 }
 
 impl CandlestickDataPoint {
@@ -2261,9 +3186,9 @@ pub struct BoxplotSeriesOption {
     pub grid_index: Option<usize>,
     pub item_style: Option<BoxplotItemStyleOption>,
     pub label: Option<LabelOption>,
-    pub bar_width: Option<String>,
-    pub bar_max_width: Option<String>,
-    pub bar_min_width: Option<String>,
+    pub bar_width: Option<LenientBarSize>,
+    pub bar_max_width: Option<LenientBarSize>,
+    pub bar_min_width: Option<LenientBarSize>,
     pub z: Option<f64>,
     pub zlevel: Option<f64>,
     pub encode: Option<SeriesEncodeOption>,
@@ -2325,15 +3250,13 @@ impl<'de> Deserialize<'de> for BoxplotDataPoint {
                 use serde::de::Error;
                 let mut values = [0.0; 5];
                 for (i, slot) in values.iter_mut().enumerate() {
-                    *slot = seq.next_element::<f64>()?.ok_or_else(|| {
-                        A::Error::custom(format!("expected 5 numbers, got only {}", i))
-                    })?;
+                    *slot = seq
+                        .next_element::<f64>()?
+                        .ok_or_else(|| A::Error::custom(format!("expected 5 numbers, got only {}", i)))?;
                 }
                 // 忽略多余元素
                 while seq.next_element::<serde_json::Value>()?.is_some() {}
-                Ok(BoxplotDataPoint::new(
-                    values[0], values[1], values[2], values[3], values[4],
-                ))
+                Ok(BoxplotDataPoint::new(values[0], values[1], values[2], values[3], values[4]))
             }
 
             fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
@@ -2359,9 +3282,7 @@ impl<'de> Deserialize<'de> for BoxplotDataPoint {
                             other
                         )));
                     }
-                    None => {
-                        return Err(A::Error::custom("boxplot data object missing value field"));
-                    }
+                    None => return Err(A::Error::custom("boxplot data object missing value field")),
                 };
 
                 if arr.len() < 5 {
@@ -2375,9 +3296,8 @@ impl<'de> Deserialize<'de> for BoxplotDataPoint {
                     .into_iter()
                     .take(5)
                     .map(|v| {
-                        v.as_f64().ok_or_else(|| {
-                            A::Error::custom("boxplot value array element must be a number")
-                        })
+                        v.as_f64()
+                            .ok_or_else(|| A::Error::custom("boxplot value array element must be a number"))
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
@@ -2402,7 +3322,7 @@ impl<'de> Deserialize<'de> for BoxplotDataPoint {
 pub struct BoxplotItemStyleOption {
     pub color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
+    pub border_width: Option<LenientNumber>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2411,13 +3331,13 @@ pub struct PieSeriesOption {
     pub name: Option<String>,
     #[serde(default)]
     pub data: Vec<DataPoint>,
-    pub radius: Option<Vec<String>>,
-    pub center: Option<Vec<String>>,
+    pub radius: Option<SingleOrArray<LenientNumber>>,
+    pub center: Option<Vec<LenientNumber>>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
     pub label_line: Option<LabelLineOption>,
     pub rose_type: Option<String>,
-    pub selected_mode: Option<String>,
+    pub selected_mode: Option<LenientBoolOrString>,
     pub selected_offset: Option<f64>,
     pub clockwise: Option<bool>,
     pub start_angle: Option<f64>,
@@ -2447,8 +3367,14 @@ impl Default for PieSeriesOption {
         Self {
             name: None,
             data: Vec::new(),
-            radius: Some(vec!["0%".to_string(), "75%".to_string()]),
-            center: Some(vec!["50%".to_string(), "50%".to_string()]),
+            radius: Some(SingleOrArray::Array(vec![
+                LenientNumber::Percent(0.0),
+                LenientNumber::Percent(75.0),
+            ])),
+            center: Some(vec![
+                LenientNumber::Percent(50.0),
+                LenientNumber::Percent(50.0),
+            ]),
             item_style: None,
             label: None,
             label_line: None,
@@ -2528,7 +3454,7 @@ pub struct ScatterSeriesOption {
     pub y_axis_index: Option<usize>,
     pub grid_index: Option<usize>,
     pub symbol: Option<SymbolType>,
-    pub symbol_size: Option<f64>,
+    pub symbol_size: Option<SingleOrArray<LenientNumber>>,
     pub symbol_rotate: Option<f64>,
     pub symbol_keep_aspect: Option<bool>,
     pub symbol_offset: Option<Vec<f64>>,
@@ -2580,7 +3506,7 @@ impl Default for ScatterSeriesOption {
             y_axis_index: None,
             grid_index: None,
             symbol: Some(SymbolType::Circle),
-            symbol_size: Some(10.0),
+            symbol_size: Some(SingleOrArray::Single(LenientNumber::Number(10.0))),
             symbol_rotate: None,
             symbol_keep_aspect: None,
             symbol_offset: None,
@@ -2637,8 +3563,14 @@ impl Default for RadarNameOption {
     }
 }
 
-/// 单个值或数组（泛型版本），用于 ECharts 中接受单值或数组的数字类字段
-#[derive(Debug, Clone, PartialEq)]
+
+
+/// 单个值或数组（泛型版本），用于 ECharts 中接受单值或数组的字段。
+///
+/// 使用 untagged enum 自动处理单对象或数组，支持 T 为任意可反序列化类型
+/// （包括结构体、字符串、数字等）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum OneOrMany<T> {
     One(T),
     Many(Vec<T>),
@@ -2656,92 +3588,12 @@ impl<T> OneOrMany<T> {
     }
 }
 
-impl<'de, T> serde::Deserialize<'de> for OneOrMany<T>
-where
-    T: serde::Deserialize<'de>,
-{
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        use serde::de;
-
-        struct OneOrManyVisitor<T>(std::marker::PhantomData<T>);
-
-        impl<'de, T> de::Visitor<'de> for OneOrManyVisitor<T>
-        where
-            T: serde::Deserialize<'de>,
-        {
-            type Value = OneOrMany<T>;
-
-            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("a single value or an array of values")
-            }
-
-            fn visit_u64<E: de::Error>(self, value: u64) -> Result<Self::Value, E> {
-                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
-                Ok(OneOrMany::One(v))
-            }
-
-            fn visit_i64<E: de::Error>(self, value: i64) -> Result<Self::Value, E> {
-                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
-                Ok(OneOrMany::One(v))
-            }
-
-            fn visit_f64<E: de::Error>(self, value: f64) -> Result<Self::Value, E> {
-                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
-                Ok(OneOrMany::One(v))
-            }
-
-            fn visit_bool<E: de::Error>(self, value: bool) -> Result<Self::Value, E> {
-                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
-                Ok(OneOrMany::One(v))
-            }
-
-            fn visit_str<E: de::Error>(self, value: &str) -> Result<Self::Value, E> {
-                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
-                Ok(OneOrMany::One(v))
-            }
-
-            fn visit_string<E: de::Error>(self, value: String) -> Result<Self::Value, E> {
-                let v = T::deserialize(serde::de::IntoDeserializer::<E>::into_deserializer(value))?;
-                Ok(OneOrMany::One(v))
-            }
-
-            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
-                let mut items = Vec::new();
-                while let Some(item) = seq.next_element::<T>()? {
-                    items.push(item);
-                }
-                Ok(OneOrMany::Many(items))
-            }
-        }
-
-        deserializer.deserialize_any(OneOrManyVisitor(std::marker::PhantomData))
-    }
-}
-
-impl<T> serde::Serialize for OneOrMany<T>
-where
-    T: serde::Serialize,
-{
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        match self {
-            OneOrMany::One(v) => v.serialize(serializer),
-            OneOrMany::Many(v) => v.serialize(serializer),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RadarOption {
     pub indicator: Option<Vec<RadarIndicatorOption>>,
-    pub center: Option<Vec<String>>,
-    pub radius: Option<OneOrMany<String>>,
+    pub center: Option<Vec<LenientNumber>>,
+    pub radius: Option<SingleOrArray<LenientNumber>>,
     pub split_number: Option<usize>,
     pub name: Option<RadarNameOption>,
     pub shape: Option<String>,
@@ -2763,8 +3615,14 @@ impl Default for RadarOption {
     fn default() -> Self {
         Self {
             indicator: None,
-            center: Some(vec!["50%".to_string(), "50%".to_string()]),
-            radius: Some(OneOrMany::Many(vec!["0%".to_string(), "75%".to_string()])),
+            center: Some(vec![
+                LenientNumber::Percent(50.0),
+                LenientNumber::Percent(50.0),
+            ]),
+            radius: Some(SingleOrArray::Array(vec![
+                LenientNumber::Percent(0.0),
+                LenientNumber::Percent(75.0),
+            ])),
             split_number: Some(5),
             name: None,
             shape: None,
@@ -2800,7 +3658,7 @@ pub struct RadarSeriesOption {
     pub area_style: Option<AreaStyleOption>,
     pub label: Option<LabelOption>,
     pub symbol: Option<SymbolType>,
-    pub symbol_size: Option<f64>,
+    pub symbol_size: Option<LenientNumber>,
     pub symbol_rotate: Option<f64>,
     pub symbol_keep_aspect: Option<bool>,
     pub symbol_offset: Option<Vec<f64>>,
@@ -2829,7 +3687,7 @@ impl Default for RadarSeriesOption {
             area_style: None,
             label: None,
             symbol: Some(SymbolType::Circle),
-            symbol_size: Some(4.0),
+            symbol_size: Some(LenientNumber::Number(4.0)),
             symbol_rotate: None,
             symbol_keep_aspect: None,
             symbol_offset: None,
@@ -2940,7 +3798,7 @@ pub struct PolarScatterSeriesOption {
     pub label: Option<LabelOption>,
     pub symbol: Option<SymbolType>,
     /// 默认符号大小
-    pub symbol_size: Option<f64>,
+    pub symbol_size: Option<SingleOrArray<LenientNumber>>,
     pub symbol_rotate: Option<f64>,
     pub symbol_keep_aspect: Option<bool>,
     pub symbol_offset: Option<Vec<f64>>,
@@ -2968,7 +3826,7 @@ impl Default for PolarScatterSeriesOption {
             item_style: None,
             label: None,
             symbol: Some(SymbolType::Circle),
-            symbol_size: Some(10.0),
+            symbol_size: Some(SingleOrArray::Single(LenientNumber::Number(10.0))),
             symbol_rotate: None,
             symbol_keep_aspect: None,
             symbol_offset: None,
@@ -3084,10 +3942,10 @@ pub struct GaugeSeriesOption {
     pub min: Option<f64>,
     /// 最大值
     pub max: Option<f64>,
-    /// 中心位置（百分比）
-    pub center: Option<Vec<String>>,
-    /// 半径（百分比）
-    pub radius: Option<String>,
+    /// 中心位置，支持 number | string | Array
+    pub center: Option<Vec<LenientNumber>>,
+    /// 半径，支持 number | string | Array
+    pub radius: Option<SingleOrArray<LenientNumber>>,
     /// 起始角度（默认-225度，即7:30方向）
     pub start_angle: Option<f64>,
     /// 结束角度（默认45度，即4:30方向）
@@ -3134,8 +3992,11 @@ impl Default for GaugeSeriesOption {
             }],
             min: Some(0.0),
             max: Some(100.0),
-            center: Some(vec!["50%".to_string(), "50%".to_string()]),
-            radius: Some("75%".to_string()),
+            center: Some(vec![
+                LenientNumber::Percent(50.0),
+                LenientNumber::Percent(50.0),
+            ]),
+            radius: Some(SingleOrArray::Single(LenientNumber::Percent(75.0))),
             start_angle: Some(-225.0),
             end_angle: Some(45.0),
             split_number: Some(10),
@@ -3190,7 +4051,7 @@ pub struct GaugeProgressOption {
 pub struct GaugePointerOption {
     pub show: Option<bool>,
     pub length: Option<String>,
-    pub width: Option<f64>,
+    pub width: Option<LenientNumber>,
     pub item_style: Option<ItemStyleOption>,
 }
 
@@ -3226,7 +4087,7 @@ pub struct GaugeSplitLineOption {
 #[serde(rename_all = "camelCase")]
 pub struct GaugeTitleOption {
     pub show: Option<bool>,
-    pub offset_center: Option<Vec<String>>,
+    pub offset_center: Option<Vec<LenientNumber>>,
     pub color: Option<ColorOption>,
     pub font_size: Option<f64>,
     pub font_family: Option<String>,
@@ -3238,7 +4099,7 @@ pub struct GaugeTitleOption {
 pub struct GaugeDetailOption {
     pub show: Option<bool>,
     pub formatter: Option<String>,
-    pub offset_center: Option<Vec<String>>,
+    pub offset_center: Option<Vec<LenientNumber>>,
     pub color: Option<ColorOption>,
     pub font_size: Option<f64>,
     pub font_family: Option<String>,
@@ -3381,12 +4242,28 @@ impl<'de> Visitor<'de> for DataPointVisitor {
 
     fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<DataPoint, A::Error> {
         use serde::de::Error;
-        let first = seq
-            .next_element::<serde_json::Value>()?
-            .ok_or_else(|| A::Error::custom("expected at least 2 elements"))?;
-        let second = seq
-            .next_element::<serde_json::Value>()?
-            .ok_or_else(|| A::Error::custom("expected at least 2 elements"))?;
+        // 收集所有元素，支持 1、2、3+ 元素数组
+        let mut elems: Vec<serde_json::Value> = Vec::new();
+        while let Some(e) = seq.next_element::<serde_json::Value>()? {
+            elems.push(e);
+        }
+        if elems.is_empty() {
+            return Err(A::Error::custom("expected at least 1 element in array"));
+        }
+        // 1 元素数组：直接作为 Value
+        if elems.len() == 1 {
+            let v = elems.into_iter().next().unwrap();
+            if let Some(n) = v.as_f64() {
+                return Ok(DataPoint::Value(n));
+            }
+            if let serde_json::Value::Null = v {
+                return Ok(DataPoint::Value(f64::NAN));
+            }
+            return Err(A::Error::custom("single element array must be a number or null"));
+        }
+        // 2+ 元素：取前两个进行解析，第三个及之后（如 bubble 的 size）忽略
+        let first = elems.swap_remove(0);
+        let second = elems.swap_remove(0);
 
         match first {
             serde_json::Value::String(s) => {
@@ -3512,9 +4389,9 @@ pub struct LabelOption {
     pub line_height: Option<f64>,
     pub background_color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
-    pub border_radius: Option<f64>,
-    pub padding: Option<Vec<f64>>,
+    pub border_width: Option<LenientNumber>,
+    pub border_radius: Option<LenientNumber>,
+    pub padding: Option<LenientPadding>,
     pub shadow_blur: Option<f64>,
     pub shadow_color: Option<ColorOption>,
     pub shadow_offset_x: Option<f64>,
@@ -3528,7 +4405,7 @@ pub struct LabelOption {
     pub text_shadow_offset_x: Option<f64>,
     pub text_shadow_offset_y: Option<f64>,
     pub overflow: Option<String>,
-    pub ellipsis: Option<bool>,
+    pub ellipsis: Option<String>,
     pub line_over: Option<String>,
     pub bleed_margin: Option<f64>,
     pub rich: Option<serde_json::Value>,
@@ -3540,7 +4417,7 @@ pub struct LabelOption {
 pub struct ItemStyleOption {
     pub color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
-    pub border_width: Option<f64>,
+    pub border_width: Option<LenientNumber>,
     pub border_type: Option<LineType>,
     pub shadow_blur: Option<f64>,
     pub shadow_color: Option<ColorOption>,
@@ -3570,7 +4447,7 @@ impl Default for ItemStyleOption {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AreaStyleOption {
-    pub color: Option<ColorOption>,
+    pub color: Option<OneOrMany<ColorOption>>,
     pub opacity: Option<f64>,
     pub origin: Option<String>,
     pub shadow_blur: Option<f64>,
@@ -3715,6 +4592,12 @@ impl<'de> Deserialize<'de> for PositionOption {
                         .parse::<f64>()
                         .map_err(|_| de::Error::custom(format!("invalid percentage: {}", value)))?;
                     Ok(PositionOption::Percent(v))
+                } else if value.ends_with("px") {
+                    let v = value
+                        .trim_end_matches("px")
+                        .parse::<f64>()
+                        .map_err(|_| de::Error::custom(format!("invalid pixel value: {}", value)))?;
+                    Ok(PositionOption::Pixel(v))
                 } else {
                     match value {
                         "auto" => Ok(PositionOption::Preset(PositionPreset::Auto)),
@@ -3884,8 +4767,9 @@ impl<'de> Deserialize<'de> for ColorOption {
             type Value = ColorOption;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter
-                    .write_str("a hex/rgb/rgba color string, a CSS keyword, or a gradient object")
+                formatter.write_str(
+                    "a hex/rgb/rgba color string, a CSS keyword, or a gradient object",
+                )
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<ColorOption, E> {
@@ -3946,14 +4830,15 @@ impl<'de> Deserialize<'de> for ColorOption {
                     for stop in &stops {
                         if let Some(c) = stop.get("color").or_else(|| stop.get("Color")) {
                             if let Some(s) = c.as_str() {
-                                if let Some(parsed) =
-                                    ColorOption::from_hex(s).or_else(|| ColorOption::from_rgba(s))
+                                if let Some(parsed) = ColorOption::from_hex(s)
+                                    .or_else(|| ColorOption::from_rgba(s))
                                 {
                                     return Ok(parsed);
                                 }
                             } else if let Value::Object(_) = c {
                                 // 嵌套渐变 colorStop，递归降级
-                                let nested = serde_json::from_value::<ColorOption>(c.clone()).ok();
+                                let nested =
+                                    serde_json::from_value::<ColorOption>(c.clone()).ok();
                                 if let Some(parsed) = nested {
                                     return Ok(parsed);
                                 }
@@ -3962,11 +4847,12 @@ impl<'de> Deserialize<'de> for ColorOption {
                     }
                 }
                 // 没有 colorStops，但对象本身有 color 字段
-                if let Some(Value::String(s)) = first_color
-                    && let Some(parsed) =
-                        ColorOption::from_hex(&s).or_else(|| ColorOption::from_rgba(&s))
-                {
-                    return Ok(parsed);
+                if let Some(Value::String(s)) = first_color {
+                    if let Some(parsed) = ColorOption::from_hex(&s)
+                        .or_else(|| ColorOption::from_rgba(&s))
+                    {
+                        return Ok(parsed);
+                    }
                 }
                 // 渐变对象但解析失败：降级为黑色 sentinel，避免报错
                 Ok(ColorOption::new(0, 0, 0))
@@ -4080,6 +4966,9 @@ pub enum LabelPosition {
     Inside,
     Outside,
     Center,
+    Start,
+    Middle,
+    End,
 }
 
 // ============================================================

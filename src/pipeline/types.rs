@@ -60,8 +60,17 @@ pub struct AxisSpec {
     pub min: Option<f64>,
     pub max: Option<f64>,
     pub name: Option<String>,
+    pub name_location: Option<String>,
     pub categories: Vec<String>, // Category 轴的标签
     pub boundary_gap: bool,
+    pub inverse: bool,
+    pub split_number: Option<usize>,
+    pub label_show: bool,
+    pub label_formatter: Option<String>,
+    pub label_rotate: Option<f64>,
+    pub axis_line_show: bool,
+    pub split_line_show: bool,
+    pub z: Option<f64>,
 }
 
 /// 图表类型枚举
@@ -84,7 +93,6 @@ pub enum ChartType {
 #[derive(Debug, Clone)]
 pub struct SeriesSpec {
     pub name: String,
-    pub chart_type: ChartType,
     pub data: crate::pipeline::dataframe::DataFrame,
     pub grid_index: usize,
     pub x_axis_index: usize,
@@ -136,6 +144,16 @@ impl SeriesConfig {
     }
 }
 
+// ── StepType ──
+
+/// Step line style for line charts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StepType {
+    Start,
+    Middle,
+    End,
+}
+
 // ── LineConfig ──
 
 #[derive(Debug, Clone)]
@@ -143,6 +161,7 @@ pub struct LineConfig {
     pub x_col: String,
     pub y_col: String,
     pub smooth: bool,
+    pub step: Option<StepType>,
     pub line_width: f64,
     /// 是否显示面积填充
     pub area: bool,
@@ -162,6 +181,7 @@ impl Default for LineConfig {
             x_col: "x".into(),
             y_col: "y".into(),
             smooth: false,
+            step: None,
             line_width: 2.0,
             area: false,
             area_color: None,
@@ -433,7 +453,6 @@ impl Default for SeriesSpec {
     fn default() -> Self {
         Self {
             name: String::new(),
-            chart_type: ChartType::Line,
             data: crate::pipeline::dataframe::DataFrame::new(),
             grid_index: 0,
             x_axis_index: 0,
@@ -448,10 +467,15 @@ impl Default for SeriesSpec {
 }
 
 impl SeriesSpec {
+    /// 获取当前图表类型（从 config 推导）
+    pub fn chart_type(&self) -> ChartType {
+        self.config.chart_type()
+    }
+
     /// 获取 Y 列的全部数值（用于轴范围计算）
     pub fn y_values(&self) -> Vec<f64> {
         // K 线图和箱线图需要包含所有极值/分位数来计算轴范围
-        if matches!(self.chart_type, super::ChartType::Candlestick) {
+        if matches!(self.chart_type(), super::ChartType::Candlestick) {
             let mut all = Vec::new();
             let cols = ["open", "close", "low", "high"];
             for col_name in &cols {
@@ -468,7 +492,7 @@ impl SeriesSpec {
             return all;
         }
 
-        if matches!(self.chart_type, super::ChartType::Boxplot) {
+        if matches!(self.chart_type(), super::ChartType::Boxplot) {
             let mut all = Vec::new();
             let cols = ["min", "q1", "median", "q3", "max"];
             for col_name in &cols {
@@ -568,6 +592,10 @@ pub struct ItemStyleSpec {
 pub struct TitleSpec {
     pub text: Option<String>,
     pub subtext: Option<String>,
+    pub font_size: Option<f64>,
+    pub subfont_size: Option<f64>,
+    pub color: Option<Color>,
+    pub subcolor: Option<Color>,
 }
 
 #[derive(Debug, Clone)]
@@ -575,6 +603,7 @@ pub struct LegendSpec {
     pub show: bool,
     pub data: Vec<String>,
     pub symbol_size: f64,
+    pub item_gap: f64,
 }
 
 // ═══════════════════════════════════════════════════════════════════

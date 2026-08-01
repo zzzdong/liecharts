@@ -40,6 +40,14 @@ pub struct RenderContext<'a> {
 // LineSeries
 // ═══════════════════════════════════════════════════════════════════
 
+/// Step line style for line charts.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum StepType {
+    Start,
+    Middle,
+    End,
+}
+
 #[derive(Debug, Clone)]
 pub struct LineSeries {
     pub name: String,
@@ -47,6 +55,7 @@ pub struct LineSeries {
     pub color: Color,
     pub line_width: f64,
     pub smooth: bool,
+    pub step: Option<StepType>,
     pub area_color: Option<Color>,
     pub area_opacity: f64,
     pub symbol_type: SymbolType,

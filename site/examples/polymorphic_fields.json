@@ -1,0 +1,64 @@
+{
+  "title": {
+    "text": "多态字段测试",
+    "subtext": "测试 LenientNumber 和 LenientPadding",
+    "left": "center",
+    "top": "20px",
+    "borderWidth": "2",
+    "borderRadius": "5",
+    "padding": [10, 20, 10, 20]
+  },
+  "legend": {
+    "show": true,
+    "data": ["系列1", "系列2"],
+    "top": "50px",
+    "symbolSize": "15",
+    "borderWidth": 1,
+    "borderRadius": "3",
+    "padding": [5, 10]
+  },
+  "tooltip": {
+    "show": true,
+    "trigger": "axis",
+    "borderWidth": "1",
+    "padding": [10, 15]
+  },
+  "xAxis": [{
+    "type": "category",
+    "data": ["A", "B", "C", "D"],
+    "axisLabel": {
+      "borderWidth": "1",
+      "borderRadius": "2",
+      "padding": [5, 8]
+    }
+  }],
+  "yAxis": [{
+    "type": "value",
+    "name": "数值"
+  }],
+  "series": [
+    {
+      "name": "系列1",
+      "type": "line",
+      "data": [10, 20, 15, 25],
+      "symbolSize": "8",
+      "lineStyle": {
+        "width": "3",
+        "type": "solid"
+      },
+      "itemStyle": {
+        "borderWidth": "2",
+        "borderRadius": "4"
+      }
+    },
+    {
+      "name": "系列2",
+      "type": "bar",
+      "data": [15, 10, 20, 18],
+      "itemStyle": {
+        "borderWidth": "1",
+        "borderRadius": "3"
+      }
+    }
+  ]
+}
