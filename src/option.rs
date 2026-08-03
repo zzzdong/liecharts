@@ -977,16 +977,13 @@ impl LegendDataItem {
 ///
 /// 用于 `axisLabel.interval` 等 ECharts 字段。
 #[derive(Debug, Clone, PartialEq)]
+#[derive(Default)]
 pub enum IntervalOption {
+    #[default]
     Auto,
     Fixed(f64),
 }
 
-impl Default for IntervalOption {
-    fn default() -> Self {
-        IntervalOption::Auto
-    }
-}
 
 impl Serialize for IntervalOption {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -1188,6 +1185,7 @@ impl Default for AxisPointerLabelOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct HandleOption {
     pub show: Option<bool>,
     pub icon: Option<String>,
@@ -1197,18 +1195,6 @@ pub struct HandleOption {
     pub throttle: Option<f64>,
 }
 
-impl Default for HandleOption {
-    fn default() -> Self {
-        Self {
-            show: None,
-            icon: None,
-            size: None,
-            margin: None,
-            color: None,
-            throttle: None,
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // Dataset — 数据集声明
@@ -1216,6 +1202,7 @@ impl Default for HandleOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct DatasetOption {
     pub id: Option<String>,
     pub source: Option<Vec<Vec<serde_json::Value>>>,
@@ -1225,18 +1212,6 @@ pub struct DatasetOption {
     pub from_transform_result: Option<usize>,
 }
 
-impl Default for DatasetOption {
-    fn default() -> Self {
-        Self {
-            id: None,
-            source: None,
-            source_header: None,
-            dimensions: None,
-            from_dataset_index: None,
-            from_transform_result: None,
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // Animation — 动画配置
@@ -1573,6 +1548,7 @@ impl Default for SplitAreaOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct ShadowStyleOption {
     pub color: Option<ColorOption>,
     pub shadow_blur: Option<f64>,
@@ -1582,18 +1558,6 @@ pub struct ShadowStyleOption {
     pub opacity: Option<f64>,
 }
 
-impl Default for ShadowStyleOption {
-    fn default() -> Self {
-        Self {
-            color: None,
-            shadow_blur: None,
-            shadow_color: None,
-            shadow_offset_x: None,
-            shadow_offset_y: None,
-            opacity: None,
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // MarkPoint / MarkLine / MarkArea — 标记系列
@@ -1629,6 +1593,7 @@ impl Default for MarkPointOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MarkPointDataOption {
     pub name: Option<String>,
     #[serde(rename = "type")]
@@ -1645,27 +1610,10 @@ pub struct MarkPointDataOption {
     pub symbol_size: Option<LenientNumber>,
 }
 
-impl Default for MarkPointDataOption {
-    fn default() -> Self {
-        Self {
-            name: None,
-            data_type: None,
-            value_index: None,
-            value_dim: None,
-            coord: None,
-            x: None,
-            y: None,
-            value: None,
-            item_style: None,
-            label: None,
-            symbol: None,
-            symbol_size: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MarkLineOption {
     pub data: Option<Vec<OneOrMany<MarkLineDataOption>>>,
     pub symbol: Option<Vec<SymbolType>>,
@@ -1679,25 +1627,10 @@ pub struct MarkLineOption {
     pub silent: Option<bool>,
 }
 
-impl Default for MarkLineOption {
-    fn default() -> Self {
-        Self {
-            data: None,
-            symbol: None,
-            symbol_size: None,
-            line_style: None,
-            label: None,
-            animation: None,
-            animation_duration: None,
-            animation_delay: None,
-            precision: None,
-            silent: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MarkLineDataOption {
     pub name: Option<String>,
     #[serde(rename = "type")]
@@ -1716,29 +1649,10 @@ pub struct MarkLineDataOption {
     pub symbol_size: Option<Vec<f64>>,
 }
 
-impl Default for MarkLineDataOption {
-    fn default() -> Self {
-        Self {
-            name: None,
-            data_type: None,
-            value_index: None,
-            value_dim: None,
-            x_axis: None,
-            y_axis: None,
-            coord: None,
-            x: None,
-            y: None,
-            value: None,
-            line_style: None,
-            label: None,
-            symbol: None,
-            symbol_size: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MarkAreaOption {
     pub data: Option<Vec<Vec<MarkAreaDataOption>>>,
     pub item_style: Option<ItemStyleOption>,
@@ -1749,22 +1663,10 @@ pub struct MarkAreaOption {
     pub silent: Option<bool>,
 }
 
-impl Default for MarkAreaOption {
-    fn default() -> Self {
-        Self {
-            data: None,
-            item_style: None,
-            label: None,
-            animation: None,
-            animation_duration: None,
-            animation_delay: None,
-            silent: None,
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct MarkAreaDataOption {
     pub name: Option<String>,
     #[serde(rename = "type")]
@@ -1781,24 +1683,6 @@ pub struct MarkAreaDataOption {
     pub label: Option<LabelOption>,
 }
 
-impl Default for MarkAreaDataOption {
-    fn default() -> Self {
-        Self {
-            name: None,
-            data_type: None,
-            value_index: None,
-            value_dim: None,
-            x_axis: None,
-            y_axis: None,
-            coord: None,
-            x: None,
-            y: None,
-            value: None,
-            item_style: None,
-            label: None,
-        }
-    }
-}
 
 // ═══════════════════════════════════════════════════════════════════
 // SeriesEncode — 数据编码
@@ -1806,6 +1690,7 @@ impl Default for MarkAreaDataOption {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[derive(Default)]
 pub struct SeriesEncodeOption {
     pub x: Option<OneOrMany<StringOrInt>>,
     pub y: Option<OneOrMany<StringOrInt>>,
@@ -1820,23 +1705,6 @@ pub struct SeriesEncodeOption {
     pub series_name: Option<OneOrMany<StringOrInt>>,
 }
 
-impl Default for SeriesEncodeOption {
-    fn default() -> Self {
-        Self {
-            x: None,
-            y: None,
-            width: None,
-            height: None,
-            angle: None,
-            radius: None,
-            value: None,
-            item_name: None,
-            item_group_id: None,
-            tooltip: None,
-            series_name: None,
-        }
-    }
-}
 
 /// Root chart configuration.
 ///
@@ -2467,23 +2335,21 @@ impl<'de> Deserialize<'de> for LenientLineColor {
                 if first_is_array {
                     let mut segs = Vec::with_capacity(elems.len());
                     for e in &elems {
-                        if let serde_json::Value::Array(pair) = e {
-                            if pair.len() >= 2 {
+                        if let serde_json::Value::Array(pair) = e
+                            && pair.len() >= 2 {
                                 let n = LenientNumber::deserialize(&pair[0])
                                     .unwrap_or(LenientNumber::Number(0.0));
                                 let c = ColorOption::deserialize(&pair[1]).unwrap_or_default();
                                 segs.push((n, c));
                             }
-                        }
                     }
                     Ok(LenientLineColor::Segments(segs))
                 } else {
                     // 单色数组（区域配色），取第一个
-                    if let Some(first) = elems.into_iter().next() {
-                        if let Ok(c) = ColorOption::deserialize(first) {
+                    if let Some(first) = elems.into_iter().next()
+                        && let Ok(c) = ColorOption::deserialize(first) {
                             return Ok(LenientLineColor::Single(c));
                         }
-                    }
                     Ok(LenientLineColor::Single(ColorOption::default()))
                 }
             }
@@ -2632,7 +2498,7 @@ impl TextStyleOption {
 #[derive(Debug, Clone)]
 pub enum LenientTableHeader {
     Columns(Vec<String>),
-    Config(TableHeaderOption),
+    Config(Box<TableHeaderOption>),
 }
 
 impl Serialize for LenientTableHeader {
@@ -2666,7 +2532,7 @@ impl<'de> Deserialize<'de> for LenientTableHeader {
             }
             fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<Self::Value, A::Error> {
                 let cfg = TableHeaderOption::deserialize(de::value::MapAccessDeserializer::new(map))?;
-                Ok(LenientTableHeader::Config(cfg))
+                Ok(LenientTableHeader::Config(Box::new(cfg)))
             }
         }
         deserializer.deserialize_any(HeaderVisitor)
@@ -2709,7 +2575,7 @@ impl Default for TableSeriesOption {
             name: None,
             data: None,
             columns: None,
-            header: Some(LenientTableHeader::Config(TableHeaderOption::default())),
+            header: Some(LenientTableHeader::Config(Box::default())),
             body: Some(TableBodyOption::default()),
             row_style: Some(TableRowStyleOption::default()),
             cell_style: Some(TableCellStyleOption::default()),
@@ -3568,11 +3434,10 @@ impl<'de> Deserialize<'de> for HeatmapDataPoint {
                         .unwrap_or(0.0);
                 } else {
                     for (i, slot) in values.iter_mut().enumerate() {
-                        if let Some(v) = elems.get(i) {
-                            if let Some(n) = v.as_f64() {
+                        if let Some(v) = elems.get(i)
+                            && let Some(n) = v.as_f64() {
                                 *slot = n;
                             }
-                        }
                     }
                 }
                 Ok(HeatmapDataPoint::new(values[0], values[1], values[2]))
@@ -3604,11 +3469,10 @@ impl<'de> Deserialize<'de> for HeatmapDataPoint {
                             values[2] = arr.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
                         } else {
                             for (i, slot) in values.iter_mut().enumerate() {
-                                if let Some(v) = arr.get(i) {
-                                    if let Some(n) = v.as_f64() {
+                                if let Some(v) = arr.get(i)
+                                    && let Some(n) = v.as_f64() {
                                         *slot = n;
                                     }
-                                }
                             }
                         }
                         (values[0], values[1], values[2])
@@ -5042,13 +4906,12 @@ impl<'de> Deserialize<'de> for ColorOption {
                     }
                 }
                 // 没有 colorStops，但对象本身有 color 字段
-                if let Some(Value::String(s)) = first_color {
-                    if let Some(parsed) = ColorOption::from_hex(&s)
+                if let Some(Value::String(s)) = first_color
+                    && let Some(parsed) = ColorOption::from_hex(&s)
                         .or_else(|| ColorOption::from_rgba(&s))
                     {
                         return Ok(parsed);
                     }
-                }
                 // 渐变对象但解析失败：降级为黑色 sentinel，避免报错
                 Ok(ColorOption::new(0, 0, 0))
             }
