@@ -21,7 +21,7 @@ use crate::{
         data_processor,
         decorator,
         grid_planner::GridPlanner,
-        materializer::{materialize_all, SeriesMaterializer},
+        materializer::{materialize_all},
         types::{
             ChartSpec, ChartType, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer,
         },

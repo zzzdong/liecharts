@@ -99,7 +99,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 name: a.name.clone(),
                 name_location: a.name_location.as_ref().map(|l| format!("{:?}", l)),
                 categories: a.data.as_ref().map(|d| d.0.clone()).unwrap_or_default(),
-                boundary_gap: a.boundary_gap.as_ref().map_or(true, |bg| match bg {
+                boundary_gap: a.boundary_gap.as_ref().is_none_or(|bg| match bg {
                     crate::option::LenientBoundaryGap::Bool(b) => *b,
                     crate::option::LenientBoundaryGap::Gap(_, _) => true,
                 }),
@@ -154,7 +154,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 name: a.name.clone(),
                 name_location: a.name_location.as_ref().map(|l| format!("{:?}", l)),
                 categories: a.data.as_ref().map(|d| d.0.clone()).unwrap_or_default(),
-                boundary_gap: a.boundary_gap.as_ref().map_or(true, |bg| match bg {
+                boundary_gap: a.boundary_gap.as_ref().is_none_or(|bg| match bg {
                     crate::option::LenientBoundaryGap::Bool(b) => *b,
                     crate::option::LenientBoundaryGap::Gap(_, _) => true,
                 }),
