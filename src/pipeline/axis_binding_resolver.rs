@@ -86,16 +86,32 @@ impl<'a> AxisBindingResolver<'a> {
                     })
             });
 
-            let (resolved_min, resolved_max) = self.compute_final_range(
-                axis.min,
-                axis.max,
-                data_min,
-                data_max,
-                axis.axis_type,
-                axis.categories.len(),
-                axis.boundary_gap,
-                force_include_zero,
-            );
+            // 热力图的 category Y 轴：范围已由 collect_y_axis_range 按 distinct 坐标数算好，
+            // 跳过 compute_final_range，避免在未声明 categories 时退化为 (0, 1)。
+            let is_heatmap_category = matches!(axis.axis_type, AxisType::Category)
+                && specs.iter().any(|s| {
+                    s.y_axis_indices.contains(&axis_idx)
+                        && s.series_indices.iter().any(|&si| {
+                            self.series.get(si).is_some_and(|ser| {
+                                matches!(ser.chart_type(), ChartType::Heatmap)
+                            })
+                        })
+                });
+
+            let (resolved_min, resolved_max) = if is_heatmap_category {
+                (data_min, data_max)
+            } else {
+                self.compute_final_range(
+                    axis.min,
+                    axis.max,
+                    data_min,
+                    data_max,
+                    axis.axis_type,
+                    axis.categories.len(),
+                    axis.boundary_gap,
+                    force_include_zero,
+                )
+            };
 
             ranges.push(ResolvedAxisRange {
                 axis_index: axis_idx,
@@ -130,10 +146,24 @@ impl<'a> AxisBindingResolver<'a> {
         if matches!(axis.axis_type, AxisType::Category) {
             let mut max_count = 0;
             for series in self.series {
-                if !grids_with_axis.contains(&series.grid_index) {
+                if !self.x_series_bound_to_axis(axis_idx, series, specs) {
                     continue;
                 }
-                let count = series.data.row_count();
+                let count = if matches!(series.chart_type(), ChartType::Heatmap) {
+                    // 热力图数据是一行一个格子（x*y 行），不能按行数算轴范围；
+                    // 优先使用轴声明的 categories，否则统计 distinct 坐标数。
+                    if !axis.categories.is_empty() {
+                        axis.categories.len()
+                    } else {
+                        series
+                            .data
+                            .get_column(series.config.x_col_name())
+                            .map(count_distinct_values)
+                            .unwrap_or(0)
+                    }
+                } else {
+                    series.data.row_count()
+                };
                 if count > max_count {
                     max_count = count;
                 }
@@ -154,7 +184,7 @@ impl<'a> AxisBindingResolver<'a> {
         let mut bound_series: Vec<&SeriesSpec> = Vec::new();
 
         for series in self.series {
-            if !grids_with_axis.contains(&series.grid_index) {
+            if !self.x_series_bound_to_axis(axis_idx, series, specs) {
                 continue;
             }
             all_y.extend(series.y_values());
@@ -214,6 +244,56 @@ impl<'a> AxisBindingResolver<'a> {
         (data_min, data_max)
     }
 
+    /// X 轴系列绑定判断：
+    ///
+    /// 1. 系列声明的 `x_axis_index` 与轴一致 → 绑定
+    /// 2. 否则仅当系列所在 subplot 包含该轴、且系列声明的 x 轴不在该 subplot 的
+    ///    轴列表中（如只声明了一个轴、系列未显式指定）时，回退绑定到第一个轴。
+    ///
+    /// 避免多轴场景下（如混合图的左右轴）所有系列都同时计入每个轴的范围。
+    fn x_series_bound_to_axis(
+        &self,
+        axis_idx: usize,
+        series: &SeriesSpec,
+        specs: &[SubplotSpec],
+    ) -> bool {
+        let Some(subplot) = specs.iter().find(|s| s.id == series.grid_index) else {
+            return false;
+        };
+        if !subplot.x_axis_indices.contains(&axis_idx) {
+            return false;
+        }
+        if series.x_axis_index == axis_idx {
+            return true;
+        }
+        !subplot.x_axis_indices.contains(&series.x_axis_index)
+            && subplot.x_axis_indices.first() == Some(&axis_idx)
+    }
+
+    /// Y 轴系列绑定判断，规则同 [`Self::x_series_bound_to_axis`]。
+    fn y_series_bound_to_axis(
+        &self,
+        axis_idx: usize,
+        series: &SeriesSpec,
+        specs: &[SubplotSpec],
+        axis_subplot_id: Option<usize>,
+    ) -> bool {
+        if series.y_axis_index == axis_idx {
+            return true;
+        }
+        let Some(subplot_id) = axis_subplot_id else {
+            return false;
+        };
+        let Some(subplot) = specs.iter().find(|s| s.id == series.grid_index) else {
+            return false;
+        };
+        if subplot.id != subplot_id {
+            return false;
+        }
+        !subplot.y_axis_indices.contains(&series.y_axis_index)
+            && subplot.y_axis_indices.first() == Some(&axis_idx)
+    }
+
     /// 收集 Y 轴关联的所有 series 数据值
     ///
     /// 对于堆叠柱状图，还会计算每个 stack 组内各行的总值，
@@ -237,15 +317,8 @@ impl<'a> AxisBindingResolver<'a> {
                 None => continue,
             };
 
-            // 判断绑定关系：优先按 y_axis_index，否则按 subplot
-            let is_bound = if series.y_axis_index == axis_idx {
-                true
-            } else if let Some(subplot_id) = axis_subplot_id {
-                // 同一 subplot 内，没有显式 y_axis_index 绑定的系列也属于该轴
-                series.grid_index == subplot_id
-            } else {
-                false
-            };
+            // 判断绑定关系：优先按 y_axis_index；未显式绑定到本 subplot 任一轴时才回退
+            let is_bound = self.y_series_bound_to_axis(axis_idx, series, specs, axis_subplot_id);
 
             if !is_bound {
                 continue;
@@ -253,6 +326,42 @@ impl<'a> AxisBindingResolver<'a> {
 
             all_values.extend(series.y_values());
             bound_series.push(series);
+        }
+
+        // 热力图：Y 轴范围由 distinct y 坐标数决定（而不是值列的范围）
+        if bound_series
+            .iter()
+            .any(|s| matches!(s.chart_type(), super::ChartType::Heatmap))
+        {
+            let axis = &self.y_axes[axis_idx];
+            let mut max_count = 0;
+            for series in &bound_series {
+                if !matches!(series.chart_type(), super::ChartType::Heatmap) {
+                    continue;
+                }
+                let y_col = match &series.config {
+                    super::SeriesConfig::Heatmap(c) => c.y_col.clone(),
+                    _ => series.config.y_col_name().to_string(),
+                };
+                let count = if !axis.categories.is_empty() {
+                    axis.categories.len()
+                } else {
+                    series
+                        .data
+                        .get_column(&y_col)
+                        .map(count_distinct_values)
+                        .unwrap_or(0)
+                };
+                if count > max_count {
+                    max_count = count;
+                }
+            }
+            let (lo, hi) = if axis.boundary_gap {
+                (0.0, max_count as f64)
+            } else {
+                (0.0, (max_count.saturating_sub(1)) as f64)
+            };
+            return (lo, hi);
         }
 
         if all_values.is_empty() {
@@ -342,11 +451,9 @@ impl<'a> AxisBindingResolver<'a> {
             }
         }
 
-        if (data_min - data_max).abs() < f64::EPSILON {
-            (data_min - 10.0, data_max + 10.0)
-        } else {
-            (data_min, data_max)
-        }
+        // 零跨度数据不在这里提前扩展，交给 compute_final_range 统一按比例留白，
+        // 避免"单数据点"场景被 include-zero 逻辑压到绘图区边缘。
+        (data_min, data_max)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -377,35 +484,46 @@ impl<'a> AxisBindingResolver<'a> {
         // Value 轴：结合用户指定 + 数据范围
         let range = data_max - data_min;
 
-        // 当数据全为正数时，非 K 线图强制包含 0；有负数时不强制，使用原有启发式逻辑
-        let should_include_zero = if force_include_zero && data_min >= 0.0 {
-            true
-        } else if data_min >= 0.0 {
-            data_min < range * 0.2
+        // 零跨度数据（如单个数据点）：围绕数据值对称留白，不强制包含 0，
+        // 否则 0 起点会把唯一的点压到绘图区上/下边缘。
+        if range <= f64::EPSILON {
+            let pad = (data_min.abs() * 0.05).max(1.0);
+            let min = user_min.unwrap_or(data_min - pad);
+            let max = user_max.unwrap_or(data_max + pad);
+            return (min, max);
+        }
+
+        // 包含 0 的判断：
+        // - 数据全正：非 K 线图默认从 0 起；但若数据量级远大于跨度（如 70M 附近的
+        //   微小波动），从 0 起会把数据压到绘图区顶部，改为按数据范围留白。
+        // - 全负对称处理；跨越 0 的数据必须包含 0。
+        let should_include_zero = if data_min >= 0.0 {
+            if force_include_zero {
+                data_min <= range * 8.0
+            } else {
+                data_min < range * 0.2
+            }
         } else if data_max <= 0.0 {
-            data_max.abs() < range * 0.2
+            if force_include_zero {
+                data_max.abs() <= range * 8.0
+            } else {
+                data_max.abs() < range * 0.2
+            }
         } else {
             true
         };
 
-        let default_min = if range > 0.0 {
-            if should_include_zero && data_min >= 0.0 {
-                0.0
-            } else {
-                data_min - range * 0.05
-            }
+        // 数据全正时按 0 起点，否则围绕数据范围留 5% 空白
+        let default_min = if should_include_zero && data_min >= 0.0 {
+            0.0
         } else {
-            data_min - 1.0
+            data_min - range * 0.05
         };
 
-        let default_max = if range > 0.0 {
-            if should_include_zero && data_max <= 0.0 {
-                0.0
-            } else {
-                data_max + range * 0.05
-            }
+        let default_max = if should_include_zero && data_max <= 0.0 {
+            0.0
         } else {
-            data_max + 1.0
+            data_max + range * 0.05
         };
 
         let min = user_min.unwrap_or(default_min);
@@ -415,10 +533,34 @@ impl<'a> AxisBindingResolver<'a> {
     }
 }
 
+/// 统计一列数据中 distinct 坐标的数量（浮点 + 字符串），用于热力图轴范围。
+fn count_distinct_values(col: &crate::pipeline::dataframe::Series) -> usize {
+    use crate::pipeline::dataframe::DataValue;
+    use std::collections::HashSet;
+
+    let mut nums = HashSet::new();
+    let mut strs = HashSet::new();
+    for v in &col.data {
+        match v {
+            DataValue::Float(f) => {
+                nums.insert(f.to_bits());
+            }
+            DataValue::Integer(i) => {
+                nums.insert((*i as f64).to_bits());
+            }
+            DataValue::String(s) => {
+                strs.insert(s.clone());
+            }
+            _ => {}
+        }
+    }
+    nums.len() + strs.len()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::types::AxisPosition;
+    use crate::pipeline::types::{AxisPosition, ItemStyleSpec, LineConfig, SeriesConfig};
 
     fn make_axis_spec(axis_type: AxisType, position: AxisPosition, grid_index: usize) -> AxisSpec {
         AxisSpec {
@@ -459,5 +601,133 @@ mod tests {
         let ranges = resolver.resolve(&specs);
 
         assert_eq!(ranges.ranges.len(), 2);
+    }
+
+    fn final_range(
+        data_min: f64,
+        data_max: f64,
+        force_include_zero: bool,
+    ) -> (f64, f64) {
+        let resolver = AxisBindingResolver::new(&[], &[], &[]);
+        resolver.compute_final_range(
+            None,
+            None,
+            data_min,
+            data_max,
+            AxisType::Value,
+            0,
+            true,
+            force_include_zero,
+        )
+    }
+
+    #[test]
+    fn test_single_point_axis_range_centers_data() {
+        // 单个数据点：围绕数值对称留白，而不是从 0 起把点压到顶部
+        let (min, max) = final_range(70840845.0, 70840845.0, true);
+        assert!(min > 0.0, "单点不应强制从 0 起，实际 min={}", min);
+        assert!(max > 70840845.0);
+        let pad = 70840845.0 * 0.05;
+        assert!((min - (70840845.0 - pad)).abs() < 1e-6);
+        assert!((max - (70840845.0 + pad)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_positive_data_still_includes_zero() {
+        // 常规正数数据（量级与跨度同阶）：保持从 0 起
+        let (min, max) = final_range(70.0, 200.0, true);
+        assert_eq!(min, 0.0);
+        assert!(max > 200.0);
+    }
+
+    #[test]
+    fn test_high_magnitude_small_range_scales_to_data() {
+        // 数据远离 0 且跨度很小：包含 0 会把数据压到顶部，应围绕数据范围缩放
+        let (min, max) = final_range(1_000_000.0, 1_000_002.0, true);
+        assert!(min > 0.0, "远离 0 的数据不应强制包含 0，实际 min={}", min);
+        assert!(min < 1_000_000.0);
+        assert!(max > 1_000_002.0);
+    }
+
+    #[test]
+    fn test_user_range_overrides_auto() {
+        let resolver = AxisBindingResolver::new(&[], &[], &[]);
+        let (min, max) = resolver.compute_final_range(
+            Some(0.0),
+            Some(100.0),
+            40.0,
+            60.0,
+            AxisType::Value,
+            0,
+            true,
+            true,
+        );
+        assert_eq!((min, max), (0.0, 100.0));
+    }
+
+    fn make_value_series(
+        name: &str,
+        grid_index: usize,
+        y_axis_index: usize,
+        values: Vec<f64>,
+    ) -> SeriesSpec {
+        use crate::pipeline::dataframe::{DataFrame, DataValue, Series};
+        let mut df = DataFrame::new();
+        df.add_column(Series::new(
+            "x",
+            (0..values.len())
+                .map(|i| DataValue::Float(i as f64))
+                .collect(),
+        ));
+        df.add_column(
+            Series::new("y", values.into_iter().map(DataValue::Float).collect()),
+        );
+        SeriesSpec {
+            name: name.into(),
+            data: df,
+            grid_index,
+            x_axis_index: 0,
+            y_axis_index,
+            stack: None,
+            group_index: 0,
+            sampling: None,
+            item_style: ItemStyleSpec::default(),
+            config: SeriesConfig::Line(LineConfig::default()),
+        }
+    }
+
+    #[test]
+    fn test_multi_axis_binding_respects_y_axis_index() {
+        // 混合图：左右两个 y 轴，销量绑定左轴（0），增长率绑定右轴（1）
+        let x_axes = vec![make_axis_spec(AxisType::Category, AxisPosition::Bottom, 0)];
+        let y_axes = vec![
+            make_axis_spec(AxisType::Value, AxisPosition::Left, 0),
+            make_axis_spec(AxisType::Value, AxisPosition::Right, 0),
+        ];
+        let series = vec![
+            make_value_series("销量", 0, 0, vec![120.0, 200.0, 150.0, 80.0, 70.0]),
+            make_value_series("增长率", 0, 1, vec![10.0, 20.0, 15.0, 8.0, 7.0]),
+        ];
+        let specs = vec![SubplotSpec {
+            id: 0,
+            bounds: Default::default(),
+            series_indices: vec![0, 1],
+            x_axis_indices: vec![0],
+            y_axis_indices: vec![0, 1],
+        }];
+
+        let resolver = AxisBindingResolver::new(&x_axes, &y_axes, &series);
+        let ranges = resolver.resolve(&specs);
+
+        let left = ranges.get_y_range(0).unwrap();
+        let right = ranges.get_y_range(1).unwrap();
+        // 左轴 max ≈ 200 + 130*5% = 206.5
+        assert!((left.max - 206.5).abs() < 1.0, "左轴 max={}", left.max);
+        // 右轴只应包含增长率：max ≈ 20 + 13*5% = 20.65（曾错误混入左轴数据）
+        assert!(
+            (right.max - 20.65).abs() < 1.0,
+            "右轴 max={}，不应包含左轴系列",
+            right.max
+        );
     }
 }

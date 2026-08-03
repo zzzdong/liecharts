@@ -32,6 +32,7 @@ fn series_type_name(s: &SeriesOption) -> &'static str {
         SeriesOption::Gauge(_) => "gauge",
         SeriesOption::Candlestick(_) => "candlestick",
         SeriesOption::Boxplot(_) => "boxplot",
+        SeriesOption::Heatmap(_) => "heatmap",
         SeriesOption::Table(_) => "table",
         SeriesOption::Unknown => "unknown",
     }
@@ -159,6 +160,29 @@ fn test_candlestick_chart() {
     assert_eq!(spec.series.len(), 1);
     assert_eq!(spec.x_axes.len(), 1);
     assert_eq!(spec.y_axes.len(), 1);
+
+    // 数据应填充为 category/open/close/low/high 列（回归：曾为空 DataFrame）
+    let series = &spec.series[0];
+    assert_eq!(series.data.row_count(), 9);
+    for col in ["category", "open", "close", "low", "high"] {
+        assert!(series.data.get_column(col).is_some(), "缺少列: {}", col);
+    }
+    let opens: Vec<f64> = (0..series.data.row_count())
+        .filter_map(|i| series.data.get_column("open").and_then(|c| c.as_f64(i)))
+        .collect();
+    assert_eq!(opens.first(), Some(&100.0));
+    assert_eq!(opens.last(), Some(&120.0));
+
+    // 端到端渲染不应报 Missing column
+    let elements = liecharts::chart::Chart::new(
+        option,
+        liecharts::theme::Theme::echarts(),
+        800,
+        600,
+    )
+    .collect_visual_elements()
+    .expect("candlestick 渲染不应失败");
+    assert!(!elements.is_empty());
 }
 
 #[test]
@@ -178,6 +202,33 @@ fn test_boxplot_chart() {
     assert!(series.data.get_column("median").is_some());
     assert!(series.data.get_column("q3").is_some());
     assert!(series.data.get_column("max").is_some());
+}
+
+#[test]
+fn test_heatmap_chart() {
+    let option = parse_json("heatmap");
+    assert_eq!(option.series.len(), 1);
+    assert_eq!(series_type_name(&option.series[0]), "heatmap");
+    assert!(option.visual_map.is_some());
+    let vm_slice = option.visual_map.as_ref().unwrap().as_slice();
+    assert_eq!(vm_slice[0].min, Some(0.0));
+    assert_eq!(vm_slice[0].max, Some(10.0));
+
+    let spec = chart_option_to_chart_spec(&option, 800, 600);
+    assert_eq!(spec.series.len(), 1);
+    assert_eq!(spec.x_axes.len(), 1);
+    assert_eq!(spec.y_axes.len(), 1);
+    let series = &spec.series[0];
+    assert_eq!(series.data.row_count(), 56);
+    assert!(series.data.get_column("x").is_some());
+    assert!(series.data.get_column("y").is_some());
+    assert!(series.data.get_column("value").is_some());
+
+    // 端到端渲染：应生成 56 个热力图单元格
+    let elements = liecharts::chart::Chart::new(option, liecharts::theme::Theme::echarts(), 800, 600)
+        .collect_visual_elements()
+        .expect("heatmap 渲染不应失败");
+    assert!(!elements.is_empty());
 }
 
 #[test]
@@ -208,6 +259,12 @@ fn test_dual_y_axis_chart() {
     let spec = chart_option_to_chart_spec(&option, 800, 600);
     assert!(spec.series.len() >= 2);
     assert!(spec.y_axes.len() >= 2);
+
+    // 未显式指定 position 时：第一个 y 轴在左、后续在右（回归：曾全部默认在左）
+    use liecharts::pipeline::types::{AxisPosition, AxisType};
+    assert_eq!(spec.y_axes[0].position, AxisPosition::Left);
+    assert_eq!(spec.y_axes[1].position, AxisPosition::Right);
+    assert_eq!(spec.y_axes[0].axis_type, AxisType::Value);
 }
 
 #[test]
@@ -366,7 +423,7 @@ fn test_gauge_detailed() {
 
 const ALL_CHART_FILES: &[&str] = &[
     "line", "bar", "pie", "radar", "scatter", "gauge", "bubble",
-    "polar_bar", "polar_scatter", "candlestick", "boxplot", "area", "stacked_area",
+    "polar_bar", "polar_scatter", "candlestick", "boxplot", "heatmap", "area", "stacked_area",
     "dual_y_axis", "mixed", "table",
     "line_with_tooltip_and_mark", "bar_with_visual_map", "pie_rose",
     "stacked_bar", "area_smooth", "radar_multi", "scatter_datazoom",
@@ -526,12 +583,12 @@ mod tolerance_tests {
     use super::*;
     use liecharts::option::LegendDataItem;
 
-    /// 12 种未知 series 类型都应该被解析为 `SeriesOption::Unknown`，而不是报错。
-    /// （boxplot 已被实现为正式支持的类型，故从列表中移除。）
+    /// 11 种未知 series 类型都应该被解析为 `SeriesOption::Unknown`，而不是报错。
+    /// （boxplot、heatmap 已被实现为正式支持的类型，故从列表中移除。）
     #[test]
     fn test_tolerates_unknown_series_types() {
         for ty in [
-            "heatmap", "funnel", "treemap", "sunburst", "sankey", "graph", "tree",
+            "funnel", "treemap", "sunburst", "sankey", "graph", "tree",
             "effectScatter", "pictorialBar", "parallel", "themeRiver", "custom",
         ] {
             let json = format!(

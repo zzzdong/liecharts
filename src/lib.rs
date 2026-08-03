@@ -20,7 +20,7 @@ pub use option::{
     AxisPosition, AxisTickOption, AxisType, BarSeriesOption, BoxplotDataPoint,
     BoxplotItemStyleOption, BoxplotSeriesOption, BrushOption, BubbleDataPoint, BubbleSeriesOption,
     CandlestickDataPoint, CandlestickItemStyleOption, CandlestickSeriesOption, ChartOption,
-    ColorOption, DataPoint, DataZoomOption, DatasetOption,
+    ColorOption, DataPoint, DataZoomOption, DatasetOption, HeatmapDataPoint, HeatmapSeriesOption,
     EasingFunction, FontWeight, FontWeightNamed, GaugeAxisLabelOption, GaugeAxisLineOption,
     GaugeAxisTickOption, GaugeDataPoint, GaugeDetailOption, GaugePointerOption, GaugeProgressOption,
     GaugeSeriesOption, GaugeSplitLineOption, GaugeTitleOption, GradientColorStopOption, GridConfig,

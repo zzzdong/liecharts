@@ -2827,7 +2827,7 @@ impl Default for TableCellStyleOption {
 
 /// Abstract series type that dispatches to concrete variants (bar, line, pie, etc.).
 ///
-/// 未识别的 series 类型（如 `heatmap`、`funnel`、`treemap`、`graph` 等）会被解析为
+/// 未识别的 series 类型（如 `funnel`、`treemap`、`graph` 等）会被解析为
 /// [`SeriesOption::Unknown`]，下游 pipeline 会跳过这些系列而不报错，
 /// 以保证任意 LLM 输出的 ECharts JSON 都能成功解析。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2841,6 +2841,8 @@ pub enum SeriesOption {
     Candlestick(CandlestickSeriesOption),
     #[serde(rename = "boxplot")]
     Boxplot(BoxplotSeriesOption),
+    #[serde(rename = "heatmap")]
+    Heatmap(HeatmapSeriesOption),
     #[serde(rename = "pie")]
     Pie(PieSeriesOption),
     #[serde(rename = "scatter")]
@@ -3440,6 +3442,199 @@ impl Default for LabelLineOption {
             min_turn_angle: None,
             line_style: None,
         }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Heatmap — 热力图系列
+// ═══════════════════════════════════════════════════════════════════
+
+/// Heatmap series configuration.
+///
+/// 数据格式与 ECharts 一致：每项为 `[x, y, value]` 三元组，
+/// 其中 x/y 通常是 category 轴的索引，value 用于 visualMap 颜色映射。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct HeatmapSeriesOption {
+    pub name: Option<String>,
+    #[serde(default)]
+    pub data: Vec<HeatmapDataPoint>,
+    pub x_axis_index: Option<usize>,
+    pub y_axis_index: Option<usize>,
+    pub grid_index: Option<usize>,
+    pub coordinate_system: Option<String>,
+    pub item_style: Option<ItemStyleOption>,
+    pub label: Option<LabelOption>,
+    pub z: Option<f64>,
+    pub zlevel: Option<f64>,
+    pub encode: Option<SeriesEncodeOption>,
+    pub mark_point: Option<MarkPointOption>,
+    pub mark_line: Option<MarkLineOption>,
+    pub mark_area: Option<MarkAreaOption>,
+    pub tooltip: Option<TooltipOption>,
+    pub animation: Option<LenientBool>,
+    pub animation_duration: Option<f64>,
+    pub animation_delay: Option<f64>,
+    pub sampling: Option<SamplingOption>,
+    pub dataset_index: Option<usize>,
+    pub series_layout_by: Option<String>,
+    pub data_group_id: Option<String>,
+    pub silent: Option<bool>,
+    pub progressive: Option<usize>,
+}
+
+impl HeatmapSeriesOption {
+    pub fn new(
+        name: impl Into<String>,
+        data: impl IntoIterator<Item = impl Into<HeatmapDataPoint>>,
+    ) -> Self {
+        Self {
+            name: Some(name.into()),
+            data: data.into_iter().map(Into::into).collect(),
+            ..Default::default()
+        }
+    }
+}
+
+/// 单个热力图数据点：`[x, y, value]`。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeatmapDataPoint {
+    pub x: f64,
+    pub y: f64,
+    pub value: f64,
+    pub name: Option<String>,
+}
+
+impl HeatmapDataPoint {
+    pub fn new(x: f64, y: f64, value: f64) -> Self {
+        Self {
+            x,
+            y,
+            value,
+            name: None,
+        }
+    }
+}
+
+impl From<(f64, f64, f64)> for HeatmapDataPoint {
+    fn from((x, y, value): (f64, f64, f64)) -> Self {
+        Self::new(x, y, value)
+    }
+}
+
+impl From<[f64; 3]> for HeatmapDataPoint {
+    fn from(values: [f64; 3]) -> Self {
+        Self::new(values[0], values[1], values[2])
+    }
+}
+
+impl<'de> Deserialize<'de> for HeatmapDataPoint {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct HeatmapDataPointVisitor;
+
+        impl<'de> Visitor<'de> for HeatmapDataPointVisitor {
+            type Value = HeatmapDataPoint;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a [x, y, value] array or {value: [x, y, value], name?} object")
+            }
+
+            fn visit_seq<A: de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> Result<Self::Value, A::Error> {
+                use serde::de::Error;
+                let mut elems: Vec<serde_json::Value> = Vec::new();
+                while let Some(e) = seq.next_element::<serde_json::Value>()? {
+                    elems.push(e);
+                }
+                if elems.is_empty() {
+                    return Err(A::Error::custom(
+                        "heatmap data array must not be empty",
+                    ));
+                }
+
+                // 容错解析：
+                // - [x, y, value] 标准形式
+                // - [x, y] / [x] 缺失值补 0
+                // - [date/name, value]（如 calendar 热力图）降级为 (0, 0, value)
+                let mut values = [0.0; 3];
+                if elems[0].is_string() {
+                    values[2] = elems
+                        .get(1)
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(0.0);
+                } else {
+                    for (i, slot) in values.iter_mut().enumerate() {
+                        if let Some(v) = elems.get(i) {
+                            if let Some(n) = v.as_f64() {
+                                *slot = n;
+                            }
+                        }
+                    }
+                }
+                Ok(HeatmapDataPoint::new(values[0], values[1], values[2]))
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                use serde::de::Error;
+                let mut name: Option<String> = None;
+                let mut value: Option<serde_json::Value> = None;
+                let mut x: Option<f64> = None;
+                let mut y: Option<f64> = None;
+
+                while let Some(k) = map.next_key::<String>()? {
+                    match k.as_str() {
+                        "name" => name = Some(map.next_value()?),
+                        "value" => value = Some(map.next_value()?),
+                        "x" => x = Some(map.next_value()?),
+                        "y" => y = Some(map.next_value()?),
+                        _ => {
+                            let _: serde_json::Value = map.next_value()?;
+                        }
+                    }
+                }
+
+                let (vx, vy, vv) = match value {
+                    Some(serde_json::Value::Array(arr)) => {
+                        let mut values = [0.0; 3];
+                        if arr.first().is_some_and(|v| v.is_string()) {
+                            values[2] = arr.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                        } else {
+                            for (i, slot) in values.iter_mut().enumerate() {
+                                if let Some(v) = arr.get(i) {
+                                    if let Some(n) = v.as_f64() {
+                                        *slot = n;
+                                    }
+                                }
+                            }
+                        }
+                        (values[0], values[1], values[2])
+                    }
+                    Some(serde_json::Value::Number(n)) => {
+                        (0.0, 0.0, n.as_f64().unwrap_or(0.0))
+                    }
+                    Some(other) => {
+                        return Err(A::Error::custom(format!(
+                            "heatmap value must be an array or number, got {:?}",
+                            other
+                        )));
+                    }
+                    None => (0.0, 0.0, 0.0),
+                };
+
+                Ok(HeatmapDataPoint {
+                    x: x.unwrap_or(vx),
+                    y: y.unwrap_or(vy),
+                    value: vv,
+                    name,
+                })
+            }
+        }
+
+        deserializer.deserialize_any(HeatmapDataPointVisitor)
     }
 }
 
@@ -4941,6 +5136,7 @@ impl Default for FontWeight {
 pub enum SymbolType {
     #[default]
     Circle,
+    EmptyCircle,
     Rect,
     RoundRect,
     Triangle,

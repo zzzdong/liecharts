@@ -150,6 +150,7 @@ impl SeriesMaterializer for LineMaterializer {
 pub(crate) fn map_symbol_type(ty: crate::pipeline::types::SymbolType) -> SymbolType {
     match ty {
         crate::pipeline::types::SymbolType::Circle => SymbolType::Circle,
+        crate::pipeline::types::SymbolType::EmptyCircle => SymbolType::EmptyCircle,
         crate::pipeline::types::SymbolType::Rect => SymbolType::Rect,
         crate::pipeline::types::SymbolType::RoundRect => SymbolType::RoundRect,
         crate::pipeline::types::SymbolType::Triangle => SymbolType::Triangle,

@@ -11,7 +11,7 @@ A Rust library for creating charts, inspired by ECharts.
 
 ## Features
 
-- **Multiple Chart Types**: Line, Bar, Pie, Area, Scatter, Radar, Gauge, Candlestick, Polar Bar, Polar Scatter, Table.
+- **Multiple Chart Types**: Line, Bar, Pie, Area, Scatter, Radar, Gauge, Candlestick, Boxplot, Heatmap, Polar Bar, Polar Scatter, Table.
 - **Double Rendering Engines**: PNG/JPEG and SVG.
 - **Theme System**: customizable themes.
 - **JSON Configuration**: configurable JSON configuration.

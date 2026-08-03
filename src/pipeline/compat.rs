@@ -16,9 +16,9 @@ use crate::{
 /// 将旧的 ChartOption 转换为新的 ChartSpec（反向兼容）
 pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32) -> ChartSpec {
     use crate::pipeline::types::{
-        AxisPosition, AxisSpec, AxisType as NewAxisType, BarConfig, GridSpec, ItemStyleSpec,
-        LegendSpec, LineConfig, PieConfig, ScatterConfig, SeriesSpec, StepType, SymbolType,
-        TitleSpec,
+        AxisPosition, AxisSpec, AxisType as NewAxisType, BarConfig, GridSpec, HeatmapConfig,
+        ItemStyleSpec, LegendSpec, LineConfig, PieConfig, ScatterConfig, SeriesSpec, StepType,
+        SymbolType, TitleSpec,
     };
     use crate::sampling::SamplingType;
 
@@ -52,6 +52,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 | SeriesOption::Bubble(_)
                 | SeriesOption::Candlestick(_)
                 | SeriesOption::Boxplot(_)
+                | SeriesOption::Heatmap(_)
         )
     });
     let grids = if grids.is_empty() && has_cartesian_series {
@@ -118,14 +119,21 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
     let y_axes: Vec<AxisSpec> = option
         .y_axis
         .iter()
-        .map(|a| {
+        .enumerate()
+        .map(|(axis_idx, a)| {
             let new_axis_type = match a.axis_type.unwrap_or(crate::option::AxisType::Value) {
                 crate::option::AxisType::Value => NewAxisType::Value,
                 crate::option::AxisType::Category => NewAxisType::Category,
                 crate::option::AxisType::Time => NewAxisType::Time,
                 crate::option::AxisType::Log => NewAxisType::Log,
             };
-            let new_position = match a.position.unwrap_or(crate::option::AxisPosition::Left) {
+            // Y 轴位置缺省时：第一个在左、后续在右（ECharts 默认）
+            let default_position = if axis_idx == 0 {
+                crate::option::AxisPosition::Left
+            } else {
+                crate::option::AxisPosition::Right
+            };
+            let new_position = match a.position.unwrap_or(default_position) {
                 crate::option::AxisPosition::Left => AxisPosition::Left,
                 crate::option::AxisPosition::Right => AxisPosition::Right,
                 crate::option::AxisPosition::Bottom => AxisPosition::Bottom,
@@ -178,6 +186,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
             SeriesOption::Bar(bs) => (bs.dataset_index, bs.encode.clone()),
             SeriesOption::Pie(ps) => (ps.dataset_index, ps.encode.clone()),
             SeriesOption::Scatter(ss) => (ss.dataset_index, ss.encode.clone()),
+            SeriesOption::Heatmap(hs) => (hs.dataset_index, hs.encode.clone()),
             _ => (None, None),
         }
     }
@@ -233,6 +242,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 SeriesOption::Bubble(bs) => bs.name.clone().unwrap_or_default(),
                 SeriesOption::Candlestick(cs) => cs.name.clone().unwrap_or_default(),
                 SeriesOption::Boxplot(bs) => bs.name.clone().unwrap_or_default(),
+                SeriesOption::Heatmap(hs) => hs.name.clone().unwrap_or_default(),
                 SeriesOption::Radar(rs) => rs.name.clone().unwrap_or_default(),
                 SeriesOption::PolarBar(pb) => pb.name.clone().unwrap_or_default(),
                 SeriesOption::PolarScatter(ps) => ps.name.clone().unwrap_or_default(),
@@ -302,6 +312,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .as_ref()
                             .map(|s| match s {
                                 crate::option::SymbolType::Circle => SymbolType::Circle,
+                                crate::option::SymbolType::EmptyCircle => SymbolType::EmptyCircle,
                                 crate::option::SymbolType::Rect => SymbolType::Rect,
                                 crate::option::SymbolType::RoundRect => SymbolType::RoundRect,
                                 crate::option::SymbolType::Triangle => SymbolType::Triangle,
@@ -310,7 +321,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                                 crate::option::SymbolType::Arrow => SymbolType::Arrow,
                                 crate::option::SymbolType::None => SymbolType::None,
                             })
-                            .unwrap_or_default(),
+                            .unwrap_or(SymbolType::EmptyCircle),
                         symbol_size: ls.symbol_size.as_ref().and_then(|v| v.as_number()).unwrap_or(4.0),
                         label_show: false,
                         label_font_size: 12.0,
@@ -504,7 +515,36 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     }
                 }
                 SeriesOption::Candlestick(cs) => {
-                    let data = crate::pipeline::dataframe::DataFrame::new();
+                    // ECharts K 线数据：[open, close, low, high]，名称缺省时用序号
+                    let mut data = crate::pipeline::dataframe::DataFrame::new();
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "category",
+                        cs.data
+                            .iter()
+                            .enumerate()
+                            .map(|(i, d)| {
+                                DataValue::from(
+                                    d.name.clone().unwrap_or_else(|| (i + 1).to_string()),
+                                )
+                            })
+                            .collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "open",
+                        cs.data.iter().map(|d| DataValue::from(d.open)).collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "close",
+                        cs.data.iter().map(|d| DataValue::from(d.close)).collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "low",
+                        cs.data.iter().map(|d| DataValue::from(d.low)).collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "high",
+                        cs.data.iter().map(|d| DataValue::from(d.high)).collect(),
+                    ));
                     let config = crate::pipeline::types::CandlestickConfig {
                         category_col: "category".into(),
                         open_col: "open".into(),
@@ -589,6 +629,73 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         sampling: None,
                         item_style,
                         config: SeriesConfig::Boxplot(config),
+                    }
+                }
+                SeriesOption::Heatmap(hs) => {
+                    let mut data = crate::pipeline::dataframe::DataFrame::new();
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "x",
+                        hs.data.iter().map(|d| DataValue::Float(d.x)).collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "y",
+                        hs.data.iter().map(|d| DataValue::Float(d.y)).collect(),
+                    ));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "value",
+                        hs.data.iter().map(|d| DataValue::Float(d.value)).collect(),
+                    ));
+
+                    // visualMap → 热力图颜色映射
+                    let (vm_min, vm_max, vm_colors) = resolve_visual_map(option, &data);
+
+                    let item_style = ItemStyleSpec {
+                        color: None,
+                        border_color: hs.item_style.as_ref().and_then(|is| {
+                            is.border_color
+                                .as_ref()
+                                .map(|c| crate::visual::Color::new(c.r, c.g, c.b))
+                        }),
+                        border_width: hs
+                            .item_style
+                            .as_ref()
+                            .and_then(|is| is.border_width.as_ref().and_then(|v| v.as_number())),
+                        opacity: hs
+                            .item_style
+                            .as_ref()
+                            .and_then(|is| is.opacity),
+                    };
+                    let config = HeatmapConfig {
+                        x_col: "x".into(),
+                        y_col: "y".into(),
+                        value_col: "value".into(),
+                        min: vm_min,
+                        max: vm_max,
+                        colors: vm_colors,
+                        border_color: item_style.border_color,
+                        border_width: item_style.border_width.unwrap_or(0.0),
+                        label_show: hs
+                            .label
+                            .as_ref()
+                            .and_then(|l| l.show)
+                            .unwrap_or(false),
+                        label_font_size: hs
+                            .label
+                            .as_ref()
+                            .and_then(|l| l.font_size)
+                            .unwrap_or(12.0),
+                    };
+                    SeriesSpec {
+                        name,
+                        data,
+                        grid_index: hs.grid_index.unwrap_or(0),
+                        x_axis_index: hs.x_axis_index.unwrap_or(0),
+                        y_axis_index: hs.y_axis_index.unwrap_or(0),
+                        stack: None,
+                        group_index: 0,
+                        sampling: None,
+                        item_style,
+                        config: SeriesConfig::Heatmap(config),
                     }
                 }
                 SeriesOption::Radar(rs) => {
@@ -751,6 +858,72 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         palette: vec![],
         theme_name: None,
     }
+}
+
+/// 从 `option.visual_map` 解析热力图颜色映射。
+///
+/// 返回 `(min, max, 渐变颜色)`；min/max 缺失时由数据自动推断，
+/// 颜色缺失时使用 ECharts heatmap 的默认三段渐变。
+fn resolve_visual_map(
+    option: &ChartOption,
+    data: &crate::pipeline::dataframe::DataFrame,
+) -> (Option<f64>, Option<f64>, Vec<crate::visual::Color>) {
+    use crate::pipeline::dataframe::DataValue;
+
+    let default_colors = vec![
+        crate::visual::Color::new(80, 163, 186),  // #50a3ba
+        crate::visual::Color::new(234, 199, 54),  // #eac736
+        crate::visual::Color::new(217, 78, 93),   // #d94e5d
+    ];
+
+    // 数据范围（visualMap min/max 缺失时的回退值）
+    let (data_min, data_max) = data
+        .get_column("value")
+        .map(|col| {
+            let mut min = f64::INFINITY;
+            let mut max = f64::NEG_INFINITY;
+            for v in &col.data {
+                let f = match v {
+                    DataValue::Float(f) => *f,
+                    DataValue::Integer(i) => *i as f64,
+                    _ => continue,
+                };
+                min = min.min(f);
+                max = max.max(f);
+            }
+            if min.is_finite() && max.is_finite() {
+                (Some(min), Some(max))
+            } else {
+                (None, None)
+            }
+        })
+        .unwrap_or((None, None));
+
+    let Some(vm) = option.visual_map.as_ref().and_then(|v| v.as_slice().first()) else {
+        return (data_min, data_max, default_colors);
+    };
+
+    let min = vm.min.or(data_min);
+    let max = vm.max.or(data_max);
+
+    // in_range.color（OneOrMany）与顶层 color（Vec）均可作为渐变
+    let raw_colors: Option<Vec<crate::option::ColorOption>> = vm
+        .in_range
+        .as_ref()
+        .and_then(|r| r.color.as_ref())
+        .map(|c| c.as_vec())
+        .or_else(|| vm.color.clone());
+
+    let colors: Vec<crate::visual::Color> = raw_colors
+        .filter(|c| !c.is_empty())
+        .map(|c| {
+            c.iter()
+                .map(|co| crate::visual::Color::new(co.r, co.g, co.b))
+                .collect()
+        })
+        .unwrap_or(default_colors);
+
+    (min, max, colors)
 }
 
 /// 将 PositionOption 解析为像素值

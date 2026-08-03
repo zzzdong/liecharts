@@ -57,6 +57,7 @@ pub enum LayerSpec {
     Bubble(Bubble),
     Candlestick(Candlestick),
     Boxplot(Boxplot),
+    Heatmap(Heatmap),
     Radar(Radar),
     PolarBar(PolarBar),
     PolarScatter(PolarScatter),
@@ -73,6 +74,7 @@ impl LayerSpec {
             LayerSpec::Bubble(l) => l.grid_index = idx,
             LayerSpec::Candlestick(l) => l.grid_index = idx,
             LayerSpec::Boxplot(l) => l.grid_index = idx,
+            LayerSpec::Heatmap(l) => l.grid_index = idx,
             _ => {}
         }
     }
@@ -110,7 +112,7 @@ impl Line {
             smooth: false,
             step: None,
             stack: None,
-            symbol: SymbolType::Circle,
+            symbol: SymbolType::EmptyCircle,
             symbol_size: 4.0,
             area: false,
             color: None,
@@ -668,6 +670,110 @@ impl Default for Boxplot {
     }
 }
 
+// ── Heatmap ──
+
+#[derive(Debug, Clone)]
+pub struct Heatmap {
+    pub name: String,
+    pub data: Option<DataFrame>,
+    pub x: String,
+    pub y: String,
+    pub value: String,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+    pub colors: Option<Vec<Color>>,
+    pub border_color: Option<Color>,
+    pub border_width: f64,
+    pub label_show: bool,
+    pub label_font_size: f64,
+    pub y_axis_index: usize,
+    pub grid_index: usize,
+}
+
+impl Heatmap {
+    pub fn new() -> Self {
+        Self {
+            name: String::new(),
+            data: None,
+            x: "x".into(),
+            y: "y".into(),
+            value: "value".into(),
+            min: None,
+            max: None,
+            colors: None,
+            border_color: None,
+            border_width: 0.0,
+            label_show: false,
+            label_font_size: 12.0,
+            y_axis_index: 0,
+            grid_index: 0,
+        }
+    }
+    pub fn data(mut self, data: DataFrame) -> Self {
+        self.data = Some(data);
+        self
+    }
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+    pub fn x(mut self, col: impl Into<String>) -> Self {
+        self.x = col.into();
+        self
+    }
+    pub fn y(mut self, col: impl Into<String>) -> Self {
+        self.y = col.into();
+        self
+    }
+    pub fn value(mut self, col: impl Into<String>) -> Self {
+        self.value = col.into();
+        self
+    }
+    pub fn min(mut self, min: f64) -> Self {
+        self.min = Some(min);
+        self
+    }
+    pub fn max(mut self, max: f64) -> Self {
+        self.max = Some(max);
+        self
+    }
+    pub fn colors(mut self, colors: impl IntoIterator<Item = Color>) -> Self {
+        self.colors = Some(colors.into_iter().collect());
+        self
+    }
+    pub fn border_color(mut self, color: Color) -> Self {
+        self.border_color = Some(color);
+        self
+    }
+    pub fn border_width(mut self, width: f64) -> Self {
+        self.border_width = width;
+        self
+    }
+    pub fn label_show(mut self, show: bool) -> Self {
+        self.label_show = show;
+        self
+    }
+    pub fn y_axis_index(mut self, idx: usize) -> Self {
+        self.y_axis_index = idx;
+        self
+    }
+    pub fn grid_index(mut self, idx: usize) -> Self {
+        self.grid_index = idx;
+        self
+    }
+    /// Shortcut for `y_axis_index(1)`: bind this series to the right y-axis.
+    pub fn right_axis(mut self) -> Self {
+        self.y_axis_index = 1;
+        self
+    }
+}
+
+impl Default for Heatmap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ── Radar ──
 
 #[derive(Debug, Clone)]
@@ -921,6 +1027,7 @@ impl Default for Table {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SymbolType {
     Circle,
+    EmptyCircle,
     Rect,
     RoundRect,
     Triangle,
@@ -934,6 +1041,7 @@ impl From<SymbolType> for crate::option::SymbolType {
     fn from(s: SymbolType) -> Self {
         match s {
             SymbolType::Circle => crate::option::SymbolType::Circle,
+            SymbolType::EmptyCircle => crate::option::SymbolType::EmptyCircle,
             SymbolType::Rect => crate::option::SymbolType::Rect,
             SymbolType::RoundRect => crate::option::SymbolType::RoundRect,
             SymbolType::Triangle => crate::option::SymbolType::Triangle,

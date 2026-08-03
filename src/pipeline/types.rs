@@ -83,6 +83,7 @@ pub enum ChartType {
     Bubble,
     Candlestick,
     Boxplot,
+    Heatmap,
     Radar,
     PolarBar,
     PolarScatter,
@@ -118,6 +119,7 @@ pub enum SeriesConfig {
     Bubble(BubbleConfig),
     Candlestick(CandlestickConfig),
     Boxplot(BoxplotConfig),
+    Heatmap(HeatmapConfig),
     Radar(RadarConfig),
     PolarBar(PolarBarConfig),
     PolarScatter(PolarScatterConfig),
@@ -135,6 +137,7 @@ impl SeriesConfig {
             SeriesConfig::Bubble(_) => ChartType::Bubble,
             SeriesConfig::Candlestick(_) => ChartType::Candlestick,
             SeriesConfig::Boxplot(_) => ChartType::Boxplot,
+            SeriesConfig::Heatmap(_) => ChartType::Heatmap,
             SeriesConfig::Radar(_) => ChartType::Radar,
             SeriesConfig::PolarBar(_) => ChartType::PolarBar,
             SeriesConfig::PolarScatter(_) => ChartType::PolarScatter,
@@ -186,7 +189,7 @@ impl Default for LineConfig {
             area: false,
             area_color: None,
             area_opacity: 0.5,
-            symbol_type: SymbolType::Circle,
+            symbol_type: SymbolType::EmptyCircle,
             symbol_size: 4.0,
             label_show: false,
             label_font_size: 12.0,
@@ -341,6 +344,49 @@ impl Default for BoxplotConfig {
     }
 }
 
+// ── HeatmapConfig ──
+
+/// 热力图配置：`[x, y, value]` 三元组 + visualMap 颜色映射。
+#[derive(Debug, Clone)]
+pub struct HeatmapConfig {
+    pub x_col: String,
+    pub y_col: String,
+    pub value_col: String,
+    /// visualMap 最小值；None 时由数据自动推断
+    pub min: Option<f64>,
+    /// visualMap 最大值；None 时由数据自动推断
+    pub max: Option<f64>,
+    /// visualMap 连续渐变颜色（按值从低到高插值）
+    pub colors: Vec<Color>,
+    /// 单元格描边颜色（来自 itemStyle）
+    pub border_color: Option<Color>,
+    pub border_width: f64,
+    /// 是否显示单元格数值标签
+    pub label_show: bool,
+    pub label_font_size: f64,
+}
+
+impl Default for HeatmapConfig {
+    fn default() -> Self {
+        Self {
+            x_col: "x".into(),
+            y_col: "y".into(),
+            value_col: "value".into(),
+            min: None,
+            max: None,
+            colors: vec![
+                Color::new(80, 163, 186),  // #50a3ba
+                Color::new(234, 199, 54),  // #eac736
+                Color::new(217, 78, 93),   // #d94e5d
+            ],
+            border_color: None,
+            border_width: 0.0,
+            label_show: false,
+            label_font_size: 12.0,
+        }
+    }
+}
+
 // ── RadarConfig ──
 
 #[derive(Debug, Clone)]
@@ -438,6 +484,7 @@ pub struct TableConfig;
 pub enum SymbolType {
     #[default]
     Circle,
+    EmptyCircle,
     Rect,
     RoundRect,
     Triangle,
@@ -554,6 +601,7 @@ impl SeriesConfig {
             SeriesConfig::Pie(c) => &c.category_col,
             SeriesConfig::Candlestick(c) => &c.category_col,
             SeriesConfig::Boxplot(c) => &c.category_col,
+            SeriesConfig::Heatmap(c) => &c.x_col,
             SeriesConfig::Radar(_) => "indicator",
             SeriesConfig::PolarBar(c) => &c.angle_col,
             SeriesConfig::PolarScatter(c) => &c.angle_col,
@@ -571,6 +619,7 @@ impl SeriesConfig {
             SeriesConfig::Pie(c) => &c.value_col,
             SeriesConfig::Candlestick(_) => "close",
             SeriesConfig::Boxplot(_) => "median",
+            SeriesConfig::Heatmap(c) => &c.value_col,
             SeriesConfig::Radar(c) => &c.value_col,
             SeriesConfig::PolarBar(c) => &c.radius_col,
             SeriesConfig::PolarScatter(c) => &c.radius_col,

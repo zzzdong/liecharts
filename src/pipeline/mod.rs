@@ -1,4 +1,5 @@
 pub mod axis_binding_resolver;
+pub mod axis_label;
 pub mod axis_renderer;
 pub mod builder;
 pub mod color_assigner;
@@ -21,8 +22,8 @@ pub use chart_pipeline::{build_chart, build_chart_from_spec, build_chart_with_th
 pub use typed_series::{
     BarGroupType, BarRect, BarSeries, BarSubSeries, BoxplotRect, BoxplotSeries, Bubble,
     BubbleSeries, CandleRect, CandlestickSeries, GaugeSeries, GroupedBarRow, GroupedBarSeries,
-    LabelPosition, LineSeries, PieSeries, PieSlice, PolarBarPoint, PolarBarSeries, PolarPoint,
-    PolarScatterSeries, RadarSeries, RenderContext, ScatterSeries, SymbolType, TableSeries,
-    TypedSeries,
+    HeatmapCell, HeatmapSeries, LabelPosition, LineSeries, PieSeries, PieSlice, PolarBarPoint,
+    PolarBarSeries, PolarPoint, PolarScatterSeries, RadarSeries, RenderContext, ScatterSeries,
+    SymbolType, TableSeries, TypedSeries,
 };
 pub use types::*;

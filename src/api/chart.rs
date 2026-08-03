@@ -1,6 +1,6 @@
 use super::layer::{
-    Bar, Boxplot, Bubble, Candlestick, Gauge, LayerSpec, Line, Pie, PolarBar, PolarScatter, Radar,
-    Scatter, SymbolType as LayerSymbol, Table,
+    Bar, Boxplot, Bubble, Candlestick, Gauge, Heatmap, LayerSpec, Line, Pie, PolarBar,
+    PolarScatter, Radar, Scatter, SymbolType as LayerSymbol, Table,
 };
 use crate::{
     error::Result,
@@ -511,6 +511,7 @@ impl Chart {
     add_layer_method!(add_bubble, Bubble, Bubble);
     add_layer_method!(add_candlestick, Candlestick, Candlestick);
     add_layer_method!(add_boxplot, Boxplot, Boxplot);
+    add_layer_method!(add_heatmap, Heatmap, Heatmap);
     add_layer_method!(add_radar, Radar, Radar);
     add_layer_method!(add_polar_bar, PolarBar, PolarBar);
     add_layer_method!(add_polar_scatter, PolarScatter, PolarScatter);
@@ -632,9 +633,9 @@ impl Chart {
     pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
         use crate::pipeline::types::{
             AxisSpec, BarConfig, BoxplotConfig, BubbleConfig, CandlestickConfig, ChartSpec,
-            GaugeConfig, GridSpec, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
-            PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
-            SeriesSpec, SymbolType, TableConfig, TitleSpec,
+            GaugeConfig, GridSpec, HeatmapConfig, ItemStyleSpec, LegendSpec, LineConfig,
+            PieConfig, PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig,
+            SeriesConfig, SeriesSpec, SymbolType, TableConfig, TitleSpec,
         };
 
         // Grids
@@ -675,6 +676,10 @@ impl Chart {
                 LayerSpec::Boxplot(l) => (
                     l.data.clone().or_else(|| self.data.clone()),
                     l.category.clone(),
+                ),
+                LayerSpec::Heatmap(l) => (
+                    l.data.clone().or_else(|| self.data.clone()),
+                    l.x.clone(),
                 ),
                 _ => (None, String::new()),
             };
@@ -832,6 +837,7 @@ impl Chart {
                     LayerSpec::Line(l) => {
                         let sym = match l.symbol {
                             LayerSymbol::Circle => SymbolType::Circle,
+                            LayerSymbol::EmptyCircle => SymbolType::EmptyCircle,
                             LayerSymbol::Rect => SymbolType::Rect,
                             LayerSymbol::RoundRect => SymbolType::RoundRect,
                             LayerSymbol::Triangle => SymbolType::Triangle,
@@ -917,6 +923,26 @@ impl Chart {
                             median_col: l.median.clone(),
                             q3_col: l.q3.clone(),
                             max_col: l.max.clone(),
+                        })
+                    },
+                    LayerSpec::Heatmap(l) => {
+                        SeriesConfig::Heatmap(HeatmapConfig {
+                            x_col: l.x.clone(),
+                            y_col: l.y.clone(),
+                            value_col: l.value.clone(),
+                            min: l.min,
+                            max: l.max,
+                            colors: l.colors.clone().unwrap_or_else(|| {
+                                vec![
+                                    Color::new(80, 163, 186),
+                                    Color::new(234, 199, 54),
+                                    Color::new(217, 78, 93),
+                                ]
+                            }),
+                            border_color: l.border_color,
+                            border_width: l.border_width,
+                            label_show: l.label_show,
+                            label_font_size: l.label_font_size,
                         })
                     },
                     LayerSpec::Pie(l) => {
@@ -1008,6 +1034,11 @@ impl Chart {
                         .clone()
                         .or_else(|| shared_data.cloned())
                         .unwrap_or_default(),
+                    LayerSpec::Heatmap(l) => l
+                        .data
+                        .clone()
+                        .or_else(|| shared_data.cloned())
+                        .unwrap_or_default(),
                     LayerSpec::Pie(l) => l
                         .data
                         .clone()
@@ -1047,6 +1078,7 @@ impl Chart {
                     LayerSpec::Bubble(l) => l.name.clone(),
                     LayerSpec::Candlestick(l) => l.name.clone(),
                     LayerSpec::Boxplot(l) => l.name.clone(),
+                    LayerSpec::Heatmap(l) => l.name.clone(),
                     LayerSpec::Pie(l) => l.name.clone(),
                     LayerSpec::Radar(l) => l.name.clone(),
                     LayerSpec::PolarBar(l) => l.name.clone(),
@@ -1062,6 +1094,7 @@ impl Chart {
                     LayerSpec::Bubble(l) => l.grid_index,
                     LayerSpec::Candlestick(l) => l.grid_index,
                     LayerSpec::Boxplot(l) => l.grid_index,
+                    LayerSpec::Heatmap(l) => l.grid_index,
                     LayerSpec::Pie(_) => 0,
                     LayerSpec::Radar(_) => 0,
                     LayerSpec::PolarBar(_) => 0,
@@ -1077,6 +1110,7 @@ impl Chart {
                     LayerSpec::Bubble(l) => l.y_axis_index,
                     LayerSpec::Candlestick(l) => l.y_axis_index,
                     LayerSpec::Boxplot(l) => l.y_axis_index,
+                    LayerSpec::Heatmap(l) => l.y_axis_index,
                     _ => 0,
                 };
 
@@ -1170,6 +1204,7 @@ impl_from_layer!(Scatter, Scatter);
 impl_from_layer!(Bubble, Bubble);
 impl_from_layer!(Candlestick, Candlestick);
 impl_from_layer!(Boxplot, Boxplot);
+impl_from_layer!(Heatmap, Heatmap);
 impl_from_layer!(Radar, Radar);
 impl_from_layer!(PolarBar, PolarBar);
 impl_from_layer!(PolarScatter, PolarScatter);

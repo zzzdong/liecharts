@@ -243,6 +243,7 @@ const chartExamples = {
     radar: 'examples/radar.json',
     gauge: 'examples/gauge.json',
     candlestick: 'examples/candlestick.json',
+    heatmap: 'examples/heatmap.json',
     polarBar: 'examples/polar_bar.json',
     polarScatter: 'examples/polar_scatter.json',
     table: 'examples/table.json',

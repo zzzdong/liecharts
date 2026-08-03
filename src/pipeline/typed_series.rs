@@ -18,6 +18,7 @@ pub enum TypedSeries {
     Bubble(BubbleSeries),
     Candlestick(CandlestickSeries),
     Boxplot(BoxplotSeries),
+    Heatmap(HeatmapSeries),
     Pie(PieSeries),
     Radar(RadarSeries),
     PolarBar(PolarBarSeries),
@@ -210,6 +211,26 @@ pub struct BoxplotRect {
 }
 
 // ═══════════════════════════════════════════════════════════════════
+// HeatmapSeries
+// ═══════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone)]
+pub struct HeatmapSeries {
+    pub name: String,
+    /// 单元格（像素空间矩形 + 已解析的映射颜色）
+    pub cells: Vec<HeatmapCell>,
+}
+
+#[derive(Debug, Clone)]
+pub struct HeatmapCell {
+    pub rect: Rect,
+    pub value: f64,
+    pub color: Color,
+    pub border_color: Option<Color>,
+    pub border_width: f64,
+}
+
+// ═══════════════════════════════════════════════════════════════════
 // PieSeries
 // ═══════════════════════════════════════════════════════════════════
 
@@ -336,6 +357,7 @@ pub struct TableSeries {
 pub enum SymbolType {
     #[default]
     Circle,
+    EmptyCircle,
     Rect,
     RoundRect,
     Triangle,
@@ -385,6 +407,7 @@ impl TypedSeries {
             TypedSeries::Bubble(s) => &s.name,
             TypedSeries::Candlestick(s) => &s.name,
             TypedSeries::Boxplot(s) => &s.name,
+            TypedSeries::Heatmap(s) => &s.name,
             TypedSeries::Pie(s) => &s.name,
             TypedSeries::Radar(s) => &s.name,
             TypedSeries::PolarBar(s) => &s.name,
@@ -404,6 +427,7 @@ impl TypedSeries {
             TypedSeries::Bubble(_) => "bubble",
             TypedSeries::Candlestick(_) => "candlestick",
             TypedSeries::Boxplot(_) => "boxplot",
+            TypedSeries::Heatmap(_) => "heatmap",
             TypedSeries::Pie(_) => "pie",
             TypedSeries::Radar(_) => "radar",
             TypedSeries::PolarBar(_) => "polar_bar",

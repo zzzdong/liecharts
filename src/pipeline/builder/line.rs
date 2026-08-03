@@ -20,12 +20,10 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
     fn build(series: &LineSeries, _ctx: &RenderContext) -> Result<Vec<VisualElement>> {
         let mut elements = Vec::new();
 
-        if series.points.len() < 2 {
-            return Ok(elements);
-        }
-
-        // 1. 面积填充（使用已解析的像素基线）
-        if let Some(area_color) = &series.area_color {
+        // 1. 面积填充（使用已解析的像素基线；单个数据点画不出面积）
+        if series.points.len() >= 2
+            && let Some(area_color) = &series.area_color
+        {
             let alpha = (255.0 * series.area_opacity).clamp(0.0, 255.0) as u8;
             let mut fill = *area_color;
             fill.a = alpha;
@@ -46,27 +44,29 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
             });
         }
 
-        // 2. 线条
-        let path = if let Some(step) = series.step {
-            build_step_path(&series.points, step)
-        } else if series.smooth {
-            build_smooth_path(&series.points)
-        } else {
-            build_polyline_path(&series.points)
-        };
-        elements.push(VisualElement::Path {
-            path,
-            style: FillStrokeStyle {
-                fill: None,
-                stroke: Some(crate::visual::Stroke {
-                    color: series.color,
-                    width: series.line_width,
-                }),
-            },
-            z_index: Z_SERIES_LINE,
-        });
+        // 2. 线条（单个数据点画不出线，跳过）
+        if series.points.len() >= 2 {
+            let path = if let Some(step) = series.step {
+                build_step_path(&series.points, step)
+            } else if series.smooth {
+                build_smooth_path(&series.points)
+            } else {
+                build_polyline_path(&series.points)
+            };
+            elements.push(VisualElement::Path {
+                path,
+                style: FillStrokeStyle {
+                    fill: None,
+                    stroke: Some(crate::visual::Stroke {
+                        color: series.color,
+                        width: series.line_width,
+                    }),
+                },
+                z_index: Z_SERIES_LINE,
+            });
+        }
 
-        // 3. 数据点符号
+        // 3. 数据点符号（单个数据点也要渲染，否则完全看不到）
         if series.symbol_type != SymbolType::None {
             for point in &series.points {
                 let symbol_elements =
@@ -301,6 +301,18 @@ fn build_symbol(
                 z_index: Z_SERIES_POINT,
             });
         }
+        SymbolType::EmptyCircle => {
+            // 空心圆：只描边、不填充（ECharts line 默认符号）
+            elements.push(VisualElement::Circle {
+                center: *center,
+                radius: size,
+                style: FillStrokeStyle {
+                    fill: None,
+                    stroke: Some(crate::visual::Stroke { color, width: 1.0 }),
+                },
+                z_index: Z_SERIES_POINT,
+            });
+        }
         SymbolType::Rect => {
             let rect = vello_cpu::kurbo::Rect::new(
                 center.x - size,
@@ -326,4 +338,81 @@ fn build_symbol(
     }
 
     elements
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{
+        pipeline::types::ColorContext,
+        theme::Theme,
+    };
+    use vello_cpu::kurbo::Rect;
+
+    fn single_point_series() -> LineSeries {
+        LineSeries {
+            name: "test".into(),
+            color: crate::visual::Color::new(80, 112, 221),
+            line_width: 2.0,
+            smooth: true,
+            step: None,
+            area_color: None,
+            area_opacity: 0.5,
+            symbol_type: SymbolType::EmptyCircle,
+            symbol_size: 4.0,
+            points: vec![Point::new(405.0, 60.0)],
+            baseline_y: 300.0,
+            baseline_points: None,
+            values: vec![70840845.0],
+            label: None,
+        }
+    }
+
+    #[test]
+    fn test_single_point_renders_hollow_symbol() {
+        let colors = ColorContext::default();
+        let ctx = RenderContext {
+            colors: &colors,
+            theme: &Theme::echarts(),
+            bounds: Rect::new(60.0, 60.0, 740.0, 540.0),
+        };
+        let elements = LineBuilder::build(&single_point_series(), &ctx).unwrap();
+
+        // 单个数据点画不出线，但必须渲染出数据点符号
+        assert_eq!(elements.len(), 1, "单点折线图应渲染出 1 个符号");
+        match &elements[0] {
+            VisualElement::Circle { style, .. } => {
+                assert!(style.fill.is_none(), "ECharts 默认折线符号是空心圆");
+                assert!(style.stroke.is_some());
+            }
+            other => panic!("期望 Circle，实际 {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_multi_point_renders_line_and_symbols() {
+        let mut series = single_point_series();
+        series.points = vec![
+            Point::new(100.0, 300.0),
+            Point::new(300.0, 200.0),
+            Point::new(500.0, 100.0),
+        ];
+        series.values = vec![1.0, 2.0, 3.0];
+        let colors = ColorContext::default();
+        let ctx = RenderContext {
+            colors: &colors,
+            theme: &Theme::echarts(),
+            bounds: Rect::new(60.0, 60.0, 740.0, 540.0),
+        };
+        let elements = LineBuilder::build(&series, &ctx).unwrap();
+
+        assert!(elements.iter().any(|e| matches!(e, VisualElement::Path { .. })));
+        assert_eq!(
+            elements
+                .iter()
+                .filter(|e| matches!(e, VisualElement::Circle { .. }))
+                .count(),
+            3
+        );
+    }
 }

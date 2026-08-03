@@ -22,6 +22,7 @@ pub mod boxplot;
 pub mod bubble;
 pub mod candlestick;
 pub mod gauge;
+pub mod heatmap;
 pub mod line;
 pub mod pie;
 pub mod polar_bar;
@@ -35,6 +36,7 @@ pub use boxplot::BoxplotMaterializer;
 pub use bubble::BubbleMaterializer;
 pub use candlestick::CandlestickMaterializer;
 pub use gauge::GaugeMaterializer;
+pub use heatmap::HeatmapMaterializer;
 pub use line::LineMaterializer;
 pub use pie::PieMaterializer;
 pub use polar_bar::PolarBarMaterializer;
@@ -68,6 +70,7 @@ pub fn create_materializer(chart_type: ChartType) -> MaterializerFn {
         ChartType::Bubble => bubble_materializer_fn,
         ChartType::Candlestick => candlestick_materializer_fn,
         ChartType::Boxplot => boxplot_materializer_fn,
+        ChartType::Heatmap => heatmap_materializer_fn,
         ChartType::Radar => radar_materializer_fn,
         ChartType::PolarBar => polar_bar_materializer_fn,
         ChartType::PolarScatter => polar_scatter_materializer_fn,
@@ -144,6 +147,16 @@ fn boxplot_materializer_fn(
     colors: &ColorContext,
 ) -> Result<TypedSeries> {
     BoxplotMaterializer::materialize(spec, bounds, axis_ranges, color, colors)
+}
+
+fn heatmap_materializer_fn(
+    spec: &SeriesSpec,
+    bounds: Rect,
+    axis_ranges: &ResolvedAxisRanges,
+    color: Color,
+    colors: &ColorContext,
+) -> Result<TypedSeries> {
+    HeatmapMaterializer::materialize(spec, bounds, axis_ranges, color, colors)
 }
 
 fn radar_materializer_fn(

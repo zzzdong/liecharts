@@ -1,6 +1,6 @@
 use vello_cpu::kurbo::Rect;
 
-use crate::pipeline::types::{AxisSpec, GridSpec, SeriesSpec, SubplotSpec};
+use crate::pipeline::types::{AxisPosition, AxisSpec, AxisType, GridSpec, SeriesSpec, SubplotSpec};
 
 /// 纯数学画布切分器
 ///
@@ -92,7 +92,155 @@ impl<'a> GridPlanner<'a> {
             }
         }
 
+        // 根据坐标轴标签的实际占用空间自适应调整 subplot 边界，
+        // 避免密集/长文本标签（尤其旋转后）超出画布或被截断。
+        self.adjust_label_margins(&mut specs, x_axes, y_axes);
+
         specs
+    }
+
+    /// 根据坐标轴标签尺寸自适应放大边距。
+    ///
+    /// 与 `CartesianAxisRenderer` 共用同一套旋转决策：
+    /// - X 轴标签横向放不下时自动旋转（45°/90°），按旋转后的投影高度预留底部空间
+    /// - Y 轴标签按宽度预留左侧/右侧空间
+    ///
+    /// 文本尺寸使用启发式估算（见 `axis_label::estimate_text_size`），无需字体引擎。
+    fn adjust_label_margins(
+        &self,
+        specs: &mut [SubplotSpec],
+        x_axes: &[AxisSpec],
+        y_axes: &[AxisSpec],
+    ) {
+        use crate::pipeline::axis_label::{auto_rotate, estimate_text_size, rotated_bounds};
+
+        const FONT_SIZE: f64 = 11.0;
+        const X_LABEL_GAP: f64 = 14.0; // 锚点距坐标轴的距离
+        const Y_LABEL_GAP: f64 = 8.0; // 锚点距坐标轴的距离
+        const LABEL_PAD: f64 = 4.0; // 额外安全边距
+        const MIN_PLOT_W: f64 = 50.0;
+        const MIN_PLOT_H: f64 = 40.0;
+        const VALUE_TICK_ESTIMATE: &str = "1234.5";
+
+        let total_w = self.total_width as f64;
+        let total_h = self.total_height as f64;
+
+        for spec in specs.iter_mut() {
+            let mut grow_bottom: f64 = 0.0;
+            let mut grow_top: f64 = 0.0;
+            let mut grow_left: f64 = 0.0;
+            let mut grow_right: f64 = 0.0;
+
+            // ── X 轴：按旋转后的投影高度预留顶部/底部空间 ──
+            for &axis_idx in &spec.x_axis_indices {
+                let Some(axis) = x_axes.get(axis_idx) else {
+                    continue;
+                };
+                if !axis.label_show {
+                    continue;
+                }
+                let labels: Vec<String> = if axis.axis_type == AxisType::Category {
+                    axis.categories.clone()
+                } else {
+                    vec![VALUE_TICK_ESTIMATE.to_string(); 5]
+                };
+                if labels.is_empty() {
+                    continue;
+                }
+                let n = labels.len();
+                let slot_w = spec.bounds.width() / n as f64;
+                let (max_w, max_h) = labels
+                    .iter()
+                    .map(|l| estimate_text_size(l, FONT_SIZE))
+                    .fold((0.0_f64, 0.0_f64), |acc, s| {
+                        (acc.0.max(s.0), acc.1.max(s.1))
+                    });
+                let rotation = axis
+                    .label_rotate
+                    .map(|deg| deg.to_radians())
+                    .unwrap_or_else(|| auto_rotate(max_w, max_h, slot_w));
+                let (_, rotated_h) = rotated_bounds(max_w, max_h, rotation);
+                let needed = X_LABEL_GAP + rotated_h + LABEL_PAD;
+                if axis.position == AxisPosition::Top {
+                    // 顶部 X 轴：标签在绘图区上方，且不能侵入标题/图例占用的头部空间，
+                    // 可用空间 = 绘图区上缘到画布顶部的距离减去 header_height
+                    let current = (spec.bounds.y0 - self.header_height).max(0.0);
+                    if needed > current {
+                        grow_top = grow_top.max(needed - current);
+                    }
+                } else {
+                    let current = total_h - spec.bounds.y1;
+                    if needed > current {
+                        grow_bottom = grow_bottom.max(needed - current);
+                    }
+                }
+            }
+
+            // ── Y 轴：按标签宽度预留左侧/右侧空间 ──
+            for &axis_idx in &spec.y_axis_indices {
+                let Some(axis) = y_axes.get(axis_idx) else {
+                    continue;
+                };
+                if !axis.label_show {
+                    continue;
+                }
+                let labels: Vec<String> = if axis.axis_type == AxisType::Category {
+                    axis.categories.clone()
+                } else {
+                    vec![VALUE_TICK_ESTIMATE.to_string(); 5]
+                };
+                if labels.is_empty() {
+                    continue;
+                }
+                let (max_w, max_h) = labels
+                    .iter()
+                    .map(|l| estimate_text_size(l, FONT_SIZE))
+                    .fold((0.0_f64, 0.0_f64), |acc, s| {
+                        (acc.0.max(s.0), acc.1.max(s.1))
+                    });
+                // Y 轴不自动旋转，仅尊重用户配置
+                let rotation = axis
+                    .label_rotate
+                    .map(|deg| deg.to_radians())
+                    .unwrap_or(0.0);
+                let (rotated_w, _) = rotated_bounds(max_w, max_h, rotation);
+                let needed = Y_LABEL_GAP + rotated_w + LABEL_PAD;
+                let is_right = axis.position == AxisPosition::Right;
+                if is_right {
+                    let current = total_w - spec.bounds.x1;
+                    if needed > current {
+                        grow_right = grow_right.max(needed - current);
+                    }
+                } else {
+                    let current = spec.bounds.x0;
+                    if needed > current {
+                        grow_left = grow_left.max(needed - current);
+                    }
+                }
+            }
+
+            // 应用增长（保留最小绘图尺寸）
+            if grow_left > 0.0 || grow_right > 0.0 {
+                let new_x0 = spec.bounds.x0 + grow_left;
+                let new_x1 = spec.bounds.x1 - grow_right;
+                if new_x1 - new_x0 >= MIN_PLOT_W {
+                    spec.bounds.x0 = new_x0;
+                    spec.bounds.x1 = new_x1;
+                }
+            }
+            if grow_bottom > 0.0 {
+                let new_y1 = spec.bounds.y1 - grow_bottom;
+                if new_y1 - spec.bounds.y0 >= MIN_PLOT_H {
+                    spec.bounds.y1 = new_y1;
+                }
+            }
+            if grow_top > 0.0 {
+                let new_y0 = spec.bounds.y0 + grow_top;
+                if spec.bounds.y1 - new_y0 >= MIN_PLOT_H {
+                    spec.bounds.y0 = new_y0;
+                }
+            }
+        }
     }
 
     /// 无 grid 配置时的默认区域
@@ -224,6 +372,109 @@ mod tests {
         let s = &specs[0];
         // top 回退到 60.0（因为 0.0 < margin 60.0）
         assert!(s.bounds.y0 >= 60.0);
+    }
+
+    #[test]
+    fn test_dense_long_category_labels_grow_bottom_margin() {
+        let grids = make_grids(1);
+        // 30 个长日期标签，slot 宽度远小于标签宽度 → 自动旋转 90°，底部边距增大
+        let x_axes = vec![AxisSpec {
+            axis_type: AxisType::Category,
+            position: AxisPosition::Bottom,
+            grid_index: 0,
+            min: None,
+            max: None,
+            name: None,
+            name_location: None,
+            categories: (0..30)
+                .map(|i| format!("2024-01-{:02}", i + 1))
+                .collect(),
+            boundary_gap: true,
+            inverse: false,
+            split_number: None,
+            label_show: true,
+            label_formatter: None,
+            label_rotate: None,
+            axis_line_show: true,
+            split_line_show: true,
+            z: None,
+        }];
+        let planner = GridPlanner::new(800, 600, 60.0, &grids);
+        let specs = planner.plan(&[], &x_axes, &[]);
+
+        // 默认 bounds.y1 = 600 - 60 = 540；密集长标签应使绘图区向上收缩
+        assert!(
+            specs[0].bounds.y1 < 540.0,
+            "旋转标签后底部边距应增大，实际 y1={}",
+            specs[0].bounds.y1
+        );
+    }
+
+    #[test]
+    fn test_top_axis_dense_labels_grow_top_margin() {
+        let grids = make_grids(1);
+        // 顶部 X 轴 + 密集长标签 → 上边距增大（绘图区下移）
+        let x_axes = vec![AxisSpec {
+            axis_type: AxisType::Category,
+            position: AxisPosition::Top,
+            grid_index: 0,
+            min: None,
+            max: None,
+            name: None,
+            name_location: None,
+            categories: (0..30)
+                .map(|i| format!("2024-01-{:02}", i + 1))
+                .collect(),
+            boundary_gap: true,
+            inverse: false,
+            split_number: None,
+            label_show: true,
+            label_formatter: None,
+            label_rotate: None,
+            axis_line_show: true,
+            split_line_show: true,
+            z: None,
+        }];
+        let planner = GridPlanner::new(800, 600, 60.0, &grids);
+        let specs = planner.plan(&[], &x_axes, &[]);
+
+        // 默认 bounds.y0 = 60（header_height=60）；
+        // 顶部密集长标签需要 14 + 投影高 + 4 ≈ 78px 空间，
+        // 且不能侵入头部（header_height）区域 → 绘图区应明显下移
+        assert!(
+            specs[0].bounds.y0 > 60.0 + 60.0,
+            "顶部旋转标签后上边距应增大，实际 y0={}",
+            specs[0].bounds.y0
+        );
+    }
+
+    #[test]
+    fn test_short_labels_keep_default_margins() {
+        let grids = make_grids(1);
+        // 3 个短标签，横向能放下 → 不旋转、不额外预留
+        let x_axes = vec![AxisSpec {
+            axis_type: AxisType::Category,
+            position: AxisPosition::Bottom,
+            grid_index: 0,
+            min: None,
+            max: None,
+            name: None,
+            name_location: None,
+            categories: vec!["一".into(), "二".into(), "三".into()],
+            boundary_gap: true,
+            inverse: false,
+            split_number: None,
+            label_show: true,
+            label_formatter: None,
+            label_rotate: None,
+            axis_line_show: true,
+            split_line_show: true,
+            z: None,
+        }];
+        let planner = GridPlanner::new(800, 600, 60.0, &grids);
+        let specs = planner.plan(&[], &x_axes, &[]);
+
+        assert!((specs[0].bounds.y1 - 540.0).abs() < 1e-6);
     }
 
     #[test]

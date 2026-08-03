@@ -16,6 +16,7 @@ pub mod boxplot;
 pub mod bubble;
 pub mod candlestick;
 pub mod gauge;
+pub mod heatmap;
 pub mod grouped_bar;
 pub mod line;
 pub mod pie;
@@ -30,6 +31,7 @@ pub use boxplot::BoxplotBuilder;
 pub use bubble::BubbleBuilder;
 pub use candlestick::CandlestickBuilder;
 pub use gauge::GaugeBuilder;
+pub use heatmap::HeatmapBuilder;
 pub use grouped_bar::GroupedBarBuilder;
 pub use line::LineBuilder;
 pub use pie::PieBuilder;
@@ -54,6 +56,7 @@ pub fn build_typed_series(series: &TypedSeries, ctx: &RenderContext) -> Result<V
         TypedSeries::Bubble(s) => BubbleBuilder::build(s, ctx),
         TypedSeries::Candlestick(s) => CandlestickBuilder::build(s, ctx),
         TypedSeries::Boxplot(s) => BoxplotBuilder::build(s, ctx),
+        TypedSeries::Heatmap(s) => HeatmapBuilder::build(s, ctx),
         TypedSeries::Pie(s) => PieBuilder::build(s, ctx),
         TypedSeries::Radar(s) => RadarBuilder::build(s, ctx),
         TypedSeries::PolarBar(s) => PolarBarBuilder::build(s, ctx),
