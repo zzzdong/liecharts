@@ -367,61 +367,184 @@ fn main() {
     );
 
     // ── 23. 折线图 step 各种值 ──
-    check("line_step_start", r##"{ "series": [{"type":"line","data":[1,2,3],"step":"start"}] }"##);
-    check("line_step_middle", r##"{ "series": [{"type":"line","data":[1,2,3],"step":"middle"}] }"##);
-    check("line_step_end", r##"{ "series": [{"type":"line","data":[1,2,3],"step":"end"}] }"##);
-    check("line_step_true", r##"{ "series": [{"type":"line","data":[1,2,3],"step":true} ] }"##);
-    check("line_step_false", r##"{ "series": [{"type":"line","data":[1,2,3],"step":false} ] }"##);
+    check(
+        "line_step_start",
+        r##"{ "series": [{"type":"line","data":[1,2,3],"step":"start"}] }"##,
+    );
+    check(
+        "line_step_middle",
+        r##"{ "series": [{"type":"line","data":[1,2,3],"step":"middle"}] }"##,
+    );
+    check(
+        "line_step_end",
+        r##"{ "series": [{"type":"line","data":[1,2,3],"step":"end"}] }"##,
+    );
+    check(
+        "line_step_true",
+        r##"{ "series": [{"type":"line","data":[1,2,3],"step":true} ] }"##,
+    );
+    check(
+        "line_step_false",
+        r##"{ "series": [{"type":"line","data":[1,2,3],"step":false} ] }"##,
+    );
 
     // ── 24. 柱状图 barWidth/barGap/barCategoryGap 数值和百分比 ──
-    check("bar_width_number", r##"{ "series": [{"type":"bar","data":[1,2],"barWidth":20}] }"##);
-    check("bar_width_percent", r##"{ "series": [{"type":"bar","data":[1,2],"barWidth":"60%"}] }"##);
-    check("bar_gap_number", r##"{ "series": [{"type":"bar","data":[1,2],"barGap":"30%"}] }"##);
-    check("bar_category_gap_percent", r##"{ "series": [{"type":"bar","data":[1,2],"barCategoryGap":"20%"}] }"##);
-    check("bar_category_gap_number", r##"{ "series": [{"type":"bar","data":[1,2],"barCategoryGap":20}] }"##);
-    check("bar_max_width_number", r##"{ "series": [{"type":"bar","data":[1,2],"barMaxWidth":50}] }"##);
-    check("bar_min_width_number", r##"{ "series": [{"type":"bar","data":[1,2],"barMinWidth":5}] }"##);
+    check(
+        "bar_width_number",
+        r##"{ "series": [{"type":"bar","data":[1,2],"barWidth":20}] }"##,
+    );
+    check(
+        "bar_width_percent",
+        r##"{ "series": [{"type":"bar","data":[1,2],"barWidth":"60%"}] }"##,
+    );
+    check(
+        "bar_gap_number",
+        r##"{ "series": [{"type":"bar","data":[1,2],"barGap":"30%"}] }"##,
+    );
+    check(
+        "bar_category_gap_percent",
+        r##"{ "series": [{"type":"bar","data":[1,2],"barCategoryGap":"20%"}] }"##,
+    );
+    check(
+        "bar_category_gap_number",
+        r##"{ "series": [{"type":"bar","data":[1,2],"barCategoryGap":20}] }"##,
+    );
+    check(
+        "bar_max_width_number",
+        r##"{ "series": [{"type":"bar","data":[1,2],"barMaxWidth":50}] }"##,
+    );
+    check(
+        "bar_min_width_number",
+        r##"{ "series": [{"type":"bar","data":[1,2],"barMinWidth":5}] }"##,
+    );
 
     // ── 25. 饼图 radius/center 各种格式 ──
-    check("pie_radius_single_number", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":50}] }"##);
-    check("pie_radius_single_percent", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":"50%"}] }"##);
-    check("pie_radius_array_numbers", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":[0,75]}] }"##);
-    check("pie_radius_array_percents", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":["40%","70%"]}] }"##);
-    check("pie_radius_array_mixed", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":[0,"70%"]}] }"##);
-    check("pie_center_numbers", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"center":[400,300]}] }"##);
-    check("pie_center_percents", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"center":["50%","50%"]}] }"##);
-    check("pie_center_mixed", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"center":["50%",300]}] }"##);
-    check("pie_rose_area", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"roseType":"area"}] }"##);
-    check("pie_rose_radius", r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"roseType":"radius"}] }"##);
+    check(
+        "pie_radius_single_number",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":50}] }"##,
+    );
+    check(
+        "pie_radius_single_percent",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":"50%"}] }"##,
+    );
+    check(
+        "pie_radius_array_numbers",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":[0,75]}] }"##,
+    );
+    check(
+        "pie_radius_array_percents",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":["40%","70%"]}] }"##,
+    );
+    check(
+        "pie_radius_array_mixed",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"radius":[0,"70%"]}] }"##,
+    );
+    check(
+        "pie_center_numbers",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"center":[400,300]}] }"##,
+    );
+    check(
+        "pie_center_percents",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"center":["50%","50%"]}] }"##,
+    );
+    check(
+        "pie_center_mixed",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"center":["50%",300]}] }"##,
+    );
+    check(
+        "pie_rose_area",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"roseType":"area"}] }"##,
+    );
+    check(
+        "pie_rose_radius",
+        r##"{ "series": [{"type":"pie","data":[{"name":"a","value":10}],"roseType":"radius"}] }"##,
+    );
 
     // ── 26. 仪表盘 center/radius 各种格式 ──
-    check("gauge_center_numbers", r##"{ "series": [{"type":"gauge","data":[{"value":50}],"center":[400,300]}] }"##);
-    check("gauge_center_percents", r##"{ "series": [{"type":"gauge","data":[{"value":50}],"center":["50%","55%"]}] }"##);
-    check("gauge_radius_number", r##"{ "series": [{"type":"gauge","data":[{"value":50}],"radius":150}] }"##);
-    check("gauge_radius_percent", r##"{ "series": [{"type":"gauge","data":[{"value":50}],"radius":"75%"}] }"##);
-    check("gauge_detail_formatter", r##"{ "series": [{"type":"gauge","data":[{"value":50}],"detail":{"formatter":"{value}%"}}] }"##);
+    check(
+        "gauge_center_numbers",
+        r##"{ "series": [{"type":"gauge","data":[{"value":50}],"center":[400,300]}] }"##,
+    );
+    check(
+        "gauge_center_percents",
+        r##"{ "series": [{"type":"gauge","data":[{"value":50}],"center":["50%","55%"]}] }"##,
+    );
+    check(
+        "gauge_radius_number",
+        r##"{ "series": [{"type":"gauge","data":[{"value":50}],"radius":150}] }"##,
+    );
+    check(
+        "gauge_radius_percent",
+        r##"{ "series": [{"type":"gauge","data":[{"value":50}],"radius":"75%"}] }"##,
+    );
+    check(
+        "gauge_detail_formatter",
+        r##"{ "series": [{"type":"gauge","data":[{"value":50}],"detail":{"formatter":"{value}%"}}] }"##,
+    );
 
     // ── 27. 散点图 symbolSize 各种格式 ──
-    check("scatter_symbol_size_number", r##"{ "series": [{"type":"scatter","data":[[1,2],[3,4]],"symbolSize":10}] }"##);
-    check("scatter_symbol_size_array", r##"{ "series": [{"type":"scatter","data":[[1,2],[3,4]],"symbolSize":[10,20]}] }"##);
-    check("scatter_symbol_size_string", r##"{ "series": [{"type":"scatter","data":[[1,2],[3,4]],"symbolSize":"10"}] }"##);
+    check(
+        "scatter_symbol_size_number",
+        r##"{ "series": [{"type":"scatter","data":[[1,2],[3,4]],"symbolSize":10}] }"##,
+    );
+    check(
+        "scatter_symbol_size_array",
+        r##"{ "series": [{"type":"scatter","data":[[1,2],[3,4]],"symbolSize":[10,20]}] }"##,
+    );
+    check(
+        "scatter_symbol_size_string",
+        r##"{ "series": [{"type":"scatter","data":[[1,2],[3,4]],"symbolSize":"10"}] }"##,
+    );
 
     // ── 28. 轴 min/max 字符串值 ──
-    check("axis_min_dataMin", r##"{ "xAxis": {"type":"value","min":"dataMin"} }"##);
-    check("axis_max_dataMax", r##"{ "xAxis": {"type":"value","max":"dataMax"} }"##);
-    check("axis_min_max_both_strings", r##"{ "xAxis": {"type":"value","min":"dataMin","max":"dataMax"} }"##);
-    check("axis_min_number", r##"{ "xAxis": {"type":"value","min":0} }"##);
-    check("axis_max_number", r##"{ "xAxis": {"type":"value","max":100} }"##);
+    check(
+        "axis_min_dataMin",
+        r##"{ "xAxis": {"type":"value","min":"dataMin"} }"##,
+    );
+    check(
+        "axis_max_dataMax",
+        r##"{ "xAxis": {"type":"value","max":"dataMax"} }"##,
+    );
+    check(
+        "axis_min_max_both_strings",
+        r##"{ "xAxis": {"type":"value","min":"dataMin","max":"dataMax"} }"##,
+    );
+    check(
+        "axis_min_number",
+        r##"{ "xAxis": {"type":"value","min":0} }"##,
+    );
+    check(
+        "axis_max_number",
+        r##"{ "xAxis": {"type":"value","max":100} }"##,
+    );
 
     // ── 29. 轴 boundaryGap 数组格式 ──
-    check("boundary_gap_bool_true", r##"{ "xAxis": {"type":"category","data":["a","b"],"boundaryGap":true} }"##);
-    check("boundary_gap_bool_false", r##"{ "xAxis": {"type":"category","data":["a","b"],"boundaryGap":false} }"##);
-    check("boundary_gap_array_percents", r##"{ "xAxis": {"type":"category","data":["a","b"],"boundaryGap":["20%","20%"]} }"##);
-    check("boundary_gap_array_numbers", r##"{ "xAxis": {"type":"category","data":["a","b"],"boundaryGap":[0,0]} }"##);
+    check(
+        "boundary_gap_bool_true",
+        r##"{ "xAxis": {"type":"category","data":["a","b"],"boundaryGap":true} }"##,
+    );
+    check(
+        "boundary_gap_bool_false",
+        r##"{ "xAxis": {"type":"category","data":["a","b"],"boundaryGap":false} }"##,
+    );
+    check(
+        "boundary_gap_array_percents",
+        r##"{ "xAxis": {"type":"category","data":["a","b"],"boundaryGap":["20%","20%"]} }"##,
+    );
+    check(
+        "boundary_gap_array_numbers",
+        r##"{ "xAxis": {"type":"category","data":["a","b"],"boundaryGap":[0,0]} }"##,
+    );
 
     // ── 30. 轴 data 数字数组 ──
-    check("axis_data_numbers", r##"{ "xAxis": {"type":"category","data":[1,2,3,4,5]} }"##);
-    check("axis_data_mixed_numbers_strings", r##"{ "xAxis": {"type":"category","data":[1,"a",3]} }"##);
+    check(
+        "axis_data_numbers",
+        r##"{ "xAxis": {"type":"category","data":[1,2,3,4,5]} }"##,
+    );
+    check(
+        "axis_data_mixed_numbers_strings",
+        r##"{ "xAxis": {"type":"category","data":[1,"a",3]} }"##,
+    );
 
     // ── 31. 多 grid 多轴布局 ──
     check(
@@ -647,17 +770,44 @@ fn main() {
     );
 
     // ── 47. 颜色格式 ──
-    check("color_hex_short", r##"{ "color":"#f00","series":[{"type":"bar","data":[1]}] }"##);
-    check("color_hex_long", r##"{ "color":"#ff0000","series":[{"type":"bar","data":[1]}] }"##);
-    check("color_rgb", r##"{ "color":"rgb(255,0,0)","series":[{"type":"bar","data":[1]}] }"##);
-    check("color_rgba", r##"{ "color":"rgba(255,0,0,0.5)","series":[{"type":"bar","data":[1]}] }"##);
-    check("color_named", r##"{ "color":"red","series":[{"type":"bar","data":[1]}] }"##);
+    check(
+        "color_hex_short",
+        r##"{ "color":"#f00","series":[{"type":"bar","data":[1]}] }"##,
+    );
+    check(
+        "color_hex_long",
+        r##"{ "color":"#ff0000","series":[{"type":"bar","data":[1]}] }"##,
+    );
+    check(
+        "color_rgb",
+        r##"{ "color":"rgb(255,0,0)","series":[{"type":"bar","data":[1]}] }"##,
+    );
+    check(
+        "color_rgba",
+        r##"{ "color":"rgba(255,0,0,0.5)","series":[{"type":"bar","data":[1]}] }"##,
+    );
+    check(
+        "color_named",
+        r##"{ "color":"red","series":[{"type":"bar","data":[1]}] }"##,
+    );
 
     // ── 48. 线条样式 ──
-    check("line_style_solid", r##"{ "series":[{"type":"line","data":[1,2],"lineStyle":{"type":"solid"}}] }"##);
-    check("line_style_dashed", r##"{ "series":[{"type":"line","data":[1,2],"lineStyle":{"type":"dashed"}}] }"##);
-    check("line_style_dotted", r##"{ "series":[{"type":"line","data":[1,2],"lineStyle":{"type":"dotted"}}] }"##);
-    check("line_style_width_number", r##"{ "series":[{"type":"line","data":[1,2],"lineStyle":{"width":3}}] }"##);
+    check(
+        "line_style_solid",
+        r##"{ "series":[{"type":"line","data":[1,2],"lineStyle":{"type":"solid"}}] }"##,
+    );
+    check(
+        "line_style_dashed",
+        r##"{ "series":[{"type":"line","data":[1,2],"lineStyle":{"type":"dashed"}}] }"##,
+    );
+    check(
+        "line_style_dotted",
+        r##"{ "series":[{"type":"line","data":[1,2],"lineStyle":{"type":"dotted"}}] }"##,
+    );
+    check(
+        "line_style_width_number",
+        r##"{ "series":[{"type":"line","data":[1,2],"lineStyle":{"width":3}}] }"##,
+    );
 
     // ── 49. 面积样式 ──
     check(
@@ -777,8 +927,14 @@ fn main() {
     );
 
     // ── 56. 轴反转/对数轴 ──
-    check("axis_inverse_true", r##"{ "xAxis":{"type":"category","data":["a","b"],"inverse":true} }"##);
-    check("axis_log_type", r##"{ "xAxis":{"type":"log","min":1,"max":1000,"logBase":10} }"##);
+    check(
+        "axis_inverse_true",
+        r##"{ "xAxis":{"type":"category","data":["a","b"],"inverse":true} }"##,
+    );
+    check(
+        "axis_log_type",
+        r##"{ "xAxis":{"type":"log","min":1,"max":1000,"logBase":10} }"##,
+    );
     check("axis_time_type", r##"{ "xAxis":{"type":"time"} }"##);
 
     // ── 57. 饼图标签 ──
@@ -867,7 +1023,10 @@ fn main() {
     );
 
     // ── 62. 空数据系列 ──
-    check("series_empty_data", r##"{ "series":[{"type":"line","data":[]}] }"##);
+    check(
+        "series_empty_data",
+        r##"{ "series":[{"type":"line","data":[]}] }"##,
+    );
     check("series_no_data", r##"{ "series":[{"type":"line"}] }"##);
 
     // ── 63. 系列 ID 和名称 ──
@@ -877,15 +1036,33 @@ fn main() {
     );
 
     // ── 64. tooltip 触发方式 ──
-    check("tooltip_trigger_axis", r##"{ "tooltip":{"trigger":"axis"},"series":[{"type":"line","data":[1,2]}] }"##);
-    check("tooltip_trigger_item", r##"{ "tooltip":{"trigger":"item"},"series":[{"type":"pie","data":[{"name":"a","value":1}]}] }"##);
-    check("tooltip_trigger_none", r##"{ "tooltip":{"trigger":"none"},"series":[{"type":"line","data":[1,2]}] }"##);
+    check(
+        "tooltip_trigger_axis",
+        r##"{ "tooltip":{"trigger":"axis"},"series":[{"type":"line","data":[1,2]}] }"##,
+    );
+    check(
+        "tooltip_trigger_item",
+        r##"{ "tooltip":{"trigger":"item"},"series":[{"type":"pie","data":[{"name":"a","value":1}]}] }"##,
+    );
+    check(
+        "tooltip_trigger_none",
+        r##"{ "tooltip":{"trigger":"none"},"series":[{"type":"line","data":[1,2]}] }"##,
+    );
 
     // ── 65. legend 位置和方向 ──
-    check("legend_left_right", r##"{ "legend":{"left":"right","data":["a"]} }"##);
-    check("legend_orient_vertical", r##"{ "legend":{"orient":"vertical","left":"left","data":["a"]} }"##);
+    check(
+        "legend_left_right",
+        r##"{ "legend":{"left":"right","data":["a"]} }"##,
+    );
+    check(
+        "legend_orient_vertical",
+        r##"{ "legend":{"orient":"vertical","left":"left","data":["a"]} }"##,
+    );
     check("legend_show_false", r##"{ "legend":{"show":false} }"##);
-    check("legend_type_scroll", r##"{ "legend":{"type":"scroll","data":["a","b","c"]} }"##);
+    check(
+        "legend_type_scroll",
+        r##"{ "legend":{"type":"scroll","data":["a","b","c"]} }"##,
+    );
 
     // ── 66. title 富文本 ──
     check(

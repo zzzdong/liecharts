@@ -18,18 +18,15 @@ use crate::{
         axis_renderer,
         builder::build_typed_series,
         color_assigner::ColorAssigner,
-        data_processor,
-        decorator,
+        data_processor, decorator,
         grid_planner::GridPlanner,
-        materializer::{materialize_all},
+        materializer::materialize_all,
         types::{
             ChartSpec, ChartType, ColorContext, ResolvedAxisRanges, SubplotSpec, TextMeasurer,
         },
     },
     theme::Theme,
-    visual::{
-        FillStrokeStyle, VisualElement, Z_BACKGROUND,
-    },
+    visual::{FillStrokeStyle, VisualElement, Z_BACKGROUND},
 };
 
 /// 从 ChartSpec 构建图表（新 API 入口）
@@ -38,7 +35,11 @@ pub fn build_chart_from_spec(spec: &ChartSpec, theme: &Theme) -> Result<Vec<Visu
 }
 
 /// 从 ChartOption 构建图表（旧 API 入口）
-pub fn build_chart(option: &crate::option::ChartOption, width: u32, height: u32) -> Result<Vec<VisualElement>> {
+pub fn build_chart(
+    option: &crate::option::ChartOption,
+    width: u32,
+    height: u32,
+) -> Result<Vec<VisualElement>> {
     build_chart_with_theme(option, width, height, &Theme::echarts())
 }
 
@@ -55,10 +56,7 @@ pub fn build_chart_with_theme(
 }
 
 /// 内部的 ChartSpec 管线（统一入口，仅依赖 ChartSpec + Theme）
-fn build_chart_internal(
-    spec: &ChartSpec,
-    theme: &Theme,
-) -> Result<Vec<VisualElement>> {
+fn build_chart_internal(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualElement>> {
     let width = spec.width;
     let height = spec.height;
 
@@ -66,12 +64,7 @@ fn build_chart_internal(
     let header_height = decorator::estimate_header_height(spec, theme);
 
     // 1. 布局规划
-    let planner = GridPlanner::new(
-        width,
-        height,
-        header_height,
-        &spec.grids,
-    );
+    let planner = GridPlanner::new(width, height, header_height, &spec.grids);
     let specs: Vec<SubplotSpec> = planner.plan(&spec.series, &spec.x_axes, &spec.y_axes);
 
     // 2. 解析轴范围
@@ -117,8 +110,15 @@ fn build_chart_internal(
         if is_table_subplot {
             continue;
         }
-        let axis_elements =
-            axis_renderer::render_axes(subplot, &spec.series, &spec.x_axes, &spec.y_axes, &axis_ranges, &colors, &mut text_measurer);
+        let axis_elements = axis_renderer::render_axes(
+            subplot,
+            &spec.series,
+            &spec.x_axes,
+            &spec.y_axes,
+            &axis_ranges,
+            &colors,
+            &mut text_measurer,
+        );
         all_elements.extend(axis_elements);
     }
 
@@ -146,10 +146,8 @@ fn build_chart_internal(
             // 复用同一次 materialize 的结果，直接取第一个雷达系列的 indicators
             // 绘制指示器标签（仅一次），避免对每个系列重复 materialize
             if let crate::pipeline::typed_series::TypedSeries::Radar(radar) = &typed_series {
-                let indicator_elements = crate::pipeline::builder::radar::build_radar_indicators(
-                    radar,
-                    subplot.bounds,
-                );
+                let indicator_elements =
+                    crate::pipeline::builder::radar::build_radar_indicators(radar, subplot.bounds);
                 all_elements.extend(indicator_elements);
             }
 
@@ -159,9 +157,8 @@ fn build_chart_internal(
     }
 
     // 7. 渲染装饰元素（标题、图例、轴名称）
-    let (decorator_elements, _title_height) = decorator::render_all_decorators(
-        spec, width, height, &specs, &colors, theme,
-    );
+    let (decorator_elements, _title_height) =
+        decorator::render_all_decorators(spec, width, height, &specs, &colors, theme);
     all_elements.extend(decorator_elements);
 
     // 10. 计算文本布局

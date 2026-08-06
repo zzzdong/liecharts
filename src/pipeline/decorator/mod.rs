@@ -5,18 +5,20 @@
 //! - 产生 `Vec<VisualElement>`
 //! - 不修改任何管线状态，纯函数式渲染
 
-mod title;
-mod legend;
 mod axis_name;
+mod legend;
+mod title;
 
-pub use title::render_title;
-pub use legend::render_legend;
 pub use axis_name::render_axis_name;
+pub use legend::render_legend;
+pub use title::render_title;
 
-use crate::pipeline::types::{ChartSpec, ColorContext, SubplotSpec};
-use crate::text::{compute_text_offset, create_text_layout};
-use crate::theme::Theme;
-use crate::visual::VisualElement;
+use crate::{
+    pipeline::types::{ChartSpec, ColorContext, SubplotSpec},
+    text::{compute_text_offset, create_text_layout},
+    theme::Theme,
+    visual::VisualElement,
+};
 
 /// 计算文本布局（为所有未计算布局的 TextRun 执行真实文本排布）
 ///

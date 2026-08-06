@@ -365,7 +365,9 @@ impl<'de> Deserialize<'de> for LenientNumber {
             type Value = LenientNumber;
 
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                f.write_str("a number, \"auto\", a percentage string like \"50%\", or a category string")
+                f.write_str(
+                    "a number, \"auto\", a percentage string like \"50%\", or a category string",
+                )
             }
 
             fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
@@ -739,10 +741,7 @@ impl<'de> Deserialize<'de> for LenientAxisData {
             fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 f.write_str("a string array or number array")
             }
-            fn visit_seq<A: de::SeqAccess<'de>>(
-                self,
-                mut seq: A,
-            ) -> Result<Self::Value, A::Error> {
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
                 let mut result = Vec::new();
                 while let Some(v) = seq.next_element::<serde_json::Value>()? {
                     match v {
@@ -751,7 +750,7 @@ impl<'de> Deserialize<'de> for LenientAxisData {
                         _ => {
                             return Err(de::Error::custom(
                                 "expected string or number in axis data",
-                            ))
+                            ));
                         }
                     }
                 }
@@ -846,10 +845,7 @@ impl<'de> Deserialize<'de> for LenientBoundaryGap {
             fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
                 Ok(LenientBoundaryGap::Bool(v))
             }
-            fn visit_seq<A: de::SeqAccess<'de>>(
-                self,
-                mut seq: A,
-            ) -> Result<Self::Value, A::Error> {
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
                 let a = seq
                     .next_element::<LenientNumber>()?
                     .ok_or_else(|| de::Error::custom("expected at least 2 elements"))?;
@@ -976,14 +972,12 @@ impl LegendDataItem {
 /// 区间值：数字或 "auto"。
 ///
 /// 用于 `axisLabel.interval` 等 ECharts 字段。
-#[derive(Debug, Clone, PartialEq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub enum IntervalOption {
     #[default]
     Auto,
     Fixed(f64),
 }
-
 
 impl Serialize for IntervalOption {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
@@ -1195,7 +1189,6 @@ pub struct HandleOption {
     pub throttle: Option<f64>,
 }
 
-
 // ═══════════════════════════════════════════════════════════════════
 // Dataset — 数据集声明
 // ═══════════════════════════════════════════════════════════════════
@@ -1211,7 +1204,6 @@ pub struct DatasetOption {
     pub from_dataset_index: Option<usize>,
     pub from_transform_result: Option<usize>,
 }
-
 
 // ═══════════════════════════════════════════════════════════════════
 // Animation — 动画配置
@@ -1558,7 +1550,6 @@ pub struct ShadowStyleOption {
     pub opacity: Option<f64>,
 }
 
-
 // ═══════════════════════════════════════════════════════════════════
 // MarkPoint / MarkLine / MarkArea — 标记系列
 // ═══════════════════════════════════════════════════════════════════
@@ -1610,7 +1601,6 @@ pub struct MarkPointDataOption {
     pub symbol_size: Option<LenientNumber>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]
@@ -1626,7 +1616,6 @@ pub struct MarkLineOption {
     pub precision: Option<usize>,
     pub silent: Option<bool>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1649,7 +1638,6 @@ pub struct MarkLineDataOption {
     pub symbol_size: Option<Vec<f64>>,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]
@@ -1662,7 +1650,6 @@ pub struct MarkAreaOption {
     pub animation_delay: Option<f64>,
     pub silent: Option<bool>,
 }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1682,7 +1669,6 @@ pub struct MarkAreaDataOption {
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
 }
-
 
 // ═══════════════════════════════════════════════════════════════════
 // SeriesEncode — 数据编码
@@ -1704,7 +1690,6 @@ pub struct SeriesEncodeOption {
     pub tooltip: Option<OneOrMany<StringOrInt>>,
     pub series_name: Option<OneOrMany<StringOrInt>>,
 }
-
 
 /// Root chart configuration.
 ///
@@ -2082,9 +2067,7 @@ impl AxisOption {
     }
 
     pub fn data(mut self, data: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        self.data = Some(LenientAxisData(
-            data.into_iter().map(Into::into).collect(),
-        ));
+        self.data = Some(LenientAxisData(data.into_iter().map(Into::into).collect()));
         self
     }
 
@@ -2336,20 +2319,22 @@ impl<'de> Deserialize<'de> for LenientLineColor {
                     let mut segs = Vec::with_capacity(elems.len());
                     for e in &elems {
                         if let serde_json::Value::Array(pair) = e
-                            && pair.len() >= 2 {
-                                let n = LenientNumber::deserialize(&pair[0])
-                                    .unwrap_or(LenientNumber::Number(0.0));
-                                let c = ColorOption::deserialize(&pair[1]).unwrap_or_default();
-                                segs.push((n, c));
-                            }
+                            && pair.len() >= 2
+                        {
+                            let n = LenientNumber::deserialize(&pair[0])
+                                .unwrap_or(LenientNumber::Number(0.0));
+                            let c = ColorOption::deserialize(&pair[1]).unwrap_or_default();
+                            segs.push((n, c));
+                        }
                     }
                     Ok(LenientLineColor::Segments(segs))
                 } else {
                     // 单色数组（区域配色），取第一个
                     if let Some(first) = elems.into_iter().next()
-                        && let Ok(c) = ColorOption::deserialize(first) {
-                            return Ok(LenientLineColor::Single(c));
-                        }
+                        && let Ok(c) = ColorOption::deserialize(first)
+                    {
+                        return Ok(LenientLineColor::Single(c));
+                    }
                     Ok(LenientLineColor::Single(ColorOption::default()))
                 }
             }
@@ -2531,7 +2516,8 @@ impl<'de> Deserialize<'de> for LenientTableHeader {
                 Ok(LenientTableHeader::Columns(cols))
             }
             fn visit_map<A: de::MapAccess<'de>>(self, map: A) -> Result<Self::Value, A::Error> {
-                let cfg = TableHeaderOption::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                let cfg =
+                    TableHeaderOption::deserialize(de::value::MapAccessDeserializer::new(map))?;
                 Ok(LenientTableHeader::Config(Box::new(cfg)))
             }
         }
@@ -2687,7 +2673,9 @@ pub struct TableCellStyleOption {
 
 impl Default for TableCellStyleOption {
     fn default() -> Self {
-        Self { padding: Some(LenientPadding::Single(8.0)) }
+        Self {
+            padding: Some(LenientPadding::Single(8.0)),
+        }
     }
 }
 
@@ -2976,15 +2964,19 @@ impl<'de> Deserialize<'de> for CandlestickDataPoint {
             where
                 A: de::SeqAccess<'de>,
             {
-                let open = seq.next_element::<f64>()?
+                let open = seq
+                    .next_element::<f64>()?
                     .ok_or_else(|| de::Error::invalid_length(0, &"at least 4 elements"))?;
-                let close = seq.next_element::<f64>()?
+                let close = seq
+                    .next_element::<f64>()?
                     .ok_or_else(|| de::Error::invalid_length(1, &"at least 4 elements"))?;
-                let low = seq.next_element::<f64>()?
+                let low = seq
+                    .next_element::<f64>()?
                     .ok_or_else(|| de::Error::invalid_length(2, &"at least 4 elements"))?;
-                let high = seq.next_element::<f64>()?
+                let high = seq
+                    .next_element::<f64>()?
                     .ok_or_else(|| de::Error::invalid_length(3, &"at least 4 elements"))?;
-                
+
                 Ok(CandlestickDataPoint {
                     open,
                     close,
@@ -3118,13 +3110,15 @@ impl<'de> Deserialize<'de> for BoxplotDataPoint {
                 use serde::de::Error;
                 let mut values = [0.0; 5];
                 for (i, slot) in values.iter_mut().enumerate() {
-                    *slot = seq
-                        .next_element::<f64>()?
-                        .ok_or_else(|| A::Error::custom(format!("expected 5 numbers, got only {}", i)))?;
+                    *slot = seq.next_element::<f64>()?.ok_or_else(|| {
+                        A::Error::custom(format!("expected 5 numbers, got only {}", i))
+                    })?;
                 }
                 // 忽略多余元素
                 while seq.next_element::<serde_json::Value>()?.is_some() {}
-                Ok(BoxplotDataPoint::new(values[0], values[1], values[2], values[3], values[4]))
+                Ok(BoxplotDataPoint::new(
+                    values[0], values[1], values[2], values[3], values[4],
+                ))
             }
 
             fn visit_map<A: de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
@@ -3150,7 +3144,9 @@ impl<'de> Deserialize<'de> for BoxplotDataPoint {
                             other
                         )));
                     }
-                    None => return Err(A::Error::custom("boxplot data object missing value field")),
+                    None => {
+                        return Err(A::Error::custom("boxplot data object missing value field"));
+                    }
                 };
 
                 if arr.len() < 5 {
@@ -3164,8 +3160,9 @@ impl<'de> Deserialize<'de> for BoxplotDataPoint {
                     .into_iter()
                     .take(5)
                     .map(|v| {
-                        v.as_f64()
-                            .ok_or_else(|| A::Error::custom("boxplot value array element must be a number"))
+                        v.as_f64().ok_or_else(|| {
+                            A::Error::custom("boxplot value array element must be a number")
+                        })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
 
@@ -3407,19 +3404,14 @@ impl<'de> Deserialize<'de> for HeatmapDataPoint {
                 f.write_str("a [x, y, value] array or {value: [x, y, value], name?} object")
             }
 
-            fn visit_seq<A: de::SeqAccess<'de>>(
-                self,
-                mut seq: A,
-            ) -> Result<Self::Value, A::Error> {
+            fn visit_seq<A: de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
                 use serde::de::Error;
                 let mut elems: Vec<serde_json::Value> = Vec::new();
                 while let Some(e) = seq.next_element::<serde_json::Value>()? {
                     elems.push(e);
                 }
                 if elems.is_empty() {
-                    return Err(A::Error::custom(
-                        "heatmap data array must not be empty",
-                    ));
+                    return Err(A::Error::custom("heatmap data array must not be empty"));
                 }
 
                 // 容错解析：
@@ -3428,16 +3420,14 @@ impl<'de> Deserialize<'de> for HeatmapDataPoint {
                 // - [date/name, value]（如 calendar 热力图）降级为 (0, 0, value)
                 let mut values = [0.0; 3];
                 if elems[0].is_string() {
-                    values[2] = elems
-                        .get(1)
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0);
+                    values[2] = elems.get(1).and_then(|v| v.as_f64()).unwrap_or(0.0);
                 } else {
                     for (i, slot) in values.iter_mut().enumerate() {
                         if let Some(v) = elems.get(i)
-                            && let Some(n) = v.as_f64() {
-                                *slot = n;
-                            }
+                            && let Some(n) = v.as_f64()
+                        {
+                            *slot = n;
+                        }
                     }
                 }
                 Ok(HeatmapDataPoint::new(values[0], values[1], values[2]))
@@ -3470,16 +3460,15 @@ impl<'de> Deserialize<'de> for HeatmapDataPoint {
                         } else {
                             for (i, slot) in values.iter_mut().enumerate() {
                                 if let Some(v) = arr.get(i)
-                                    && let Some(n) = v.as_f64() {
-                                        *slot = n;
-                                    }
+                                    && let Some(n) = v.as_f64()
+                                {
+                                    *slot = n;
+                                }
                             }
                         }
                         (values[0], values[1], values[2])
                     }
-                    Some(serde_json::Value::Number(n)) => {
-                        (0.0, 0.0, n.as_f64().unwrap_or(0.0))
-                    }
+                    Some(serde_json::Value::Number(n)) => (0.0, 0.0, n.as_f64().unwrap_or(0.0)),
                     Some(other) => {
                         return Err(A::Error::custom(format!(
                             "heatmap value must be an array or number, got {:?}",
@@ -3621,8 +3610,6 @@ impl Default for RadarNameOption {
         }
     }
 }
-
-
 
 /// 单个值或数组（泛型版本），用于 ECharts 中接受单值或数组的字段。
 ///
@@ -4318,7 +4305,9 @@ impl<'de> Visitor<'de> for DataPointVisitor {
             if let serde_json::Value::Null = v {
                 return Ok(DataPoint::Value(f64::NAN));
             }
-            return Err(A::Error::custom("single element array must be a number or null"));
+            return Err(A::Error::custom(
+                "single element array must be a number or null",
+            ));
         }
         // 2+ 元素：取前两个进行解析，第三个及之后（如 bubble 的 size）忽略
         let first = elems.swap_remove(0);
@@ -4652,10 +4641,9 @@ impl<'de> Deserialize<'de> for PositionOption {
                         .map_err(|_| de::Error::custom(format!("invalid percentage: {}", value)))?;
                     Ok(PositionOption::Percent(v))
                 } else if value.ends_with("px") {
-                    let v = value
-                        .trim_end_matches("px")
-                        .parse::<f64>()
-                        .map_err(|_| de::Error::custom(format!("invalid pixel value: {}", value)))?;
+                    let v = value.trim_end_matches("px").parse::<f64>().map_err(|_| {
+                        de::Error::custom(format!("invalid pixel value: {}", value))
+                    })?;
                     Ok(PositionOption::Pixel(v))
                 } else {
                     match value {
@@ -4826,9 +4814,8 @@ impl<'de> Deserialize<'de> for ColorOption {
             type Value = ColorOption;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str(
-                    "a hex/rgb/rgba color string, a CSS keyword, or a gradient object",
-                )
+                formatter
+                    .write_str("a hex/rgb/rgba color string, a CSS keyword, or a gradient object")
             }
 
             fn visit_str<E: de::Error>(self, value: &str) -> Result<ColorOption, E> {
@@ -4889,15 +4876,14 @@ impl<'de> Deserialize<'de> for ColorOption {
                     for stop in &stops {
                         if let Some(c) = stop.get("color").or_else(|| stop.get("Color")) {
                             if let Some(s) = c.as_str() {
-                                if let Some(parsed) = ColorOption::from_hex(s)
-                                    .or_else(|| ColorOption::from_rgba(s))
+                                if let Some(parsed) =
+                                    ColorOption::from_hex(s).or_else(|| ColorOption::from_rgba(s))
                                 {
                                     return Ok(parsed);
                                 }
                             } else if let Value::Object(_) = c {
                                 // 嵌套渐变 colorStop，递归降级
-                                let nested =
-                                    serde_json::from_value::<ColorOption>(c.clone()).ok();
+                                let nested = serde_json::from_value::<ColorOption>(c.clone()).ok();
                                 if let Some(parsed) = nested {
                                     return Ok(parsed);
                                 }
@@ -4907,11 +4893,11 @@ impl<'de> Deserialize<'de> for ColorOption {
                 }
                 // 没有 colorStops，但对象本身有 color 字段
                 if let Some(Value::String(s)) = first_color
-                    && let Some(parsed) = ColorOption::from_hex(&s)
-                        .or_else(|| ColorOption::from_rgba(&s))
-                    {
-                        return Ok(parsed);
-                    }
+                    && let Some(parsed) =
+                        ColorOption::from_hex(&s).or_else(|| ColorOption::from_rgba(&s))
+                {
+                    return Ok(parsed);
+                }
                 // 渐变对象但解析失败：降级为黑色 sentinel，避免报错
                 Ok(ColorOption::new(0, 0, 0))
             }

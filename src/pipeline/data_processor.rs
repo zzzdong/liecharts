@@ -17,11 +17,7 @@ pub fn process_series(series: &mut [SeriesSpec]) {
     for s in series.iter_mut() {
         // 采样处理
         if let Some((sampling_type, threshold)) = s.sampling {
-            s.data = crate::sampling::SamplingProcessor::sample(
-                &s.data,
-                threshold,
-                sampling_type,
-            );
+            s.data = crate::sampling::SamplingProcessor::sample(&s.data, threshold, sampling_type);
         }
     }
 }
@@ -29,15 +25,21 @@ pub fn process_series(series: &mut [SeriesSpec]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pipeline::dataframe::{DataFrame, DataValue, Series};
-    use crate::pipeline::types::{LineConfig, SeriesConfig};
-    use crate::sampling::SamplingType;
+    use crate::{
+        pipeline::{
+            dataframe::{DataFrame, DataValue, Series},
+            types::{LineConfig, SeriesConfig},
+        },
+        sampling::SamplingType,
+    };
 
     #[test]
     fn test_sampling_processor_reduces_rows() {
         let mut df = DataFrame::new();
         let x: Vec<DataValue> = (0..100).map(|i| DataValue::Float(i as f64)).collect();
-        let y: Vec<DataValue> = (0..100).map(|i| DataValue::Float((i as f64).sin())).collect();
+        let y: Vec<DataValue> = (0..100)
+            .map(|i| DataValue::Float((i as f64).sin()))
+            .collect();
         df.add_column(Series::new("x", x));
         df.add_column(Series::new("y", y));
 
@@ -52,15 +54,25 @@ mod tests {
         let mut series = vec![spec];
         process_series(&mut series);
 
-        assert!(series[0].data.row_count() <= 10, "Sampled data should have at most 10 rows, got {}", series[0].data.row_count());
-        assert!(series[0].data.row_count() >= 2, "Sampled data should have at least 2 rows (first + last), got {}", series[0].data.row_count());
+        assert!(
+            series[0].data.row_count() <= 10,
+            "Sampled data should have at most 10 rows, got {}",
+            series[0].data.row_count()
+        );
+        assert!(
+            series[0].data.row_count() >= 2,
+            "Sampled data should have at least 2 rows (first + last), got {}",
+            series[0].data.row_count()
+        );
     }
 
     #[test]
     fn test_no_sampling_keeps_all_rows() {
         let mut df = DataFrame::new();
         let x: Vec<DataValue> = (0..50).map(|i| DataValue::Float(i as f64)).collect();
-        let y: Vec<DataValue> = (0..50).map(|i| DataValue::Float((i as f64).cos())).collect();
+        let y: Vec<DataValue> = (0..50)
+            .map(|i| DataValue::Float((i as f64).cos()))
+            .collect();
         df.add_column(Series::new("x", x));
         df.add_column(Series::new("y", y));
 
@@ -75,6 +87,10 @@ mod tests {
         assert_eq!(spec.data.row_count(), 50);
         let mut series = vec![spec];
         process_series(&mut series);
-        assert_eq!(series[0].data.row_count(), 50, "Without sampling, all rows should be preserved");
+        assert_eq!(
+            series[0].data.row_count(),
+            50,
+            "Without sampling, all rows should be preserved"
+        );
     }
 }

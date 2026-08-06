@@ -26,9 +26,7 @@ impl SeriesMaterializer for HeatmapMaterializer {
         let cfg = match &spec.config {
             SeriesConfig::Heatmap(c) => c,
             _ => {
-                return Err(ChartError::InvalidConfig(
-                    "Expected HeatmapConfig".into(),
-                ));
+                return Err(ChartError::InvalidConfig("Expected HeatmapConfig".into()));
             }
         };
 
@@ -144,9 +142,7 @@ fn axis_slot_count(range: &ResolvedAxisRange, data: &[DataValue]) -> usize {
                     nums.push(bits);
                 }
             }
-            DataValue::String(s)
-                if !strs.contains(&s.as_str()) =>
-            {
+            DataValue::String(s) if !strs.contains(&s.as_str()) => {
                 strs.push(s.as_str());
             }
             _ => {}
@@ -231,10 +227,7 @@ mod tests {
 
     #[test]
     fn test_value_to_color_endpoints_and_midpoint() {
-        let colors = vec![
-            Color::new(0, 0, 0),
-            Color::new(255, 255, 255),
-        ];
+        let colors = vec![Color::new(0, 0, 0), Color::new(255, 255, 255)];
         assert_eq!(value_to_color(0.0, 0.0, 10.0, &colors), colors[0]);
         assert_eq!(value_to_color(10.0, 0.0, 10.0, &colors), colors[1]);
         let mid = value_to_color(5.0, 0.0, 10.0, &colors);

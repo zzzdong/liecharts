@@ -544,9 +544,10 @@ fn materialize_side_by_side_bars(
             (y_col, x_col)
         };
 
-        if let (Some(value_series), Some(cat_series)) =
-            (series.data.get_column(value_col), series.data.get_column(category_col))
-        {
+        if let (Some(value_series), Some(cat_series)) = (
+            series.data.get_column(value_col),
+            series.data.get_column(category_col),
+        ) {
             for i in 0..series.data.row_count() {
                 let value = value_series.as_f64(i).unwrap_or(0.0);
                 let category = cat_series.as_string(i).unwrap_or_default();

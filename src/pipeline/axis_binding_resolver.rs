@@ -92,9 +92,9 @@ impl<'a> AxisBindingResolver<'a> {
                 && specs.iter().any(|s| {
                     s.y_axis_indices.contains(&axis_idx)
                         && s.series_indices.iter().any(|&si| {
-                            self.series.get(si).is_some_and(|ser| {
-                                matches!(ser.chart_type(), ChartType::Heatmap)
-                            })
+                            self.series
+                                .get(si)
+                                .is_some_and(|ser| matches!(ser.chart_type(), ChartType::Heatmap))
                         })
                 });
 
@@ -535,8 +535,9 @@ impl<'a> AxisBindingResolver<'a> {
 
 /// 统计一列数据中 distinct 坐标的数量（浮点 + 字符串），用于热力图轴范围。
 fn count_distinct_values(col: &crate::pipeline::dataframe::Series) -> usize {
-    use crate::pipeline::dataframe::DataValue;
     use std::collections::HashSet;
+
+    use crate::pipeline::dataframe::DataValue;
 
     let mut nums = HashSet::new();
     let mut strs = HashSet::new();
@@ -603,11 +604,7 @@ mod tests {
         assert_eq!(ranges.ranges.len(), 2);
     }
 
-    fn final_range(
-        data_min: f64,
-        data_max: f64,
-        force_include_zero: bool,
-    ) -> (f64, f64) {
+    fn final_range(data_min: f64, data_max: f64, force_include_zero: bool) -> (f64, f64) {
         let resolver = AxisBindingResolver::new(&[], &[], &[]);
         resolver.compute_final_range(
             None,
@@ -679,9 +676,10 @@ mod tests {
                 .map(|i| DataValue::Float(i as f64))
                 .collect(),
         ));
-        df.add_column(
-            Series::new("y", values.into_iter().map(DataValue::Float).collect()),
-        );
+        df.add_column(Series::new(
+            "y",
+            values.into_iter().map(DataValue::Float).collect(),
+        ));
         SeriesSpec {
             name: name.into(),
             data: df,

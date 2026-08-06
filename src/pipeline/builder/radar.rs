@@ -10,7 +10,9 @@ use crate::{
         builder::{SeriesBuilder, Z_SERIES_LINE, Z_SERIES_POINT},
         typed_series::{RadarSeries, RenderContext},
     },
-    visual::{Color, FillStrokeStyle, Stroke, TextAlign, TextBaseline, TextStyle, VisualElement, Z_LABEL},
+    visual::{
+        Color, FillStrokeStyle, Stroke, TextAlign, TextBaseline, TextStyle, VisualElement, Z_LABEL,
+    },
 };
 
 pub struct RadarBuilder;

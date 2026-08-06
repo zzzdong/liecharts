@@ -3,8 +3,10 @@
 //! 验证从 ECharts JSON 配置文件到 ChartOption 的解析，
 //! 以及到 ChartSpec 的转换是否正常。
 
-use liecharts::option::{ChartOption, SeriesOption, TooltipTrigger};
-use liecharts::pipeline::compat::chart_option_to_chart_spec;
+use liecharts::{
+    option::{ChartOption, SeriesOption, TooltipTrigger},
+    pipeline::compat::chart_option_to_chart_spec,
+};
 
 /// 读取 JSON 文件内容
 fn read_json(name: &str) -> String {
@@ -50,7 +52,10 @@ fn parse_and_convert(name: &str) {
 #[test]
 fn test_line_chart() {
     let option = parse_json("line");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("月度趋势图"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("月度趋势图")
+    );
     assert_eq!(option.series.len(), 2);
     assert_eq!(series_type_name(&option.series[0]), "line");
     assert_eq!(series_type_name(&option.series[1]), "line");
@@ -63,7 +68,10 @@ fn test_line_chart() {
 #[test]
 fn test_bar_chart() {
     let option = parse_json("bar");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("月度销售数据"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("月度销售数据")
+    );
     assert_eq!(option.series.len(), 1);
     assert_eq!(series_type_name(&option.series[0]), "bar");
     let spec = chart_option_to_chart_spec(&option, 800, 600);
@@ -75,7 +83,10 @@ fn test_bar_chart() {
 #[test]
 fn test_pie_chart() {
     let option = parse_json("pie");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("访问来源"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("访问来源")
+    );
     assert_eq!(option.series.len(), 1);
     assert_eq!(series_type_name(&option.series[0]), "pie");
     let spec = chart_option_to_chart_spec(&option, 800, 600);
@@ -85,7 +96,10 @@ fn test_pie_chart() {
 #[test]
 fn test_radar_chart() {
     let option = parse_json("radar");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("产品能力雷达图"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("产品能力雷达图")
+    );
     assert_eq!(option.series.len(), 2);
     assert_eq!(series_type_name(&option.series[0]), "radar");
     assert_eq!(series_type_name(&option.series[1]), "radar");
@@ -100,7 +114,10 @@ fn test_radar_chart() {
 #[test]
 fn test_scatter_chart() {
     let option = parse_json("scatter");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("散点图示例"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("散点图示例")
+    );
     assert_eq!(option.series.len(), 2);
     assert_eq!(series_type_name(&option.series[0]), "scatter");
     assert_eq!(series_type_name(&option.series[1]), "scatter");
@@ -113,7 +130,10 @@ fn test_scatter_chart() {
 #[test]
 fn test_gauge_chart() {
     let option = parse_json("gauge");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("仪表盘示例"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("仪表盘示例")
+    );
     assert_eq!(option.series.len(), 1);
     assert_eq!(series_type_name(&option.series[0]), "gauge");
     let spec = chart_option_to_chart_spec(&option, 800, 600);
@@ -123,7 +143,10 @@ fn test_gauge_chart() {
 #[test]
 fn test_bubble_chart() {
     let option = parse_json("bubble");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("编程语言数据分析"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("编程语言数据分析")
+    );
     assert_eq!(option.series.len(), 1);
     assert_eq!(series_type_name(&option.series[0]), "bubble");
     let spec = chart_option_to_chart_spec(&option, 800, 600);
@@ -135,7 +158,10 @@ fn test_bubble_chart() {
 #[test]
 fn test_polar_bar_chart() {
     let option = parse_json("polar_bar");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("极坐标柱状图"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("极坐标柱状图")
+    );
     assert_eq!(option.series.len(), 1);
     assert_eq!(series_type_name(&option.series[0]), "polarBar");
     let spec = chart_option_to_chart_spec(&option, 800, 600);
@@ -174,14 +200,10 @@ fn test_candlestick_chart() {
     assert_eq!(opens.last(), Some(&120.0));
 
     // 端到端渲染不应报 Missing column
-    let elements = liecharts::chart::Chart::new(
-        option,
-        liecharts::theme::Theme::echarts(),
-        800,
-        600,
-    )
-    .collect_visual_elements()
-    .expect("candlestick 渲染不应失败");
+    let elements =
+        liecharts::chart::Chart::new(option, liecharts::theme::Theme::echarts(), 800, 600)
+            .collect_visual_elements()
+            .expect("candlestick 渲染不应失败");
     assert!(!elements.is_empty());
 }
 
@@ -225,9 +247,10 @@ fn test_heatmap_chart() {
     assert!(series.data.get_column("value").is_some());
 
     // 端到端渲染：应生成 56 个热力图单元格
-    let elements = liecharts::chart::Chart::new(option, liecharts::theme::Theme::echarts(), 800, 600)
-        .collect_visual_elements()
-        .expect("heatmap 渲染不应失败");
+    let elements =
+        liecharts::chart::Chart::new(option, liecharts::theme::Theme::echarts(), 800, 600)
+            .collect_visual_elements()
+            .expect("heatmap 渲染不应失败");
     assert!(!elements.is_empty());
 }
 
@@ -291,10 +314,16 @@ fn test_table_chart() {
 #[test]
 fn test_line_with_tooltip_and_mark() {
     let option = parse_json("line_with_tooltip_and_mark");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("带标注的折线图"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("带标注的折线图")
+    );
     assert!(option.tooltip.is_some());
     let tooltip = option.tooltip.as_ref().unwrap();
-    assert!(matches!(tooltip.trigger.as_ref().unwrap(), TooltipTrigger::Axis));
+    assert!(matches!(
+        tooltip.trigger.as_ref().unwrap(),
+        TooltipTrigger::Axis
+    ));
     assert!(tooltip.axis_pointer.is_some());
     assert!(option.legend.is_some());
     assert_eq!(option.series.len(), 2);
@@ -308,7 +337,10 @@ fn test_line_with_tooltip_and_mark() {
 #[test]
 fn test_bar_with_visual_map() {
     let option = parse_json("bar_with_visual_map");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("带 visualMap 的柱状图"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("带 visualMap 的柱状图")
+    );
     assert!(option.tooltip.is_some());
     assert!(option.visual_map.is_some());
     let vm_slice = option.visual_map.as_ref().unwrap().as_slice();
@@ -327,7 +359,10 @@ fn test_bar_with_visual_map() {
 #[test]
 fn test_pie_rose() {
     let option = parse_json("pie_rose");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("南丁格尔玫瑰图"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("南丁格尔玫瑰图")
+    );
     assert!(option.tooltip.is_some());
     assert!(option.legend.is_some());
     assert_eq!(option.series.len(), 1);
@@ -345,7 +380,10 @@ fn test_pie_rose() {
 #[test]
 fn test_stacked_bar() {
     let option = parse_json("stacked_bar");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("堆叠柱状图"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("堆叠柱状图")
+    );
     assert!(option.tooltip.is_some());
     assert!(option.legend.is_some());
     assert_eq!(option.series.len(), 3);
@@ -361,7 +399,10 @@ fn test_stacked_bar() {
 #[test]
 fn test_area_smooth() {
     let option = parse_json("area_smooth");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("平滑面积图"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("平滑面积图")
+    );
     assert!(option.tooltip.is_some());
     assert!(option.legend.is_some());
     assert_eq!(option.series.len(), 3);
@@ -377,7 +418,10 @@ fn test_area_smooth() {
 #[test]
 fn test_radar_multi() {
     let option = parse_json("radar_multi");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("多雷达对比图"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("多雷达对比图")
+    );
     assert!(option.tooltip.is_some());
     assert!(option.legend.is_some());
     assert!(option.radar.is_some());
@@ -392,7 +436,10 @@ fn test_radar_multi() {
 #[test]
 fn test_scatter_datazoom() {
     let option = parse_json("scatter_datazoom");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("散点图 - 身高体重分布"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("散点图 - 身高体重分布")
+    );
     assert!(option.tooltip.is_some());
     assert!(option.legend.is_some());
     assert!(option.visual_map.is_some());
@@ -411,7 +458,10 @@ fn test_scatter_datazoom() {
 #[test]
 fn test_gauge_detailed() {
     let option = parse_json("gauge_detailed");
-    assert_eq!(option.title.as_ref().unwrap().text.as_deref(), Some("仪表盘 - 多指标"));
+    assert_eq!(
+        option.title.as_ref().unwrap().text.as_deref(),
+        Some("仪表盘 - 多指标")
+    );
     assert!(option.tooltip.is_some());
     assert_eq!(option.series.len(), 1);
     assert_eq!(series_type_name(&option.series[0]), "gauge");
@@ -422,12 +472,32 @@ fn test_gauge_detailed() {
 // ── 批量兼容性测试 ──
 
 const ALL_CHART_FILES: &[&str] = &[
-    "line", "bar", "pie", "radar", "scatter", "gauge", "bubble",
-    "polar_bar", "polar_scatter", "candlestick", "boxplot", "heatmap", "area", "stacked_area",
-    "dual_y_axis", "mixed", "table",
-    "line_with_tooltip_and_mark", "bar_with_visual_map", "pie_rose",
-    "stacked_bar", "area_smooth", "radar_multi", "scatter_datazoom",
-    "gauge_detailed", "polymorphic_fields",
+    "line",
+    "bar",
+    "pie",
+    "radar",
+    "scatter",
+    "gauge",
+    "bubble",
+    "polar_bar",
+    "polar_scatter",
+    "candlestick",
+    "boxplot",
+    "heatmap",
+    "area",
+    "stacked_area",
+    "dual_y_axis",
+    "mixed",
+    "table",
+    "line_with_tooltip_and_mark",
+    "bar_with_visual_map",
+    "pie_rose",
+    "stacked_bar",
+    "area_smooth",
+    "radar_multi",
+    "scatter_datazoom",
+    "gauge_detailed",
+    "polymorphic_fields",
 ];
 
 #[test]
@@ -476,11 +546,7 @@ fn test_dataset_with_encode() {
 
     // 验证每个系列的数据来自 dataset
     for (i, series) in spec.series.iter().enumerate() {
-        assert!(
-            series.data.row_count() > 0,
-            "系列 {} 的数据不应为空",
-            i
-        );
+        assert!(series.data.row_count() > 0, "系列 {} 的数据不应为空", i);
         // 验证 x 列有 4 个品类名
         let x_col = series.data.get_column("x").unwrap();
         assert_eq!(x_col.len(), 4, "系列 {} 应有 4 行数据", i);
@@ -491,7 +557,10 @@ fn test_dataset_with_encode() {
     let x_vals: Vec<String> = (0..s0.data.row_count())
         .filter_map(|i| s0.data.get_column("x").and_then(|c| c.as_string(i)))
         .collect();
-    assert_eq!(x_vals, vec!["Matcha Latte", "Milk Tea", "Cheese Cocoa", "Walnut Brownie"]);
+    assert_eq!(
+        x_vals,
+        vec!["Matcha Latte", "Milk Tea", "Cheese Cocoa", "Walnut Brownie"]
+    );
 
     let y_vals: Vec<f64> = (0..s0.data.row_count())
         .filter_map(|i| s0.data.get_column("y").and_then(|c| c.as_f64(i)))
@@ -519,7 +588,8 @@ fn test_dataset_no_header() {
         ]
     }"#;
 
-    let option: ChartOption = serde_json::from_str(json).expect("无 header 的 dataset JSON 解析失败");
+    let option: ChartOption =
+        serde_json::from_str(json).expect("无 header 的 dataset JSON 解析失败");
     let spec = chart_option_to_chart_spec(&option, 800, 600);
     assert_eq!(spec.series.len(), 1);
     let series = &spec.series[0];
@@ -580,21 +650,28 @@ fn test_dataset_with_pie_encode() {
 // 目标：任意 LLM 输出的 ECharts JSON 都能解析成功，并尽可能渲染。
 
 mod tolerance_tests {
-    use super::*;
     use liecharts::option::LegendDataItem;
+
+    use super::*;
 
     /// 11 种未知 series 类型都应该被解析为 `SeriesOption::Unknown`，而不是报错。
     /// （boxplot、heatmap 已被实现为正式支持的类型，故从列表中移除。）
     #[test]
     fn test_tolerates_unknown_series_types() {
         for ty in [
-            "funnel", "treemap", "sunburst", "sankey", "graph", "tree",
-            "effectScatter", "pictorialBar", "parallel", "themeRiver", "custom",
+            "funnel",
+            "treemap",
+            "sunburst",
+            "sankey",
+            "graph",
+            "tree",
+            "effectScatter",
+            "pictorialBar",
+            "parallel",
+            "themeRiver",
+            "custom",
         ] {
-            let json = format!(
-                r#"{{ "series": [ {{ "type": "{}", "data": [] }} ] }}"#,
-                ty
-            );
+            let json = format!(r#"{{ "series": [ {{ "type": "{}", "data": [] }} ] }}"#, ty);
             let opt: ChartOption = serde_json::from_str(&json)
                 .unwrap_or_else(|e| panic!("未知 series 类型 {} 不应报错: {}", ty, e));
             assert!(
@@ -622,8 +699,7 @@ mod tolerance_tests {
                 {"type":"bar","datasetIndex":0,"encode":{"x":"product","y":"2015"}}
             ]
         }"#;
-        let opt: ChartOption =
-            serde_json::from_str(json).expect("dataset 字符串 encode 应能解析");
+        let opt: ChartOption = serde_json::from_str(json).expect("dataset 字符串 encode 应能解析");
         let spec = chart_option_to_chart_spec(&opt, 800, 600);
         assert_eq!(spec.series.len(), 1);
         assert_eq!(spec.series[0].data.row_count(), 2);
@@ -651,8 +727,7 @@ mod tolerance_tests {
                 "axisLine":{"onZero":true,"symbol":["none","arrow"]}
             }
         }"#;
-        let opt: ChartOption =
-            serde_json::from_str(json).expect("axisLine.symbol 数组应能解析");
+        let opt: ChartOption = serde_json::from_str(json).expect("axisLine.symbol 数组应能解析");
         // 转换为 ChartSpec 也不应报错
         let _spec = chart_option_to_chart_spec(&opt, 800, 600);
     }
@@ -665,8 +740,7 @@ mod tolerance_tests {
                 "data":[{"name":"a","icon":"rect"},{"name":"b"},"c"]
             }
         }"#;
-        let opt: ChartOption =
-            serde_json::from_str(json).expect("legend.data 含对象应能解析");
+        let opt: ChartOption = serde_json::from_str(json).expect("legend.data 含对象应能解析");
         let data = opt.legend.unwrap().data.unwrap();
         assert_eq!(data.len(), 3);
         // {"name":"a","icon":"rect"} 和 {"name":"b"} 都是对象，"c" 是字符串
@@ -727,8 +801,7 @@ mod tolerance_tests {
     #[test]
     fn test_color_field_accepts_single_string() {
         let json = r##"{ "color": "#c23531", "series": [{"type":"bar","data":[1,2]}] }"##;
-        let opt: ChartOption =
-            serde_json::from_str(json).expect("color 单值字符串应能解析");
+        let opt: ChartOption = serde_json::from_str(json).expect("color 单值字符串应能解析");
         assert!(opt.color.is_some());
         let _spec = chart_option_to_chart_spec(&opt, 800, 600);
     }
@@ -748,8 +821,7 @@ mod tolerance_tests {
             "axisPointer": {},
             "series": [{"type":"bar","data":[1,2]}]
         }"#;
-        let opt: ChartOption =
-            serde_json::from_str(json).expect("顶层未知字段应被忽略不报错");
+        let opt: ChartOption = serde_json::from_str(json).expect("顶层未知字段应被忽略不报错");
         assert_eq!(opt.series.len(), 1);
     }
 
@@ -791,8 +863,7 @@ mod tolerance_tests {
     fn test_tolerates_string_bool_in_animation() {
         // 字符串 "true"
         let json = r#"{ "series": [{"type":"bar","data":[1,2],"animation":"true"}] }"#;
-        let opt: ChartOption =
-            serde_json::from_str(json).expect("animation:\"true\" 应能解析");
+        let opt: ChartOption = serde_json::from_str(json).expect("animation:\"true\" 应能解析");
         match &opt.series[0] {
             SeriesOption::Bar(b) => {
                 let anim = b.animation.as_ref().expect("animation 字段应被设置");
@@ -815,8 +886,7 @@ mod tolerance_tests {
 
         // 真 bool true
         let json_bool = r#"{ "series": [{"type":"bar","data":[1,2],"animation":true}] }"#;
-        let opt: ChartOption =
-            serde_json::from_str(json_bool).expect("animation:true 应能解析");
+        let opt: ChartOption = serde_json::from_str(json_bool).expect("animation:true 应能解析");
         match &opt.series[0] {
             SeriesOption::Bar(b) => {
                 let anim = b.animation.as_ref().expect("animation 字段应被设置");

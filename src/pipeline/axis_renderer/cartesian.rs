@@ -10,7 +10,7 @@ use crate::{
     pipeline::{
         axis_label::{auto_rotate, label_step, rotated_bounds},
         types::{
-            AxisSpec, AxisType, AxisPosition, ColorContext, ResolvedAxisRanges, SubplotSpec,
+            AxisPosition, AxisSpec, AxisType, ColorContext, ResolvedAxisRanges, SubplotSpec,
             TextMeasurer,
         },
     },
@@ -84,9 +84,7 @@ fn choose_y_label_layout(
     colors: &ColorContext,
 ) -> (f64, usize) {
     let (max_w, max_h) = measure_labels(labels, measurer, colors);
-    let rotation = user_rotate_deg
-        .map(|deg| deg.to_radians())
-        .unwrap_or(0.0);
+    let rotation = user_rotate_deg.map(|deg| deg.to_radians()).unwrap_or(0.0);
     let (_, projected_h) = rotated_bounds(max_w, max_h, rotation);
     (rotation, label_step(projected_h, slot_h))
 }
@@ -108,30 +106,38 @@ fn measure_labels(
     (max_w, max_h)
 }
 
-/// 生成单个 X 轴标签：旋转时以锚点为中心，未旋转时保持"顶部贴齐锚点"的现有外观。
+/// 生成单个 X 轴标签。
+///
+/// - 未旋转（0°）：文本块顶部居中对齐锚点（水平居中于数据点）。
+/// - 旋转时：文本块开头（左上角）对准锚点（数据点），围绕该点旋转。
+///   底部 X 轴顺时针旋转（文本向右下延伸）、顶部 X 轴逆时针旋转（文本向右上延伸）。
+///
+/// 这样锚点（= 旋转中心 = 文本左上角）就是旋转后 y 坐标最小的点，
+/// 因此旋转长标签时文本整体保持在锚点一侧、不跨过坐标轴侵入绘图区，
+/// 也避免"绕顶边中点旋转"导致文本条上端甩进绘图区。
 fn push_x_label(
     elements: &mut Vec<VisualElement>,
     text: &str,
     anchor: Point,
     rotation: f64,
+    downward: bool,
     colors: &ColorContext,
     measurer: &mut TextMeasurer,
 ) {
     let style = label_style(colors);
-    let (w, h) = measurer.measure(text, &style);
-    let (x, y) = if rotation == 0.0 {
-        (anchor.x - w / 2.0, anchor.y)
+    let (w, _h) = measurer.measure(text, &style);
+    let (x, y, draw_rotation) = if rotation == 0.0 {
+        (anchor.x - w / 2.0, anchor.y, 0.0)
     } else {
-        let (s, c) = rotation.sin_cos();
-        let off_x = w / 2.0 * c - h / 2.0 * s;
-        let off_y = w / 2.0 * s + h / 2.0 * c;
-        (anchor.x - off_x, anchor.y - off_y)
+        // 文本开头对准数据点；顶部轴用负角使文本向右上延伸
+        let draw_rotation = if downward { rotation } else { -rotation };
+        (anchor.x, anchor.y, draw_rotation)
     };
     elements.push(VisualElement::TextRun {
         text: text.to_string(),
         position: Point::new(x, y),
         style,
-        rotation,
+        rotation: draw_rotation,
         max_width: None,
         layout: None,
         z_index: Z_LABEL,
@@ -334,6 +340,8 @@ impl CartesianAxisRenderer {
         } else {
             bounds.y1 + 14.0
         };
+        // 底部 X 轴标签向下延伸（顺时针旋转），顶部 X 轴标签向上延伸（逆时针）
+        let downward = axis_cfg.position != AxisPosition::Top;
         if axis_cfg.axis_type == AxisType::Category {
             let n = axis_cfg.categories.len();
             if n == 0 {
@@ -363,6 +371,7 @@ impl CartesianAxisRenderer {
                     &labels[i],
                     Point::new(cx, label_y),
                     rotation,
+                    downward,
                     colors,
                     text_measurer,
                 );
@@ -384,6 +393,7 @@ impl CartesianAxisRenderer {
                         &labels[last_idx],
                         Point::new(cx, label_y),
                         rotation,
+                        downward,
                         colors,
                         text_measurer,
                     );
@@ -436,6 +446,7 @@ impl CartesianAxisRenderer {
                     &labels[i],
                     Point::new(positions[i], label_y),
                     rotation,
+                    downward,
                     colors,
                     text_measurer,
                 );
@@ -455,6 +466,7 @@ impl CartesianAxisRenderer {
                         &labels[last_idx],
                         Point::new(positions[last_idx], label_y),
                         rotation,
+                        downward,
                         colors,
                         text_measurer,
                     );
@@ -483,7 +495,9 @@ impl CartesianAxisRenderer {
             (bounds.x0 - 8.0, TextAlign::Right)
         };
 
-        // 生成单个 Y 轴标签：未旋转时保持现有对齐方式，旋转时以锚点为中心
+        // 生成单个 Y 轴标签：未旋转时保持现有对齐方式，旋转时锚点对齐旋转后包围盒
+        // 的外侧边缘（左侧轴贴右边缘、右侧轴贴左边缘），并保持垂直居中于刻度，
+        // 避免旋转标签被拉到轴线另一侧而侵入绘图区。
         let push_y_label = |elements: &mut Vec<VisualElement>,
                             text: &str,
                             anchor: Point,
@@ -510,11 +524,17 @@ impl CartesianAxisRenderer {
                 let style = label_style(colors);
                 let (w, h) = text_measurer.measure(text, &style);
                 let (s, c) = rotation.sin_cos();
-                let off_x = w / 2.0 * c - h / 2.0 * s;
-                let off_y = w / 2.0 * s + h / 2.0 * c;
+                let rotated_w = w * c.abs() + h * s.abs();
+                let rotated_h = w * s.abs() + h * c.abs();
+                let x = if is_right {
+                    anchor.x
+                } else {
+                    anchor.x - rotated_w
+                };
+                let y = anchor.y - rotated_h / 2.0;
                 elements.push(VisualElement::TextRun {
                     text: text.to_string(),
-                    position: Point::new(anchor.x - off_x, anchor.y - off_y),
+                    position: Point::new(x, y),
                     style,
                     rotation,
                     max_width: None,
@@ -651,14 +671,12 @@ impl CartesianAxisRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::pipeline::types::{ResolvedAxisRange, ResolvedAxisRanges};
     use vello_cpu::kurbo::Rect;
 
-    fn category_axis(
-        position: AxisPosition,
-        categories: Vec<String>,
-    ) -> AxisSpec {
+    use super::*;
+    use crate::pipeline::types::{ResolvedAxisRange, ResolvedAxisRanges};
+
+    fn category_axis(position: AxisPosition, categories: Vec<String>) -> AxisSpec {
         AxisSpec {
             axis_type: AxisType::Category,
             position,
@@ -827,5 +845,91 @@ mod tests {
             "顶部 X 轴标签应绘制在绘图区上方，实际 {} 个",
             labels_above.len()
         );
+    }
+
+    #[test]
+    fn test_rotated_bottom_x_label_stays_below_axis() {
+        // 底部 X 轴 + 长日期标签 → 自动旋转 90°。
+        // 回归：旋转标签的文本开头（左上角，= 旋转中心）应对准数据点正下方
+        // （轴线 y1 + 14px），文本整体向下延伸、不跨过坐标轴侵入绘图区。
+        let subplot = SubplotSpec {
+            id: 0,
+            bounds: Rect::new(50.0, 30.0, 750.0, 500.0), // x1=750, y1=500
+            series_indices: vec![],
+            x_axis_indices: vec![0],
+            y_axis_indices: vec![0],
+        };
+        let x_axes = vec![category_axis(
+            AxisPosition::Bottom,
+            vec![
+                "2026-07-27 00:00:00 +0800 CST".into(),
+                "2026-07-28 00:00:00 +0800 CST".into(),
+                "2026-07-29 00:00:00 +0800 CST".into(),
+                "2026-07-30 00:00:00 +0800 CST".into(),
+                "2026-07-31 00:00:00 +0800 CST".into(),
+                "2026-08-01 00:00:00 +0800 CST".into(),
+                "2026-08-02 00:00:00 +0800 CST".into(),
+            ],
+        )];
+        let y_axes = vec![category_axis(AxisPosition::Left, vec!["A".into()])];
+        let ranges = ResolvedAxisRanges {
+            ranges: vec![
+                ResolvedAxisRange {
+                    axis_index: 0,
+                    position: AxisPosition::Bottom,
+                    axis_type: AxisType::Category,
+                    min: 0.0,
+                    max: 7.0,
+                    is_user_defined: false,
+                    tick_count_hint: None,
+                    categories: vec![],
+                },
+                ResolvedAxisRange {
+                    axis_index: 0,
+                    position: AxisPosition::Left,
+                    axis_type: AxisType::Category,
+                    min: 0.0,
+                    max: 1.0,
+                    is_user_defined: false,
+                    tick_count_hint: None,
+                    categories: vec![],
+                },
+            ],
+        };
+        let colors = ColorContext::default();
+        let mut measurer = TextMeasurer::new();
+
+        let elements = CartesianAxisRenderer::render(
+            &subplot,
+            &x_axes,
+            &y_axes,
+            &ranges,
+            &colors,
+            &mut measurer,
+        );
+
+        let rotated_x_labels: Vec<&VisualElement> = elements
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e,
+                    VisualElement::TextRun { position, rotation, .. }
+                        if *rotation != 0.0 && position.x >= subplot.bounds.x0 && position.x <= subplot.bounds.x1
+                )
+            })
+            .collect();
+        assert!(!rotated_x_labels.is_empty(), "长标签应自动旋转");
+        for label in &rotated_x_labels {
+            if let VisualElement::TextRun { position, .. } = label {
+                // 文本开头（旋转中心）应贴齐锚点（y1 + 14），不能上移到 y1 之上（侵入绘图区）
+                let expected_top = subplot.bounds.y1 + 14.0;
+                assert!(
+                    (*position).y >= expected_top - 1.0,
+                    "旋转标签文本开头应位于轴线下方（>={}), 实际 y={}",
+                    expected_top,
+                    position.y
+                );
+            }
+        }
     }
 }

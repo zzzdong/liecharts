@@ -28,11 +28,11 @@ pub fn render_title(
         let subtitle_style = theme.get_subtitle_text_style();
 
         // 从 ColorContext 获取颜色
-        let title_color = title.color.unwrap_or(
-            Color::from_hex(&title_style.color).unwrap_or(colors.text_color)
-        );
+        let title_color = title
+            .color
+            .unwrap_or(Color::from_hex(&title_style.color).unwrap_or(colors.text_color));
         let subtitle_color = title.subcolor.unwrap_or(
-            Color::from_hex(&subtitle_style.color).unwrap_or(colors.text_secondary_color)
+            Color::from_hex(&subtitle_style.color).unwrap_or(colors.text_secondary_color),
         );
 
         let mut y_offset = 24.0;

@@ -18,12 +18,7 @@ pub struct GridPlanner<'a> {
 }
 
 impl<'a> GridPlanner<'a> {
-    pub fn new(
-        width: u32,
-        height: u32,
-        header_height: f64,
-        grids: &'a [GridSpec],
-    ) -> Self {
+    pub fn new(width: u32, height: u32, header_height: f64, grids: &'a [GridSpec]) -> Self {
         Self {
             total_width: width,
             total_height: height,
@@ -199,10 +194,7 @@ impl<'a> GridPlanner<'a> {
                         (acc.0.max(s.0), acc.1.max(s.1))
                     });
                 // Y 轴不自动旋转，仅尊重用户配置
-                let rotation = axis
-                    .label_rotate
-                    .map(|deg| deg.to_radians())
-                    .unwrap_or(0.0);
+                let rotation = axis.label_rotate.map(|deg| deg.to_radians()).unwrap_or(0.0);
                 let (rotated_w, _) = rotated_bounds(max_w, max_h, rotation);
                 let needed = Y_LABEL_GAP + rotated_w + LABEL_PAD;
                 let is_right = axis.position == AxisPosition::Right;
@@ -386,9 +378,7 @@ mod tests {
             max: None,
             name: None,
             name_location: None,
-            categories: (0..30)
-                .map(|i| format!("2024-01-{:02}", i + 1))
-                .collect(),
+            categories: (0..30).map(|i| format!("2024-01-{:02}", i + 1)).collect(),
             boundary_gap: true,
             inverse: false,
             split_number: None,
@@ -422,9 +412,7 @@ mod tests {
             max: None,
             name: None,
             name_location: None,
-            categories: (0..30)
-                .map(|i| format!("2024-01-{:02}", i + 1))
-                .collect(),
+            categories: (0..30).map(|i| format!("2024-01-{:02}", i + 1)).collect(),
             boundary_gap: true,
             inverse: false,
             split_number: None,
@@ -495,10 +483,7 @@ mod tests {
                 contain_label: false,
             },
         ];
-        let series = vec![
-            make_series("S1", 0),
-            make_series("S2", 1),
-        ];
+        let series = vec![make_series("S1", 0), make_series("S2", 1)];
         let planner = GridPlanner::new(800, 600, 100.0, &grids);
         let specs = planner.plan(&series, &[], &[]);
 

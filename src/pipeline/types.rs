@@ -375,9 +375,9 @@ impl Default for HeatmapConfig {
             min: None,
             max: None,
             colors: vec![
-                Color::new(80, 163, 186),  // #50a3ba
-                Color::new(234, 199, 54),  // #eac736
-                Color::new(217, 78, 93),   // #d94e5d
+                Color::new(80, 163, 186), // #50a3ba
+                Color::new(234, 199, 54), // #eac736
+                Color::new(217, 78, 93),  // #d94e5d
             ],
             border_color: None,
             border_width: 0.0,

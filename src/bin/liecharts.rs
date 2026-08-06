@@ -57,8 +57,9 @@ fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
     // Read JSON config from file
-    let json_content = std::fs::read_to_string(&args.input)
-        .map_err(|e| anyhow::anyhow!("Failed to read input file {}: {}", args.input.display(), e))?;
+    let json_content = std::fs::read_to_string(&args.input).map_err(|e| {
+        anyhow::anyhow!("Failed to read input file {}: {}", args.input.display(), e)
+    })?;
 
     // Build chart from JSON
     let mut builder = ChartBuilder::from_option_json(&json_content)
@@ -86,7 +87,8 @@ fn main() -> anyhow::Result<()> {
         })?;
 
     // Build and render chart
-    let chart = builder.build(args.width, args.height)
+    let chart = builder
+        .build(args.width, args.height)
         .map_err(|e| anyhow::anyhow!("Failed to build chart: {}", e))?;
 
     let output_str = args.output.to_string_lossy().to_string();

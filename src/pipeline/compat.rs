@@ -7,20 +7,20 @@ use crate::{
     option::{self, ChartOption, PositionOption, PositionPreset, SeriesOption},
     pipeline::{
         dataframe::DataValue,
-        types::{
-            ChartSpec, SeriesConfig,
-        },
+        types::{ChartSpec, SeriesConfig},
     },
 };
 
 /// 将旧的 ChartOption 转换为新的 ChartSpec（反向兼容）
 pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32) -> ChartSpec {
-    use crate::pipeline::types::{
-        AxisPosition, AxisSpec, AxisType as NewAxisType, BarConfig, GridSpec, HeatmapConfig,
-        ItemStyleSpec, LegendSpec, LineConfig, PieConfig, ScatterConfig, SeriesSpec, StepType,
-        SymbolType, TitleSpec,
+    use crate::{
+        pipeline::types::{
+            AxisPosition, AxisSpec, AxisType as NewAxisType, BarConfig, GridSpec, HeatmapConfig,
+            ItemStyleSpec, LegendSpec, LineConfig, PieConfig, ScatterConfig, SeriesSpec, StepType,
+            SymbolType, TitleSpec,
+        },
+        sampling::SamplingType,
     };
-    use crate::sampling::SamplingType;
 
     let total_w = width as f64;
     let total_h = height as f64;
@@ -31,9 +31,15 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         .iter()
         .map(|g| {
             let left = g.left.as_ref().map(|p| resolve_position_option(p, total_w));
-            let right = g.right.as_ref().map(|p| resolve_position_option(p, total_w));
+            let right = g
+                .right
+                .as_ref()
+                .map(|p| resolve_position_option(p, total_w));
             let top = g.top.as_ref().map(|p| resolve_position_option(p, total_h));
-            let bottom = g.bottom.as_ref().map(|p| resolve_position_option(p, total_h));
+            let bottom = g
+                .bottom
+                .as_ref()
+                .map(|p| resolve_position_option(p, total_h));
             GridSpec {
                 left,
                 right,
@@ -105,11 +111,23 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 }),
                 inverse: a.inverse.unwrap_or(false),
                 split_number: None,
-                label_show: a.axis_label.as_ref().map(|l| l.show.unwrap_or(true)).unwrap_or(true),
+                label_show: a
+                    .axis_label
+                    .as_ref()
+                    .map(|l| l.show.unwrap_or(true))
+                    .unwrap_or(true),
                 label_formatter: a.axis_label.as_ref().and_then(|l| l.formatter.clone()),
                 label_rotate: a.axis_label.as_ref().and_then(|l| l.rotate),
-                axis_line_show: a.axis_line.as_ref().map(|l| l.show.unwrap_or(true)).unwrap_or(true),
-                split_line_show: a.split_line.as_ref().map(|l| l.show.unwrap_or(true)).unwrap_or(true),
+                axis_line_show: a
+                    .axis_line
+                    .as_ref()
+                    .map(|l| l.show.unwrap_or(true))
+                    .unwrap_or(true),
+                split_line_show: a
+                    .split_line
+                    .as_ref()
+                    .map(|l| l.show.unwrap_or(true))
+                    .unwrap_or(true),
                 z: a.z.or(a.zlevel),
             }
         })
@@ -160,11 +178,23 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 }),
                 inverse: a.inverse.unwrap_or(false),
                 split_number: None,
-                label_show: a.axis_label.as_ref().map(|l| l.show.unwrap_or(true)).unwrap_or(true),
+                label_show: a
+                    .axis_label
+                    .as_ref()
+                    .map(|l| l.show.unwrap_or(true))
+                    .unwrap_or(true),
                 label_formatter: a.axis_label.as_ref().and_then(|l| l.formatter.clone()),
                 label_rotate: a.axis_label.as_ref().and_then(|l| l.rotate),
-                axis_line_show: a.axis_line.as_ref().map(|l| l.show.unwrap_or(true)).unwrap_or(true),
-                split_line_show: a.split_line.as_ref().map(|l| l.show.unwrap_or(true)).unwrap_or(true),
+                axis_line_show: a
+                    .axis_line
+                    .as_ref()
+                    .map(|l| l.show.unwrap_or(true))
+                    .unwrap_or(true),
+                split_line_show: a
+                    .split_line
+                    .as_ref()
+                    .map(|l| l.show.unwrap_or(true))
+                    .unwrap_or(true),
                 z: a.z.or(a.zlevel),
             }
         })
@@ -201,28 +231,29 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
     ) -> crate::pipeline::dataframe::DataFrame {
         let (ds_idx, encode) = get_series_dataset_info(s);
         if let Some(idx) = ds_idx
-            && let Some(ds_df) = datasets.get(idx) {
-                if let Some(enc) = &encode {
-                    return extract_encoded_columns(ds_df, enc).0;
-                }
-                if ds_df.get_column("x").is_some() && ds_df.get_column("y").is_some() {
-                    return ds_df.clone();
-                }
-                if ds_df.column_count() >= 2 {
-                    let cols = ds_df.column_names().to_vec();
-                    let mut df = crate::pipeline::dataframe::DataFrame::new();
-                    df.add_column(crate::pipeline::dataframe::Series::new(
-                        x_col,
-                        ds_df.get_column(&cols[0]).unwrap().data.clone(),
-                    ));
-                    df.add_column(crate::pipeline::dataframe::Series::new(
-                        y_col,
-                        ds_df.get_column(&cols[1]).unwrap().data.clone(),
-                    ));
-                    return df;
-                }
+            && let Some(ds_df) = datasets.get(idx)
+        {
+            if let Some(enc) = &encode {
+                return extract_encoded_columns(ds_df, enc).0;
+            }
+            if ds_df.get_column("x").is_some() && ds_df.get_column("y").is_some() {
                 return ds_df.clone();
             }
+            if ds_df.column_count() >= 2 {
+                let cols = ds_df.column_names().to_vec();
+                let mut df = crate::pipeline::dataframe::DataFrame::new();
+                df.add_column(crate::pipeline::dataframe::Series::new(
+                    x_col,
+                    ds_df.get_column(&cols[0]).unwrap().data.clone(),
+                ));
+                df.add_column(crate::pipeline::dataframe::Series::new(
+                    y_col,
+                    ds_df.get_column(&cols[1]).unwrap().data.clone(),
+                ));
+                return df;
+            }
+            return ds_df.clone();
+        }
         fallback_data()
     }
 
@@ -292,7 +323,11 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             crate::option::LenientStep::Middle => Some(StepType::Middle),
                             crate::option::LenientStep::End => Some(StepType::End),
                         }),
-                        line_width: ls.line_style.as_ref().and_then(|l| l.width.as_ref().and_then(|w| w.as_number())).unwrap_or(2.0),
+                        line_width: ls
+                            .line_style
+                            .as_ref()
+                            .and_then(|l| l.width.as_ref().and_then(|w| w.as_number()))
+                            .unwrap_or(2.0),
                         area: ls.area_style.is_some(),
                         area_color: ls
                             .area_style
@@ -300,7 +335,9 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .and_then(|a| a.color.as_ref())
                             .and_then(|c| {
                                 let v = c.as_vec();
-                                v.first().map(|first| crate::visual::Color::new(first.r, first.g, first.b))
+                                v.first().map(|first| {
+                                    crate::visual::Color::new(first.r, first.g, first.b)
+                                })
                             }),
                         area_opacity: ls
                             .area_style
@@ -322,13 +359,17 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                                 crate::option::SymbolType::None => SymbolType::None,
                             })
                             .unwrap_or(SymbolType::EmptyCircle),
-                        symbol_size: ls.symbol_size.as_ref().and_then(|v| v.as_number()).unwrap_or(4.0),
+                        symbol_size: ls
+                            .symbol_size
+                            .as_ref()
+                            .and_then(|v| v.as_number())
+                            .unwrap_or(4.0),
                         label_show: false,
                         label_font_size: 12.0,
                     };
                     SeriesSpec {
                         name,
-                        
+
                         data,
                         grid_index: ls.grid_index.unwrap_or(0),
                         x_axis_index: 0,
@@ -575,7 +616,9 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             DataValue::from(d.name.clone().unwrap_or_else(|| (i + 1).to_string()))
                         })
                         .collect();
-                    data.add_column(crate::pipeline::dataframe::Series::new("category", categories));
+                    data.add_column(crate::pipeline::dataframe::Series::new(
+                        "category", categories,
+                    ));
                     data.add_column(crate::pipeline::dataframe::Series::new(
                         "min",
                         bs.data.iter().map(|d| DataValue::from(d.min)).collect(),
@@ -615,7 +658,10 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                                 .as_ref()
                                 .map(|c| crate::visual::Color::new(c.r, c.g, c.b))
                         }),
-                        border_width: bs.item_style.as_ref().and_then(|is| is.border_width.as_ref().and_then(|v| v.as_number())),
+                        border_width: bs
+                            .item_style
+                            .as_ref()
+                            .and_then(|is| is.border_width.as_ref().and_then(|v| v.as_number())),
                         opacity: None,
                     };
                     SeriesSpec {
@@ -660,10 +706,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .item_style
                             .as_ref()
                             .and_then(|is| is.border_width.as_ref().and_then(|v| v.as_number())),
-                        opacity: hs
-                            .item_style
-                            .as_ref()
-                            .and_then(|is| is.opacity),
+                        opacity: hs.item_style.as_ref().and_then(|is| is.opacity),
                     };
                     let config = HeatmapConfig {
                         x_col: "x".into(),
@@ -674,11 +717,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         colors: vm_colors,
                         border_color: item_style.border_color,
                         border_width: item_style.border_width.unwrap_or(0.0),
-                        label_show: hs
-                            .label
-                            .as_ref()
-                            .and_then(|l| l.show)
-                            .unwrap_or(false),
+                        label_show: hs.label.as_ref().and_then(|l| l.show).unwrap_or(false),
                         label_font_size: hs
                             .label
                             .as_ref()
@@ -714,9 +753,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             r.indicator
                                 .as_ref()
                                 .map(|v| {
-                                    v.iter()
-                                        .filter_map(|i| i.name.clone())
-                                        .collect::<Vec<_>>()
+                                    v.iter().filter_map(|i| i.name.clone()).collect::<Vec<_>>()
                                 })
                                 .unwrap_or_default()
                         })
@@ -839,8 +876,16 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
             subtext: t.subtext.clone(),
             font_size: t.text_style.as_ref().and_then(|s| s.font_size),
             subfont_size: t.subtext_style.as_ref().and_then(|s| s.font_size),
-            color: t.text_style.as_ref().and_then(|s| s.color.as_ref()).map(|c| crate::visual::Color::new(c.r, c.g, c.b)),
-            subcolor: t.subtext_style.as_ref().and_then(|s| s.color.as_ref()).map(|c| crate::visual::Color::new(c.r, c.g, c.b)),
+            color: t
+                .text_style
+                .as_ref()
+                .and_then(|s| s.color.as_ref())
+                .map(|c| crate::visual::Color::new(c.r, c.g, c.b)),
+            subcolor: t
+                .subtext_style
+                .as_ref()
+                .and_then(|s| s.color.as_ref())
+                .map(|c| crate::visual::Color::new(c.r, c.g, c.b)),
         }),
         legend: option.legend.as_ref().map(|l| LegendSpec {
             show: l.show.unwrap_or(true),
@@ -851,7 +896,11 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 .iter()
                 .map(|i| i.name().to_string())
                 .collect(),
-            symbol_size: l.symbol_size.as_ref().and_then(|v| v.as_number()).unwrap_or(10.0),
+            symbol_size: l
+                .symbol_size
+                .as_ref()
+                .and_then(|v| v.as_number())
+                .unwrap_or(10.0),
             item_gap: l.item_gap.unwrap_or(10.0),
         }),
         background: crate::visual::Color::new(255, 255, 255),
@@ -871,9 +920,9 @@ fn resolve_visual_map(
     use crate::pipeline::dataframe::DataValue;
 
     let default_colors = vec![
-        crate::visual::Color::new(80, 163, 186),  // #50a3ba
-        crate::visual::Color::new(234, 199, 54),  // #eac736
-        crate::visual::Color::new(217, 78, 93),   // #d94e5d
+        crate::visual::Color::new(80, 163, 186), // #50a3ba
+        crate::visual::Color::new(234, 199, 54), // #eac736
+        crate::visual::Color::new(217, 78, 93),  // #d94e5d
     ];
 
     // 数据范围（visualMap min/max 缺失时的回退值）
@@ -899,7 +948,11 @@ fn resolve_visual_map(
         })
         .unwrap_or((None, None));
 
-    let Some(vm) = option.visual_map.as_ref().and_then(|v| v.as_slice().first()) else {
+    let Some(vm) = option
+        .visual_map
+        .as_ref()
+        .and_then(|v| v.as_slice().first())
+    else {
         return (data_min, data_max, default_colors);
     };
 
@@ -1128,7 +1181,11 @@ fn dataset_to_dataframe(dataset: &option::DatasetOption) -> crate::pipeline::dat
     }
 
     let has_header = dataset.source_header.unwrap_or(true);
-    let data_start = if has_header && !source.is_empty() { 1 } else { 0 };
+    let data_start = if has_header && !source.is_empty() {
+        1
+    } else {
+        0
+    };
 
     let mut df = DataFrame::new();
 
@@ -1209,9 +1266,7 @@ fn extract_encoded_columns(
         })
     }
 
-    fn is_empty_or_none(
-        v: &Option<option::OneOrMany<option::StringOrInt>>,
-    ) -> bool {
+    fn is_empty_or_none(v: &Option<option::OneOrMany<option::StringOrInt>>) -> bool {
         match v {
             None => true,
             Some(option::OneOrMany::One(_)) => false,
@@ -1220,32 +1275,36 @@ fn extract_encoded_columns(
     }
 
     if let Some(src_name) = first_column_name(&encode.x, &col_names)
-        && let Some(col) = df.get_column(&src_name) {
-            result_df.add_column(DfSeries::new("x", col.data.clone()));
-            x_col = "x".into();
-        }
+        && let Some(col) = df.get_column(&src_name)
+    {
+        result_df.add_column(DfSeries::new("x", col.data.clone()));
+        x_col = "x".into();
+    }
 
     if let Some(src_name) = first_column_name(&encode.y, &col_names)
-        && let Some(col) = df.get_column(&src_name) {
-            result_df.add_column(DfSeries::new("y", col.data.clone()));
-            y_col = "y".into();
-        }
+        && let Some(col) = df.get_column(&src_name)
+    {
+        result_df.add_column(DfSeries::new("y", col.data.clone()));
+        y_col = "y".into();
+    }
 
     if is_empty_or_none(&encode.x)
         && let Some(src_name) = first_column_name(&encode.item_name, &col_names)
-            && let Some(col) = df.get_column(&src_name)
-                && result_df.get_column("x").is_none() {
-                    result_df.add_column(DfSeries::new("x", col.data.clone()));
-                    x_col = "x".into();
-                }
+        && let Some(col) = df.get_column(&src_name)
+        && result_df.get_column("x").is_none()
+    {
+        result_df.add_column(DfSeries::new("x", col.data.clone()));
+        x_col = "x".into();
+    }
 
     if is_empty_or_none(&encode.y)
         && let Some(src_name) = first_column_name(&encode.value, &col_names)
-            && let Some(col) = df.get_column(&src_name)
-                && result_df.get_column("y").is_none() {
-                    result_df.add_column(DfSeries::new("y", col.data.clone()));
-                    y_col = "y".into();
-                }
+        && let Some(col) = df.get_column(&src_name)
+        && result_df.get_column("y").is_none()
+    {
+        result_df.add_column(DfSeries::new("y", col.data.clone()));
+        y_col = "y".into();
+    }
 
     if result_df.column_count() == 0 {
         return (df.clone(), "x".into(), "y".into());

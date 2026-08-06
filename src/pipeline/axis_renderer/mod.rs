@@ -8,7 +8,10 @@
 //! 调度函数 `render_axes` 根据图表类型自动选择渲染器。
 
 use crate::{
-    pipeline::types::{AxisSpec, ChartType, ColorContext, ResolvedAxisRanges, SeriesSpec, SubplotSpec, TextMeasurer},
+    pipeline::types::{
+        AxisSpec, ChartType, ColorContext, ResolvedAxisRanges, SeriesSpec, SubplotSpec,
+        TextMeasurer,
+    },
     visual::VisualElement,
 };
 
@@ -88,9 +91,21 @@ pub fn render_axes(
 
     // 检查当前 subplot 包含的图表类型
     let has_radar = series.iter().any(|s| s.chart_type() == ChartType::Radar);
-    let has_polar = series.iter().any(|s| matches!(s.chart_type(), ChartType::PolarBar | ChartType::PolarScatter));
+    let has_polar = series.iter().any(|s| {
+        matches!(
+            s.chart_type(),
+            ChartType::PolarBar | ChartType::PolarScatter
+        )
+    });
     let has_normal_chart = series.iter().any(|s| {
-        !matches!(s.chart_type(), ChartType::Pie | ChartType::Radar | ChartType::Gauge | ChartType::PolarBar | ChartType::PolarScatter)
+        !matches!(
+            s.chart_type(),
+            ChartType::Pie
+                | ChartType::Radar
+                | ChartType::Gauge
+                | ChartType::PolarBar
+                | ChartType::PolarScatter
+        )
     });
     let has_pie = series.iter().any(|s| s.chart_type() == ChartType::Pie);
     let has_gauge = series.iter().any(|s| s.chart_type() == ChartType::Gauge);

@@ -34,8 +34,7 @@ impl SeriesBuilder<BarSeries> for BarBuilder {
                 // 矮柱子（≤25px）：外部上方，柱子同色文字
                 let (x, y, label_color, va) = if bar_height > 25.0 {
                     let y = if label_cfg.position == SeriesLabelPosition::Top
-                        && (bar.value >= 0.0
-                            || (bar.value < 0.0 && bar_height > 25.0))
+                        && (bar.value >= 0.0 || (bar.value < 0.0 && bar_height > 25.0))
                     {
                         // Inside top: 4px from top of bar
                         bar.rect.y0 + 14.0

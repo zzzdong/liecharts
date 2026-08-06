@@ -3,7 +3,7 @@
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, fill_style, fill_stroke_style},
+        builder::{SeriesBuilder, Z_SERIES_FILL, fill_stroke_style, fill_style},
         typed_series::{HeatmapSeries, RenderContext},
     },
     visual::VisualElement,

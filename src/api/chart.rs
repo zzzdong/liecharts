@@ -633,9 +633,9 @@ impl Chart {
     pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
         use crate::pipeline::types::{
             AxisSpec, BarConfig, BoxplotConfig, BubbleConfig, CandlestickConfig, ChartSpec,
-            GaugeConfig, GridSpec, HeatmapConfig, ItemStyleSpec, LegendSpec, LineConfig,
-            PieConfig, PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig,
-            SeriesConfig, SeriesSpec, SymbolType, TableConfig, TitleSpec,
+            GaugeConfig, GridSpec, HeatmapConfig, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
+            PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
+            SeriesSpec, SymbolType, TableConfig, TitleSpec,
         };
 
         // Grids
@@ -677,10 +677,9 @@ impl Chart {
                     l.data.clone().or_else(|| self.data.clone()),
                     l.category.clone(),
                 ),
-                LayerSpec::Heatmap(l) => (
-                    l.data.clone().or_else(|| self.data.clone()),
-                    l.x.clone(),
-                ),
+                LayerSpec::Heatmap(l) => {
+                    (l.data.clone().or_else(|| self.data.clone()), l.x.clone())
+                }
                 _ => (None, String::new()),
             };
             if let Some(df) = data
@@ -850,29 +849,37 @@ impl Chart {
                         let area = l.area;
                         let area_color = l.color; // 用户指定的颜色，None 时使用系列颜色
                         SeriesConfig::Line(LineConfig {
-                                x_col: l.x.clone(),
-                                y_col: l.y.clone(),
-                                smooth: l.smooth,
-                                step: l.step.map(|s| match s {
-                                    crate::api::layer::StepType::Start => crate::pipeline::types::StepType::Start,
-                                    crate::api::layer::StepType::Middle => crate::pipeline::types::StepType::Middle,
-                                    crate::api::layer::StepType::End => crate::pipeline::types::StepType::End,
-                                }),
-                                line_width: 2.0,
-                                area,
-                                area_color,
-                                area_opacity: 0.5,
-                                symbol_type: sym,
-                                symbol_size: l.symbol_size,
-                                label_show: l.label_show,
-                                label_font_size: l.label_font_size,
-                            })
+                            x_col: l.x.clone(),
+                            y_col: l.y.clone(),
+                            smooth: l.smooth,
+                            step: l.step.map(|s| match s {
+                                crate::api::layer::StepType::Start => {
+                                    crate::pipeline::types::StepType::Start
+                                }
+                                crate::api::layer::StepType::Middle => {
+                                    crate::pipeline::types::StepType::Middle
+                                }
+                                crate::api::layer::StepType::End => {
+                                    crate::pipeline::types::StepType::End
+                                }
+                            }),
+                            line_width: 2.0,
+                            area,
+                            area_color,
+                            area_opacity: 0.5,
+                            symbol_type: sym,
+                            symbol_size: l.symbol_size,
+                            label_show: l.label_show,
+                            label_font_size: l.label_font_size,
+                        })
                     }
                     LayerSpec::Bar(l) => {
                         let y_axis_idx = l.y_axis_index;
                         let is_horizontal = y_axes
                             .get(y_axis_idx)
-                            .map(|a| matches!(a.axis_type, crate::pipeline::types::AxisType::Category))
+                            .map(|a| {
+                                matches!(a.axis_type, crate::pipeline::types::AxisType::Category)
+                            })
                             .unwrap_or(false);
                         let (x_col, y_col) = if is_horizontal {
                             (l.y.clone(), l.x.clone())
@@ -880,71 +887,61 @@ impl Chart {
                             (l.x.clone(), l.y.clone())
                         };
                         SeriesConfig::Bar(BarConfig {
-                                x_col,
-                                y_col,
-                                bar_width: l.bar_width.map_or(0.6, |bw| match bw {
-                                    crate::api::Size::Percent(p) => p / 100.0,
-                                    crate::api::Size::Pixel(p) => p / 100.0,
-                                }),
-                                label_show: l.label_show,
-                                label_font_size: l.label_font_size,
-                            })
-                    },
-                    LayerSpec::Scatter(l) => {
-                        SeriesConfig::Scatter(ScatterConfig {
-                            x_col: l.x.clone(),
-                            y_col: l.y.clone(),
-                            symbol_size: l.symbol_size,
-                        })
-                    },
-                    LayerSpec::Bubble(l) => {
-                        SeriesConfig::Bubble(BubbleConfig {
-                            x_col: "x".into(),
-                            y_col: "y".into(),
-                            size_col: l.size_col.clone(),
-                            name_col: l.name_col.clone(),
-                            symbol_size_scale: l.symbol_size_scale,
-                        })
-                    },
-                    LayerSpec::Candlestick(l) => {
-                        SeriesConfig::Candlestick(CandlestickConfig {
-                            category_col: l.category.clone(),
-                            open_col: l.open.clone(),
-                            close_col: l.close.clone(),
-                            low_col: l.low.clone(),
-                            high_col: l.high.clone(),
-                        })
-                    },
-                    LayerSpec::Boxplot(l) => {
-                        SeriesConfig::Boxplot(BoxplotConfig {
-                            category_col: l.category.clone(),
-                            min_col: l.min.clone(),
-                            q1_col: l.q1.clone(),
-                            median_col: l.median.clone(),
-                            q3_col: l.q3.clone(),
-                            max_col: l.max.clone(),
-                        })
-                    },
-                    LayerSpec::Heatmap(l) => {
-                        SeriesConfig::Heatmap(HeatmapConfig {
-                            x_col: l.x.clone(),
-                            y_col: l.y.clone(),
-                            value_col: l.value.clone(),
-                            min: l.min,
-                            max: l.max,
-                            colors: l.colors.clone().unwrap_or_else(|| {
-                                vec![
-                                    Color::new(80, 163, 186),
-                                    Color::new(234, 199, 54),
-                                    Color::new(217, 78, 93),
-                                ]
+                            x_col,
+                            y_col,
+                            bar_width: l.bar_width.map_or(0.6, |bw| match bw {
+                                crate::api::Size::Percent(p) => p / 100.0,
+                                crate::api::Size::Pixel(p) => p / 100.0,
                             }),
-                            border_color: l.border_color,
-                            border_width: l.border_width,
                             label_show: l.label_show,
                             label_font_size: l.label_font_size,
                         })
-                    },
+                    }
+                    LayerSpec::Scatter(l) => SeriesConfig::Scatter(ScatterConfig {
+                        x_col: l.x.clone(),
+                        y_col: l.y.clone(),
+                        symbol_size: l.symbol_size,
+                    }),
+                    LayerSpec::Bubble(l) => SeriesConfig::Bubble(BubbleConfig {
+                        x_col: "x".into(),
+                        y_col: "y".into(),
+                        size_col: l.size_col.clone(),
+                        name_col: l.name_col.clone(),
+                        symbol_size_scale: l.symbol_size_scale,
+                    }),
+                    LayerSpec::Candlestick(l) => SeriesConfig::Candlestick(CandlestickConfig {
+                        category_col: l.category.clone(),
+                        open_col: l.open.clone(),
+                        close_col: l.close.clone(),
+                        low_col: l.low.clone(),
+                        high_col: l.high.clone(),
+                    }),
+                    LayerSpec::Boxplot(l) => SeriesConfig::Boxplot(BoxplotConfig {
+                        category_col: l.category.clone(),
+                        min_col: l.min.clone(),
+                        q1_col: l.q1.clone(),
+                        median_col: l.median.clone(),
+                        q3_col: l.q3.clone(),
+                        max_col: l.max.clone(),
+                    }),
+                    LayerSpec::Heatmap(l) => SeriesConfig::Heatmap(HeatmapConfig {
+                        x_col: l.x.clone(),
+                        y_col: l.y.clone(),
+                        value_col: l.value.clone(),
+                        min: l.min,
+                        max: l.max,
+                        colors: l.colors.clone().unwrap_or_else(|| {
+                            vec![
+                                Color::new(80, 163, 186),
+                                Color::new(234, 199, 54),
+                                Color::new(217, 78, 93),
+                            ]
+                        }),
+                        border_color: l.border_color,
+                        border_width: l.border_width,
+                        label_show: l.label_show,
+                        label_font_size: l.label_font_size,
+                    }),
                     LayerSpec::Pie(l) => {
                         let min_dim = self.width.min(self.height) as f64 * 0.5;
                         SeriesConfig::Pie(PieConfig {
@@ -962,28 +959,22 @@ impl Chart {
                             label_position: l.label_position,
                             label_font_size: 12.0,
                         })
-                    },
-                    LayerSpec::Radar(l) => {
-                        SeriesConfig::Radar(RadarConfig {
-                            value_col: l.values.clone(),
-                            indicators: l.indicators.clone(),
-                        })
-                    },
-                    LayerSpec::PolarBar(l) => {
-                        SeriesConfig::PolarBar(PolarBarConfig {
-                            angle_col: l.angle.clone(),
-                            radius_col: l.radius.clone(),
-                            pad_angle: l.pad_angle,
-                            start_angle: l.start_angle,
-                        })
-                    },
-                    LayerSpec::PolarScatter(l) => {
-                        SeriesConfig::PolarScatter(PolarScatterConfig {
-                            angle_col: l.angle.clone(),
-                            radius_col: l.radius.clone(),
-                            symbol_size: l.symbol_size.unwrap_or(8.0),
-                        })
-                    },
+                    }
+                    LayerSpec::Radar(l) => SeriesConfig::Radar(RadarConfig {
+                        value_col: l.values.clone(),
+                        indicators: l.indicators.clone(),
+                    }),
+                    LayerSpec::PolarBar(l) => SeriesConfig::PolarBar(PolarBarConfig {
+                        angle_col: l.angle.clone(),
+                        radius_col: l.radius.clone(),
+                        pad_angle: l.pad_angle,
+                        start_angle: l.start_angle,
+                    }),
+                    LayerSpec::PolarScatter(l) => SeriesConfig::PolarScatter(PolarScatterConfig {
+                        angle_col: l.angle.clone(),
+                        radius_col: l.radius.clone(),
+                        symbol_size: l.symbol_size.unwrap_or(8.0),
+                    }),
                     LayerSpec::Gauge(l) => {
                         let min_dim = self.width.min(self.height) as f64 * 0.5;
                         SeriesConfig::Gauge(GaugeConfig {
@@ -999,7 +990,7 @@ impl Chart {
                             end_angle: l.end_angle,
                             split_number: l.split_number,
                         })
-                    },
+                    }
                     LayerSpec::Table(_) => SeriesConfig::Table(TableConfig),
                 };
 

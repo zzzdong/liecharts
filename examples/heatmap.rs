@@ -1,5 +1,4 @@
-use liecharts::api::*;
-use liecharts::pipeline::dataframe::DataValue;
+use liecharts::{api::*, pipeline::dataframe::DataValue};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 7 天 × 8 小时的模拟打卡数据

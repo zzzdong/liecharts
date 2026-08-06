@@ -32,7 +32,12 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
                 build_stacked_area_path(&series.points, baseline_points, series.smooth, series.step)
             } else {
                 // 普通面积：使用平坦基线
-                build_area_path(&series.points, series.baseline_y, series.smooth, series.step)
+                build_area_path(
+                    &series.points,
+                    series.baseline_y,
+                    series.smooth,
+                    series.step,
+                )
             };
             elements.push(VisualElement::Path {
                 path: area_path,
@@ -155,7 +160,12 @@ fn build_stacked_area_path(
 }
 
 /// 构建面积填充路径
-fn build_area_path(points: &[Point], baseline_y: f64, smooth: bool, step: Option<StepType>) -> BezPath {
+fn build_area_path(
+    points: &[Point],
+    baseline_y: f64,
+    smooth: bool,
+    step: Option<StepType>,
+) -> BezPath {
     let mut path = BezPath::new();
 
     if points.is_empty() {
@@ -342,12 +352,10 @@ fn build_symbol(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::{
-        pipeline::types::ColorContext,
-        theme::Theme,
-    };
     use vello_cpu::kurbo::Rect;
+
+    use super::*;
+    use crate::{pipeline::types::ColorContext, theme::Theme};
 
     fn single_point_series() -> LineSeries {
         LineSeries {
@@ -406,7 +414,11 @@ mod tests {
         };
         let elements = LineBuilder::build(&series, &ctx).unwrap();
 
-        assert!(elements.iter().any(|e| matches!(e, VisualElement::Path { .. })));
+        assert!(
+            elements
+                .iter()
+                .any(|e| matches!(e, VisualElement::Path { .. }))
+        );
         assert_eq!(
             elements
                 .iter()
