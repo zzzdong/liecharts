@@ -77,6 +77,7 @@ impl SeriesMaterializer for PieMaterializer {
             label_show: cfg.label_show,
             label_position: map_label_position(cfg.label_position),
             label_font_size: cfg.label_font_size,
+            label_formatter: cfg.label_formatter.clone(),
             slices,
         }))
     }

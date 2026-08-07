@@ -5,7 +5,7 @@ use vello_cpu::kurbo::Point;
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style},
+        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style, render_mark_lines},
         typed_series::{BarSeries, RenderContext, SeriesLabelPosition},
     },
     visual::{Color, TextAlign, TextBaseline, TextStyle, VisualElement},
@@ -14,7 +14,7 @@ use crate::{
 pub struct BarBuilder;
 
 impl SeriesBuilder<BarSeries> for BarBuilder {
-    fn build(series: &BarSeries, _ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &BarSeries, ctx: &RenderContext) -> Result<Vec<VisualElement>> {
         let mut elements = Vec::with_capacity(series.bars.len());
 
         for bar in &series.bars {
@@ -28,7 +28,16 @@ impl SeriesBuilder<BarSeries> for BarBuilder {
             if let Some(ref label_cfg) = series.label
                 && label_cfg.show
             {
-                let text = format_value(bar.value);
+                let text = crate::pipeline::template::render_template(
+                    label_cfg.formatter.as_deref(),
+                    &crate::pipeline::template::TemplateContext {
+                        series_name: Some(&series.name),
+                        name: Some(&bar.category),
+                        value: Some(bar.value),
+                        percent: None,
+                    },
+                    &format_value(bar.value),
+                );
                 let bar_height = bar.rect.height();
                 // 高柱子（>25px）：内部顶部，白色文字
                 // 矮柱子（≤25px）：外部上方，柱子同色文字
@@ -80,6 +89,9 @@ impl SeriesBuilder<BarSeries> for BarBuilder {
                 });
             }
         }
+
+        // 标注线（markLine）
+        render_mark_lines(&mut elements, &series.mark_lines, ctx.bounds);
 
         Ok(elements)
     }

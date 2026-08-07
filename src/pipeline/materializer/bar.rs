@@ -156,16 +156,30 @@ impl SeriesMaterializer for BarMaterializer {
             }
         }
 
+        let bar_values: Vec<f64> = bars.iter().map(|b| b.value).collect();
+        let mark_lines = crate::pipeline::materializer::compute_mark_lines(
+            &cfg.mark_line,
+            &bar_values,
+            y_range,
+            bounds,
+        );
+
         Ok(TypedSeries::Bar(BarSeries {
             name: spec.name.clone(),
             color,
             bars,
-            label: Some(crate::pipeline::typed_series::SeriesLabelConfig {
-                show: true,
-                position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
-                color: Color::new(60, 60, 65),
-                font_size: cfg.label_font_size,
-            }),
+            label: if cfg.label_show {
+                Some(crate::pipeline::typed_series::SeriesLabelConfig {
+                    show: true,
+                    position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
+                    color: Color::new(60, 60, 65),
+                    font_size: cfg.label_font_size,
+                    formatter: cfg.label_formatter.clone(),
+                })
+            } else {
+                None
+            },
+            mark_lines,
         }))
     }
 }

@@ -17,6 +17,14 @@ A Rust library for creating charts, inspired by ECharts.
 - **JSON Configuration**: configurable JSON configuration.
 - **Complex Layouts**: Mixed charts, multiple Y axes, and more.
 
+## Limitations
+
+LieCharts 是**静态渲染**库：输出固定尺寸的 PNG/JPEG 或 SVG 图像，而非网页端可交互的图表。
+
+- **不支持交互式 tooltip**：`tooltip` 配置会被正确解析（兼容 ECharts 风格 JSON，不会报错），但渲染阶段不会产生任何提示框。由于输出是静态图像、没有"鼠标悬停"事件，交互式 tooltip 在静态渲染下无法实现。如需数据点详情，请使用 `series.label` 数据标签或图例。
+- **SVG 为矢量快照**：SVG 输出是渲染结果的一帧快照，不含 DOM 事件绑定，因此浏览器打开时同样无 hover/click 交互。
+- **图表类型数据格式**：`gauge` 已支持标准 ECharts JSON 写法（如 `data: [{ value: 60, name: "CPU" }]`），可完整渲染仪表盘（渐变进度条/刻度/指针/中心值）。部分其他类型（如热力图、极坐标柱状图）对数据列的维度/结构有要求，请参照 `examples/` 中的样例写法。
+
 ## Usage
 
 ### DataFrame API (Recommended)

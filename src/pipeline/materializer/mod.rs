@@ -217,10 +217,14 @@ pub fn map_x_to_pixel(
 ) -> f64 {
     let range = x_range.max - x_range.min;
     if range <= 0.0 {
-        bounds.x0
-    } else {
-        bounds.x0 + (x - x_range.min) / range * bounds.width()
+        return bounds.x0;
     }
+    // Log 轴：对数据值做 log10 后再线性映射
+    if x_range.axis_type == crate::pipeline::types::AxisType::Log {
+        let lx = x.max(f64::MIN_POSITIVE).log10();
+        return bounds.x0 + (lx - x_range.min) / range * bounds.width();
+    }
+    bounds.x0 + (x - x_range.min) / range * bounds.width()
 }
 
 /// 辅助函数：将数据值映射到像素 Y 坐标
@@ -231,9 +235,65 @@ pub fn map_y_to_pixel(
 ) -> f64 {
     let range = y_range.max - y_range.min;
     if range <= 0.0 {
-        bounds.y1
+        return bounds.y1;
+    }
+    // Log 轴：对数据值做 log10 后再线性映射（轴范围本身已是 log 空间）
+    if y_range.axis_type == crate::pipeline::types::AxisType::Log {
+        let ly = y.max(f64::MIN_POSITIVE).log10();
+        return bounds.y1 - (ly - y_range.min) / range * bounds.height();
+    }
+    bounds.y1 - (y - y_range.min) / range * bounds.height()
+}
+
+/// 根据数据值计算标注线（average/min/max）的像素位置。
+///
+/// 返回每个标注线的 Y 像素坐标与标签文本。
+pub fn compute_mark_lines(
+    mark_line_specs: &[crate::pipeline::types::MarkLineSpec],
+    values: &[f64],
+    y_range: &crate::pipeline::types::ResolvedAxisRange,
+    bounds: Rect,
+) -> Vec<crate::pipeline::typed_series::MarkLineRender> {
+    use crate::pipeline::{typed_series::MarkLineRender, types::MarkLineType};
+
+    if mark_line_specs.is_empty() || values.is_empty() {
+        return Vec::new();
+    }
+
+    // 计算统计数据
+    let sum: f64 = values.iter().sum();
+    let avg = sum / values.len() as f64;
+    let min = values.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max = values.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+    let mut result = Vec::new();
+    for spec in mark_line_specs {
+        let value = match spec.data_type {
+            MarkLineType::Average => avg,
+            MarkLineType::Min => min,
+            MarkLineType::Max => max,
+        };
+        let text = format_value(value);
+        let name = spec.name.clone().unwrap_or_else(|| match spec.data_type {
+            MarkLineType::Average => "平均值".to_string(),
+            MarkLineType::Min => "最小值".to_string(),
+            MarkLineType::Max => "最大值".to_string(),
+        });
+        result.push(MarkLineRender {
+            y: map_y_to_pixel(value, y_range, bounds),
+            label: format!("{}: {}", name, text),
+            color: crate::visual::Color::new(220, 60, 60),
+        });
+    }
+    result
+}
+
+/// 格式化数值（整数值不带小数，否则保留 1 位）
+fn format_value(v: f64) -> String {
+    if v.fract() == 0.0 {
+        format!("{:.0}", v)
     } else {
-        bounds.y1 - (y - y_range.min) / range * bounds.height()
+        format!("{:.1}", v)
     }
 }
 
@@ -440,10 +500,13 @@ fn materialize_bar_group(
                 colors,
             )?;
 
+            let label = first_bar_label_config(spec, &plan.series_indices);
+
             Ok(TypedSeries::GroupedBar(GroupedBarSeries {
                 sub_series,
                 group_type: TypedBarGroupType::SideBySide,
                 rows,
+                label,
             }))
         }
         BarGroupType::Stacked => {
@@ -463,13 +526,44 @@ fn materialize_bar_group(
             let rows =
                 materialize_stacked_bars(&plan.series_indices, spec, axis_ranges, bounds, colors)?;
 
+            let label = first_bar_label_config(spec, &plan.series_indices);
+
             Ok(TypedSeries::GroupedBar(GroupedBarSeries {
                 sub_series,
                 group_type: TypedBarGroupType::Stacked,
                 rows,
+                label,
             }))
         }
     }
+}
+
+/// 从分组柱状图中提取第一个 Bar 系列的标签配置。
+///
+/// 分组柱状图的每个子系列共享同一个标签配置，取第一个系列即可。
+/// 未开启 label 时返回 None，Builder 不会渲染数据标签。
+fn first_bar_label_config(
+    spec: &ChartSpec,
+    series_indices: &[usize],
+) -> Option<crate::pipeline::typed_series::SeriesLabelConfig> {
+    use crate::pipeline::types::SeriesConfig;
+
+    let cfg =
+        series_indices
+            .first()
+            .and_then(|&idx| match spec.series.get(idx).map(|s| &s.config) {
+                Some(SeriesConfig::Bar(c)) => Some(c),
+                _ => None,
+            });
+
+    cfg.filter(|c| c.label_show)
+        .map(|c| crate::pipeline::typed_series::SeriesLabelConfig {
+            show: true,
+            position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
+            color: Color::new(60, 60, 65),
+            font_size: c.label_font_size,
+            formatter: c.label_formatter.clone(),
+        })
 }
 
 /// Materialize 并排柱状图
@@ -935,10 +1029,12 @@ fn materialize_one_stacked_line_group(
                     position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
                     color: crate::visual::Color::new(60, 60, 65),
                     font_size: cfg.label_font_size,
+                    formatter: cfg.label_formatter.clone(),
                 })
             } else {
                 None
             },
+            mark_lines: compute_mark_lines(&cfg.mark_line, &values, y_range, bounds),
         };
 
         prev_points = Some(points);

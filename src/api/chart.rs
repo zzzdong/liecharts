@@ -232,6 +232,8 @@ pub struct Legend {
     pub left: Position,
     pub top: Position,
     pub orient: Orient,
+    /// 图例文本模板（支持 `{name}`/`{a}`/`{b}`）
+    pub formatter: Option<String>,
 }
 
 impl Default for Legend {
@@ -242,6 +244,7 @@ impl Default for Legend {
             left: Position::Center,
             top: Position::Auto,
             orient: Orient::Horizontal,
+            formatter: None,
         }
     }
 }
@@ -264,6 +267,10 @@ impl Legend {
     }
     pub fn orient(mut self, orient: Orient) -> Self {
         self.orient = orient;
+        self
+    }
+    pub fn formatter(mut self, formatter: impl Into<String>) -> Self {
+        self.formatter = Some(formatter.into());
         self
     }
 }
@@ -871,6 +878,8 @@ impl Chart {
                             symbol_size: l.symbol_size,
                             label_show: l.label_show,
                             label_font_size: l.label_font_size,
+                            label_formatter: None,
+                            mark_line: Vec::new(),
                         })
                     }
                     LayerSpec::Bar(l) => {
@@ -895,6 +904,8 @@ impl Chart {
                             }),
                             label_show: l.label_show,
                             label_font_size: l.label_font_size,
+                            label_formatter: None,
+                            mark_line: Vec::new(),
                         })
                     }
                     LayerSpec::Scatter(l) => SeriesConfig::Scatter(ScatterConfig {
@@ -958,6 +969,7 @@ impl Chart {
                             label_show: l.label_show,
                             label_position: l.label_position,
                             label_font_size: 12.0,
+                            label_formatter: None,
                         })
                     }
                     LayerSpec::Radar(l) => SeriesConfig::Radar(RadarConfig {
@@ -1178,6 +1190,7 @@ impl Chart {
                 data: l.data.clone(),
                 symbol_size: 10.0,
                 item_gap: 10.0,
+                formatter: l.formatter.clone(),
             }),
             background: self.background_color.unwrap_or(Color::new(255, 255, 255)),
             palette: vec![],

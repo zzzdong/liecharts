@@ -109,6 +109,13 @@ impl SeriesMaterializer for LineMaterializer {
             None
         };
 
+        let mark_lines = crate::pipeline::materializer::compute_mark_lines(
+            &cfg.mark_line,
+            &values,
+            y_range,
+            bounds,
+        );
+
         Ok(TypedSeries::Line(LineSeries {
             name: spec.name.clone(),
             color,
@@ -139,10 +146,12 @@ impl SeriesMaterializer for LineMaterializer {
                     position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
                     color: crate::visual::Color::new(60, 60, 65),
                     font_size: cfg.label_font_size,
+                    formatter: cfg.label_formatter.clone(),
                 })
             } else {
                 None
             },
+            mark_lines,
         }))
     }
 }

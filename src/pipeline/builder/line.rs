@@ -7,7 +7,7 @@ use crate::{
     pipeline::{
         builder::{
             SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, Z_SERIES_LINE, Z_SERIES_POINT,
-            fill_stroke_style,
+            fill_stroke_style, render_mark_lines,
         },
         typed_series::{LineSeries, RenderContext, SeriesLabelPosition, StepType, SymbolType},
     },
@@ -17,7 +17,7 @@ use crate::{
 pub struct LineBuilder;
 
 impl SeriesBuilder<LineSeries> for LineBuilder {
-    fn build(series: &LineSeries, _ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &LineSeries, ctx: &RenderContext) -> Result<Vec<VisualElement>> {
         let mut elements = Vec::new();
 
         // 1. 面积填充（使用已解析的像素基线；单个数据点画不出面积）
@@ -85,7 +85,16 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
             && label_cfg.show
         {
             for (point, value) in series.points.iter().zip(series.values.iter()) {
-                let text = format_value(*value);
+                let text = crate::pipeline::template::render_template(
+                    label_cfg.formatter.as_deref(),
+                    &crate::pipeline::template::TemplateContext {
+                        series_name: Some(&series.name),
+                        name: Some(&series.name),
+                        value: Some(*value),
+                        percent: None,
+                    },
+                    &format_value(*value),
+                );
                 let (x, y) = match label_cfg.position {
                     SeriesLabelPosition::Top => (point.x, point.y - series.symbol_size - 4.0),
                     SeriesLabelPosition::Inside => {
@@ -110,6 +119,9 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
                 });
             }
         }
+
+        // 5. 标注线（markLine）
+        render_mark_lines(&mut elements, &series.mark_lines, ctx.bounds);
 
         Ok(elements)
     }
@@ -373,6 +385,7 @@ mod tests {
             baseline_points: None,
             values: vec![70840845.0],
             label: None,
+            mark_lines: Vec::new(),
         }
     }
 

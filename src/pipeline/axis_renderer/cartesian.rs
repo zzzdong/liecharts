@@ -5,7 +5,7 @@
 
 use vello_cpu::kurbo::{Point, Rect};
 
-use super::compute_nice_ticks;
+use super::axis_ticks;
 use crate::{
     pipeline::{
         axis_label::{auto_rotate, label_step, rotated_bounds},
@@ -30,17 +30,6 @@ fn format_label(value: &str, formatter: &Option<String>) -> String {
         return value.to_string();
     };
     fmt.replace("{value}", value)
-}
-
-/// 格式化数值刻度标签
-fn format_tick(v: f64) -> String {
-    if v.fract() == 0.0 {
-        format!("{:.0}", v)
-    } else if (v * 100.0).fract() == 0.0 {
-        format!("{:.1}", v)
-    } else {
-        format!("{:.2}", v)
-    }
 }
 
 /// 轴标签基准样式（渲染时位置已预计算为文本块左上角，故统一使用 Left/Top 对齐）
@@ -270,16 +259,9 @@ impl CartesianAxisRenderer {
                 }
             }
         } else {
-            // Value 轴：网格线位置与刻度位置一致
-            // 避免网格线和标签错位导致标签超出画布
-            let ticks = compute_nice_ticks(x_min, x_max, 5);
-            let range = x_max - x_min;
-            for &v in &ticks {
-                let t = if range != 0.0 {
-                    (v - x_min) / range
-                } else {
-                    0.5
-                };
+            // Value / Time / Log 轴：网格线位置与刻度位置一致
+            let (positions, _labels) = axis_ticks(axis_cfg.axis_type, x_min, x_max);
+            for t in positions {
                 let x = bounds.x0 + t * bounds.width();
                 elements.push(VisualElement::Line {
                     start: Point::new(x, bounds.y0),
@@ -297,19 +279,15 @@ impl CartesianAxisRenderer {
     fn draw_y_grid_lines(
         elements: &mut Vec<VisualElement>,
         bounds: Rect,
-        _axis_cfg: &AxisSpec,
+        axis_cfg: &AxisSpec,
         y_min: f64,
         y_max: f64,
         colors: &ColorContext,
     ) {
-        let ticks = compute_nice_ticks(y_min, y_max, 5);
-        for &v in &ticks {
-            let t = if y_max != y_min {
-                (y_max - v) / (y_max - y_min)
-            } else {
-                0.5
-            };
-            let y = bounds.y0 + t * bounds.height();
+        let (positions, _labels) = axis_ticks(axis_cfg.axis_type, y_min, y_max);
+        for t in positions {
+            // Y 轴自下而上：t=(v-min)/(max-min)，像素 y = y0 + (1-t)*height
+            let y = bounds.y0 + (1.0 - t) * bounds.height();
             elements.push(VisualElement::Line {
                 start: Point::new(bounds.x0, y),
                 end: Point::new(bounds.x1, y),
@@ -400,27 +378,19 @@ impl CartesianAxisRenderer {
                 }
             }
         } else {
-            let ticks = compute_nice_ticks(x_min, x_max, 5);
-            if ticks.is_empty() {
+            // Value / Time / Log 轴：统一通过 axis_ticks 生成刻度位置与标签
+            let (norm_positions, tick_labels) = axis_ticks(axis_cfg.axis_type, x_min, x_max);
+            if tick_labels.is_empty() {
                 return;
             }
-            let range = x_max - x_min;
-            let labels: Vec<String> = ticks
+            let labels: Vec<String> = tick_labels
                 .iter()
-                .map(|&v| format_label(&format_tick(v), &axis_cfg.label_formatter))
+                .map(|label| format_label(label, &axis_cfg.label_formatter))
                 .collect();
-
-            // 刻度间距（像素）
-            let positions: Vec<f64> = ticks
+            // 刻度像素位置（X 轴自左向右，t=(v-min)/(max-min)）
+            let positions: Vec<f64> = norm_positions
                 .iter()
-                .map(|&v| {
-                    let t = if range != 0.0 {
-                        (v - x_min) / range
-                    } else {
-                        0.5
-                    };
-                    bounds.x0 + t * bounds.width()
-                })
+                .map(|&t| bounds.x0 + t * bounds.width())
                 .collect();
             let slot_w = if positions.len() > 1 {
                 positions
@@ -439,7 +409,7 @@ impl CartesianAxisRenderer {
             );
 
             let mut last_rendered: Option<usize> = None;
-            for i in (0..ticks.len()).step_by(step) {
+            for i in (0..positions.len()).step_by(step) {
                 last_rendered = Some(i);
                 push_x_label(
                     elements,
@@ -451,7 +421,7 @@ impl CartesianAxisRenderer {
                     text_measurer,
                 );
             }
-            let last_idx = ticks.len() - 1;
+            let last_idx = positions.len() - 1;
             if step > 1
                 && last_rendered != Some(last_idx)
                 && let Some(prev) = last_rendered
@@ -602,22 +572,16 @@ impl CartesianAxisRenderer {
             return;
         }
 
-        let ticks = compute_nice_ticks(y_min, y_max, 5);
-        let range = y_max - y_min;
-        let labels: Vec<String> = ticks
+        // Value / Time / Log 轴：统一通过 axis_ticks 生成刻度位置与标签
+        let (norm_positions, tick_labels) = axis_ticks(axis_cfg.axis_type, y_min, y_max);
+        let labels: Vec<String> = tick_labels
             .iter()
-            .map(|&v| format_label(&format_tick(v), &axis_cfg.label_formatter))
+            .map(|label| format_label(label, &axis_cfg.label_formatter))
             .collect();
-        let positions: Vec<f64> = ticks
+        // Y 轴自下而上：t=(v-min)/(max-min)，像素 y = y0 + (1-t)*height
+        let positions: Vec<f64> = norm_positions
             .iter()
-            .map(|&v| {
-                let t = if range != 0.0 {
-                    (y_max - v) / range
-                } else {
-                    0.5
-                };
-                bounds.y0 + t * bounds.height()
-            })
+            .map(|&t| bounds.y0 + (1.0 - t) * bounds.height())
             .collect();
         let slot_h = if positions.len() > 1 {
             positions
@@ -635,7 +599,7 @@ impl CartesianAxisRenderer {
             colors,
         );
 
-        for i in (0..ticks.len()).step_by(step) {
+        for i in (0..positions.len()).step_by(step) {
             push_y_label(
                 elements,
                 &labels[i],
@@ -645,7 +609,7 @@ impl CartesianAxisRenderer {
                 text_measurer,
             );
         }
-        let last_idx = ticks.len() - 1;
+        let last_idx = positions.len() - 1;
         if step > 1
             && last_idx > 0
             && !(positions.len() - 1).is_multiple_of(step)

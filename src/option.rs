@@ -1606,7 +1606,7 @@ pub struct MarkPointDataOption {
 #[derive(Default)]
 pub struct MarkLineOption {
     pub data: Option<Vec<OneOrMany<MarkLineDataOption>>>,
-    pub symbol: Option<Vec<SymbolType>>,
+    pub symbol: Option<OneOrMany<SymbolType>>,
     pub symbol_size: Option<Vec<f64>>,
     pub line_style: Option<LineStyleOption>,
     pub label: Option<LabelOption>,
@@ -1634,7 +1634,7 @@ pub struct MarkLineDataOption {
     pub value: Option<f64>,
     pub line_style: Option<LineStyleOption>,
     pub label: Option<LabelOption>,
-    pub symbol: Option<Vec<SymbolType>>,
+    pub symbol: Option<OneOrMany<SymbolType>>,
     pub symbol_size: Option<Vec<f64>>,
 }
 
@@ -2729,6 +2729,8 @@ pub struct LineSeriesOption {
     pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,
     pub grid_index: Option<usize>,
+    /// 坐标系类型（`"polar"` / `"cartesian2d"` 等）；`"polar"` 时自动路由到极坐标渲染
+    pub coordinate_system: Option<String>,
     pub smooth: Option<bool>,
     pub symbol: Option<SymbolType>,
     pub symbol_size: Option<LenientNumber>,
@@ -2768,6 +2770,7 @@ impl Default for LineSeriesOption {
             x_axis_index: None,
             y_axis_index: None,
             grid_index: None,
+            coordinate_system: None,
             smooth: Some(false),
             symbol: Some(SymbolType::Circle),
             symbol_size: Some(LenientNumber::Number(4.0)),
@@ -2844,6 +2847,8 @@ pub struct BarSeriesOption {
     pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,
     pub grid_index: Option<usize>,
+    /// 坐标系类型（`"polar"` / `"cartesian2d"` 等）；`"polar"` 时自动路由到极坐标渲染
+    pub coordinate_system: Option<String>,
     pub bar_width: Option<LenientBarSize>,
     pub bar_max_width: Option<LenientBarSize>,
     pub bar_min_width: Option<LenientBarSize>,
@@ -3501,6 +3506,8 @@ pub struct ScatterSeriesOption {
     pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,
     pub grid_index: Option<usize>,
+    /// 坐标系类型（`"polar"` / `"cartesian2d"` 等）；`"polar"` 时自动路由到极坐标渲染
+    pub coordinate_system: Option<String>,
     pub symbol: Option<SymbolType>,
     pub symbol_size: Option<SingleOrArray<LenientNumber>>,
     pub symbol_rotate: Option<f64>,
@@ -3553,6 +3560,7 @@ impl Default for ScatterSeriesOption {
             x_axis_index: None,
             y_axis_index: None,
             grid_index: None,
+            coordinate_system: None,
             symbol: Some(SymbolType::Circle),
             symbol_size: Some(SingleOrArray::Single(LenientNumber::Number(10.0))),
             symbol_rotate: None,

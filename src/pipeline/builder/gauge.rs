@@ -39,7 +39,13 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
 
         // 转换角度为弧度
         let start_angle = series.start_angle * PI / 180.0;
-        let end_angle = series.end_angle * PI / 180.0;
+        let mut end_angle = series.end_angle * PI / 180.0;
+
+        // 修正扫过跨 0°/360° 的角度：当结束角 <= 起始角时（如 225° -> -45°），
+        // 实际是顺时针扫过 360°（结束角加一圈），使 sweep 为正、跨越 0° 的弧正确。
+        if end_angle <= start_angle {
+            end_angle += 2.0 * PI;
+        }
         let total_sweep = end_angle - start_angle;
 
         // 计算数值角度

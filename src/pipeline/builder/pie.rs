@@ -63,6 +63,7 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
                     slice,
                     series.label_position,
                     series.label_font_size,
+                    series.label_formatter.as_deref(),
                     ctx,
                 );
                 elements.extend(label_elements);
@@ -76,6 +77,7 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
 }
 
 /// 构建标签和引导线
+#[allow(clippy::too_many_arguments)]
 fn build_label(
     center: Point,
     outer_radius: f64,
@@ -83,6 +85,7 @@ fn build_label(
     slice: &crate::pipeline::typed_series::PieSlice,
     position: LabelPosition,
     font_size: f64,
+    formatter: Option<&str>,
     ctx: &RenderContext,
 ) -> Vec<VisualElement> {
     let mut elements = Vec::new();
@@ -90,8 +93,8 @@ fn build_label(
     // 将角度转换为标准坐标系
     let angle = -PI / 2.0 + mid_angle;
 
-    // 标签文本：名称 + 百分比
-    let label_text = format!("{} {:.1}%", slice.name, slice.percent * 100.0);
+    // 标签文本：默认 "名称 百分比%"，支持 formatter 模板占位符替换
+    let label_text = format_label_text(slice, formatter);
 
     match position {
         LabelPosition::Outside => {
@@ -204,6 +207,31 @@ fn build_label(
     }
 
     elements
+}
+
+/// 格式化饼图标签文本。
+///
+/// 通过统一的模板引擎替换 ECharts 占位符：
+/// - `{b}`：数据项名称（`slice.name`）
+/// - `{c}`：数据项数值（`slice.value`）
+/// - `{d}`：百分比（`slice.percent`，保留 1 位小数）
+/// - `{a}`/`{name}`：系列名
+///
+/// 未提供模板时，回退到默认的 `"名称 百分比%"` 格式。
+fn format_label_text(
+    slice: &crate::pipeline::typed_series::PieSlice,
+    formatter: Option<&str>,
+) -> String {
+    crate::pipeline::template::render_template(
+        formatter,
+        &crate::pipeline::template::TemplateContext {
+            series_name: Some(&slice.name),
+            name: Some(&slice.name),
+            value: Some(slice.value),
+            percent: Some(slice.percent * 100.0),
+        },
+        &format!("{} {:.1}%", slice.name, slice.percent * 100.0),
+    )
 }
 
 /// 构建扇形路径（使用真正的圆弧）

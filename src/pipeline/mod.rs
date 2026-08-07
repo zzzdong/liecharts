@@ -10,6 +10,7 @@ pub mod dataframe;
 pub mod decorator;
 pub mod grid_planner;
 pub mod materializer;
+pub mod template;
 pub mod typed_series;
 pub mod types;
 

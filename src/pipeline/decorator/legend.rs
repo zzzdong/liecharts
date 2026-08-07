@@ -42,11 +42,26 @@ pub fn render_legend(
             .iter()
             .any(|s| matches!(s.config.chart_type(), ChartType::Pie | ChartType::PolarBar));
 
+        // 应用图例 formatter 模板，得到每个 item 的展示文本
+        let display_texts: Vec<String> = data
+            .iter()
+            .map(|name| {
+                // 图例项既是数据项名也是系列名，`{a}`/`{b}`/`{name}` 都指向它
+                let ctx = crate::pipeline::template::TemplateContext {
+                    series_name: Some(name),
+                    name: Some(name),
+                    value: None,
+                    percent: None,
+                };
+                crate::pipeline::template::render_template(legend.formatter.as_deref(), &ctx, name)
+            })
+            .collect();
+
         // 第一步：计算每个 item 的实际宽度（symbol + gap + 文本宽度）
         let mut item_widths = Vec::new();
         let mut total_content_width = 0.0;
 
-        for name in data.iter() {
+        for name in &display_texts {
             let text_style = TextStyle {
                 font_size: legend_style.font_size,
                 color: legend_color,
@@ -70,9 +85,10 @@ pub fn render_legend(
         // 第三步：布局每个 item
         let mut current_x = start_x;
 
-        for (i, name) in data.iter().enumerate() {
+        for i in 0..data.len() {
             let item_width = item_widths[i];
             let content_start_x = current_x + legend_padding;
+            let display_text = &display_texts[i];
 
             let color = if spec
                 .series
@@ -114,7 +130,7 @@ pub fn render_legend(
             // 图例文字 - 使用 Left 对齐，位置在 symbol 右侧
             let text_x = symbol_x + symbol_size + item_gap;
             elements.push(VisualElement::TextRun {
-                text: name.clone(),
+                text: display_text.clone(),
                 position: Point::new(text_x, y),
                 style: TextStyle {
                     font_size: legend_style.font_size,

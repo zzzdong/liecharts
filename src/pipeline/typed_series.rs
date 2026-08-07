@@ -73,6 +73,19 @@ pub struct LineSeries {
     pub values: Vec<f64>,
     /// 标签配置
     pub label: Option<SeriesLabelConfig>,
+    /// 标注线（像素空间，横向贯穿整个绘图区）
+    pub mark_lines: Vec<MarkLineRender>,
+}
+
+/// 渲染用标注线
+#[derive(Debug, Clone)]
+pub struct MarkLineRender {
+    /// 线的 Y 像素坐标（横向标注线）
+    pub y: f64,
+    /// 标注文本
+    pub label: String,
+    /// 标注线颜色
+    pub color: Color,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -88,6 +101,8 @@ pub struct BarSeries {
     pub bars: Vec<BarRect>,
     /// 标签配置
     pub label: Option<SeriesLabelConfig>,
+    /// 标注线（像素空间，横向贯穿整个绘图区）
+    pub mark_lines: Vec<MarkLineRender>,
 }
 
 #[derive(Debug, Clone)]
@@ -114,6 +129,8 @@ pub struct GroupedBarSeries {
     pub group_type: BarGroupType,
     /// 数据（像素空间）
     pub rows: Vec<GroupedBarRow>,
+    /// 标签配置（None 时不渲染数据标签）
+    pub label: Option<SeriesLabelConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -243,6 +260,8 @@ pub struct PieSeries {
     pub label_show: bool,
     pub label_position: LabelPosition,
     pub label_font_size: f64,
+    /// 标签格式化模板，支持 `{b}`（名称）、`{c}`（数值）、`{d}`（百分比）
+    pub label_formatter: Option<String>,
     /// 扇区数据
     pub slices: Vec<PieSlice>,
 }
@@ -370,12 +389,14 @@ pub enum SymbolType {
 // ── LabelConfig ──
 
 /// 标签显示配置
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SeriesLabelConfig {
     pub show: bool,
     pub position: SeriesLabelPosition,
     pub color: Color,
     pub font_size: f64,
+    /// 标签模板（支持 `{a}`/`{b}`/`{c}`/`{d}`/`{value}`），None 时显示数值
+    pub formatter: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

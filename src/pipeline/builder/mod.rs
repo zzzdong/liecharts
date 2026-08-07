@@ -102,3 +102,53 @@ pub fn fill_stroke_style(fill: Color, stroke: Color, stroke_width: f64) -> FillS
         }),
     }
 }
+
+/// 渲染标注线（markLine）：横向贯穿整个绘图区的线段 + 标签文本。
+///
+/// 每个 `MarkLineRender` 已解析出 Y 像素坐标与标签文本，这里只负责画线和文字。
+pub fn render_mark_lines(
+    elements: &mut Vec<VisualElement>,
+    mark_lines: &[crate::pipeline::typed_series::MarkLineRender],
+    bounds: vello_cpu::kurbo::Rect,
+) {
+    use vello_cpu::kurbo::Point;
+
+    use crate::visual::{TextAlign, TextBaseline, TextStyle};
+
+    for ml in mark_lines {
+        // 标注线：从绘图区左边界到右边界
+        elements.push(VisualElement::Path {
+            path: {
+                let mut path = vello_cpu::kurbo::BezPath::new();
+                path.move_to(Point::new(bounds.x0, ml.y));
+                path.line_to(Point::new(bounds.x1, ml.y));
+                path
+            },
+            style: FillStrokeStyle {
+                fill: None,
+                stroke: Some(Stroke {
+                    color: ml.color,
+                    width: 1.5,
+                }),
+            },
+            z_index: Z_SERIES_LABEL + 1,
+        });
+
+        // 标注线标签：放在左边界上方
+        elements.push(VisualElement::TextRun {
+            text: ml.label.clone(),
+            position: Point::new(bounds.x0 + 4.0, ml.y - 4.0),
+            style: TextStyle {
+                color: ml.color,
+                font_size: 11.0,
+                align: TextAlign::Left,
+                vertical_align: TextBaseline::Bottom,
+                ..Default::default()
+            },
+            rotation: 0.0,
+            max_width: None,
+            layout: None,
+            z_index: Z_SERIES_LABEL + 2,
+        });
+    }
+}

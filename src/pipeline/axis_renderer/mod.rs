@@ -65,6 +65,96 @@ fn nice_number(range: f64, round: bool) -> f64 {
     nice_fraction * 10.0_f64.powf(exponent)
 }
 
+/// 计算坐标轴刻度，返回 `(归一化位置 t∈[0,1], 标签文本)`。
+///
+/// 根据轴类型分派：
+/// - `Value`：线性「美观」刻度
+/// - `Log`：在 log 空间按整数幂生成刻度，标签为实际值（`10^v`）
+/// - `Time`：在 log/线性空间生成刻度，标签为日期字符串
+pub fn axis_ticks(
+    axis_type: crate::pipeline::types::AxisType,
+    min: f64,
+    max: f64,
+) -> (Vec<f64>, Vec<String>) {
+    match axis_type {
+        crate::pipeline::types::AxisType::Log => log_ticks(min, max),
+        crate::pipeline::types::AxisType::Time => {
+            // 时间戳（秒/毫秒）仍按线性刻度，标签格式化为日期
+            let ticks = compute_nice_ticks(min, max, 5);
+            let labels: Vec<String> = ticks.iter().map(|&v| format_time_label(v)).collect();
+            (ticks, labels)
+        }
+        _ => {
+            let ticks = compute_nice_ticks(min, max, 5);
+            let labels: Vec<String> = ticks.iter().map(|&v| format!("{:.0}", v)).collect();
+            (ticks, labels)
+        }
+    }
+}
+
+/// 生成 Log 轴刻度。min/max 为 log10 空间，返回归一化位置与对应标签。
+fn log_ticks(log_min: f64, log_max: f64) -> (Vec<f64>, Vec<String>) {
+    let range = log_max - log_min;
+    if range <= 0.0 {
+        return (vec![0.0], vec!["1".to_string()]);
+    }
+    let lo = log_min.ceil();
+    let hi = log_max.floor();
+    let mut positions = Vec::new();
+    let mut labels = Vec::new();
+    let mut v = lo;
+    while v <= hi {
+        let t = (v - log_min) / range;
+        positions.push(t);
+        let actual = 10.0_f64.powf(v);
+        labels.push(format_log_label(actual));
+        v += 1.0;
+    }
+    // 至少一个刻度
+    if positions.is_empty() {
+        positions.push(0.0);
+        labels.push("1".to_string());
+    }
+    (positions, labels)
+}
+
+/// 格式化 Log 轴刻度标签：整数显示整数，否则保留 1 位小数
+fn format_log_label(v: f64) -> String {
+    if (v - v.round()).abs() < 1e-9 {
+        format!("{:.0}", v)
+    } else {
+        format!("{:.1}", v)
+    }
+}
+
+/// 将时间戳（秒或毫秒）格式化为日期字符串。
+fn format_time_label(ts: f64) -> String {
+    // 尝试解析为日期：毫秒级时间戳通常 > 10^11，秒级 > 10^9
+    let secs = if ts >= 1e11 { ts / 1000.0 } else { ts } as i64;
+    if secs <= 0 {
+        return format!("{:.0}", ts);
+    }
+    // 简易本地时区无关的 UTC 格式化（YYYY-MM-DD）
+    let days = secs / 86_400;
+    let (y, m, d) = days_to_ymd(days);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// 将天数（自 epoch）转换为 (年, 月, 日)
+fn days_to_ymd(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468; // 修正儒略日
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y, m, d)
+}
+
 pub use cartesian::CartesianAxisRenderer;
 pub use polar::PolarAxisRenderer;
 pub use radar::RadarAxisRenderer;

@@ -481,6 +481,12 @@ impl<'a> AxisBindingResolver<'a> {
             };
         }
 
+        // Log 轴：在 log10 空间计算范围，返回 (log_min, log_max)。
+        // 数据必须为正；对非正数据回退到 (0, log10(data_max)+1)。
+        if matches!(axis_type, AxisType::Log) {
+            return self.compute_log_range(user_min, user_max, data_min, data_max);
+        }
+
         // Value 轴：结合用户指定 + 数据范围
         let range = data_max - data_min;
 
@@ -530,6 +536,49 @@ impl<'a> AxisBindingResolver<'a> {
         let max = user_max.unwrap_or(default_max);
 
         (min, max)
+    }
+
+    /// 计算 Log 轴范围，返回 `(log10_min, log10_max)`。
+    ///
+    /// - 数据必须为正数（>0）；log 轴不支持 0/负数。
+    /// - 自动向下取整到 10 的整数幂，保证刻度整齐（1, 10, 100 ...）。
+    /// - 支持用户通过 `min`/`max` 显式指定数据范围（仍按 log10 归一化）。
+    fn compute_log_range(
+        &self,
+        user_min: Option<f64>,
+        user_max: Option<f64>,
+        data_min: f64,
+        data_max: f64,
+    ) -> (f64, f64) {
+        // 用户显式范围优先（作为实际值，取 log10）
+        let lo = user_min.map(|v| v.max(f64::MIN_POSITIVE));
+        let hi = user_max.map(|v| v.max(f64::MIN_POSITIVE));
+
+        // 数据全无效（<=0）：回退到 (1, 10)
+        if data_max <= 0.0 && hi.is_none() {
+            return (0.0, 1.0);
+        }
+
+        // 确定有效的最小/最大数据值
+        let valid: Vec<f64> = [data_min, data_max]
+            .into_iter()
+            .filter(|v| *v > 0.0)
+            .collect();
+        let data_lo = valid.iter().cloned().fold(f64::INFINITY, f64::min);
+        let data_hi = valid.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+        let min_val = lo.unwrap_or(data_lo).max(f64::MIN_POSITIVE);
+        let max_val = hi.unwrap_or(data_hi).max(min_val);
+
+        // 取整到 10 的整数幂
+        let log_min = min_val.log10().floor();
+        let log_max = max_val.log10().ceil();
+
+        // 至少一个数量级跨度，避免零跨度
+        if log_max - log_min < 1.0 {
+            return (log_min, log_min + 1.0);
+        }
+        (log_min, log_max)
     }
 }
 

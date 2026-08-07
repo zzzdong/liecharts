@@ -157,6 +157,26 @@ pub enum StepType {
     End,
 }
 
+// ── MarkLine ──
+
+/// 标注线类型
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MarkLineType {
+    /// 平均值
+    Average,
+    /// 最小值
+    Min,
+    /// 最大值
+    Max,
+}
+
+/// 标注线配置（来自 `series.markLine`）
+#[derive(Debug, Clone)]
+pub struct MarkLineSpec {
+    pub data_type: MarkLineType,
+    pub name: Option<String>,
+}
+
 // ── LineConfig ──
 
 #[derive(Debug, Clone)]
@@ -176,6 +196,10 @@ pub struct LineConfig {
     /// 是否显示值标签
     pub label_show: bool,
     pub label_font_size: f64,
+    /// 值标签模板（支持 `{a}`/`{b}`/`{c}`/`{value}`）
+    pub label_formatter: Option<String>,
+    /// 标注线配置
+    pub mark_line: Vec<MarkLineSpec>,
 }
 
 impl Default for LineConfig {
@@ -193,6 +217,8 @@ impl Default for LineConfig {
             symbol_size: 4.0,
             label_show: false,
             label_font_size: 12.0,
+            label_formatter: None,
+            mark_line: Vec::new(),
         }
     }
 }
@@ -207,6 +233,10 @@ pub struct BarConfig {
     /// 是否显示值标签
     pub label_show: bool,
     pub label_font_size: f64,
+    /// 值标签模板（支持 `{a}`/`{b}`/`{c}`/`{value}`）
+    pub label_formatter: Option<String>,
+    /// 标注线配置
+    pub mark_line: Vec<MarkLineSpec>,
 }
 
 impl Default for BarConfig {
@@ -217,6 +247,8 @@ impl Default for BarConfig {
             bar_width: 0.6,
             label_show: false,
             label_font_size: 12.0,
+            label_formatter: None,
+            mark_line: Vec::new(),
         }
     }
 }
@@ -232,6 +264,8 @@ pub struct PieConfig {
     pub label_show: bool,
     pub label_position: LabelPosition,
     pub label_font_size: f64,
+    /// 标签格式化模板，支持 `{b}`（名称）、`{c}`（数值）、`{d}`（百分比）
+    pub label_formatter: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -250,6 +284,7 @@ impl Default for PieConfig {
             label_show: false,
             label_position: LabelPosition::Outside,
             label_font_size: 12.0,
+            label_formatter: None,
         }
     }
 }
@@ -653,6 +688,8 @@ pub struct LegendSpec {
     pub data: Vec<String>,
     pub symbol_size: f64,
     pub item_gap: f64,
+    /// 图例文本模板（支持 `{name}`/`{a}`/`{b}`），None 时直接显示名称
+    pub formatter: Option<String>,
 }
 
 // ═══════════════════════════════════════════════════════════════════
