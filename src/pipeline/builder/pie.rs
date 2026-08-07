@@ -104,8 +104,15 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
             start_angle = end_angle;
         }
 
-        // 碰撞避让：对相邻标签做一维 Y 轴避让，避免重叠
-        let resolved = resolve_label_overlap(outside_labels, series.label_font_size);
+        // 碰撞避让：对相邻标签做避让，避免重叠
+        let resolved = resolve_label_overlap(
+            outside_labels,
+            series.label_font_size,
+            center.x,
+            center.y,
+            width,
+            height,
+        );
 
         // 第二遍：用避让后的几何生成引导线 + 文本
         for geo in resolved {
@@ -126,9 +133,17 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
 /// - Left/Right 区域：文本在饼图左/右外缘垂直排布，组内做 **Y 轴避让**；
 /// - Top/Bottom 区域：文本在饼图上方/下方，组内做 **X 轴避让**。
 /// 避免右侧大扇区被左侧小扇区推挤，也避免顶部小扇区引导线横穿饼图。
+///
+/// 参考 ECharts 的 `avoidOverlap` 思路：当同侧标签相互重叠时，不再用单向位移
+/// 把标签一味向外推挤（会导致整体偏移、越界），而是围绕饼图圆心**对称均匀排布**，
+/// 并把整组标签约束在画布范围内（见 [`distribute_vertical`]、[`distribute_horizontal`]）。
 fn resolve_label_overlap(
     labels: Vec<PieLabelGeometry>,
     font_size: f64,
+    center_x: f64,
+    center_y: f64,
+    canvas_width: f64,
+    canvas_height: f64,
 ) -> Vec<PieLabelGeometry> {
     if labels.len() < 2 {
         return labels;
@@ -149,11 +164,43 @@ fn resolve_label_overlap(
         }
     }
 
-    // Left/Right 纵向避让，Top/Bottom 横向避让
-    rights = resolve_group(rights, font_size, false);
-    lefts = resolve_group(lefts, font_size, false);
-    tops = resolve_group(tops, font_size, true);
-    bottoms = resolve_group(bottoms, font_size, true);
+    // Left/Right 纵向避让，Top/Bottom 横向均匀分布
+    rights = resolve_group(
+        rights,
+        font_size,
+        false,
+        center_x,
+        center_y,
+        canvas_width,
+        canvas_height,
+    );
+    lefts = resolve_group(
+        lefts,
+        font_size,
+        false,
+        center_x,
+        center_y,
+        canvas_width,
+        canvas_height,
+    );
+    tops = resolve_group(
+        tops,
+        font_size,
+        true,
+        center_x,
+        center_y,
+        canvas_width,
+        canvas_height,
+    );
+    bottoms = resolve_group(
+        bottoms,
+        font_size,
+        true,
+        center_x,
+        center_y,
+        canvas_width,
+        canvas_height,
+    );
 
     let mut result = rights;
     result.extend(lefts);
@@ -162,74 +209,137 @@ fn resolve_label_overlap(
     result
 }
 
-/// 对同一侧的一组标签做 Y 轴避让。
-///
 /// 对同一区域内的一组标签做避让。
 ///
-/// 用统一的位移避让策略算出组内各标签的目标坐标后，**直接移动折点与文本**，
-/// 引导线第 1 段（`line_start -> line_kink`）随折点移动，整体在扇形外侧。
-/// - `horizontal=false`（Left/Right）：沿 Y 轴错开；
-/// - `horizontal=true`（Top/Bottom）：沿 X 轴错开。
+/// - **Left/Right 区域**（`horizontal=false`）：文本沿饼图左/右外缘垂直排布，
+///   组内做 **Y 轴避让**。
+/// - **Top/Bottom 区域**（`horizontal=true`）：多个小扇区常聚集在正上/正下方，
+///   其自然 x 坐标非常接近，若用单向位移避让会把标签逐一向外推挤，导致重叠或越界。
+///   因此改用对称均匀分布（见 [`distribute_horizontal`]）。
 fn resolve_group(
     group: Vec<PieLabelGeometry>,
     font_size: f64,
     horizontal: bool,
+    center_x: f64,
+    center_y: f64,
+    canvas_width: f64,
+    canvas_height: f64,
 ) -> Vec<PieLabelGeometry> {
-    use crate::pipeline::collision::{CollisionResolver, DisplacementResolver, LabelBox};
-
     if group.len() < 2 {
         return group;
     }
 
-    // 避让间隙：
-    // - 纵向（Left/Right）：用标签高度（上下不重叠）
-    // - 横向（Top/Bottom）：用最大文本宽度（左右不重叠）
-    let gap = if horizontal {
-        group
-            .iter()
-            .map(|g| crate::pipeline::axis_label::estimate_text_size(&g.text, font_size).0)
-            .fold(0.0_f64, f64::max)
-            + 8.0
+    if horizontal {
+        return distribute_horizontal(group, font_size, center_x, canvas_width);
+    }
+    distribute_vertical(group, font_size, center_y, canvas_height)
+}
+
+/// 左侧/右侧标签的纵向对称均匀分布。
+///
+/// 参考 ECharts 半椭圆贴合弧线的思路：同侧标签的理想位置沿扇区角度自然分布，
+/// 只有当相邻标签相互重叠时，才围绕圆心 y（`center_y`）对称均匀排布，
+/// 避免单向位移把标签整体推向画布边缘。
+fn distribute_vertical(
+    mut group: Vec<PieLabelGeometry>,
+    font_size: f64,
+    center_y: f64,
+    canvas_height: f64,
+) -> Vec<PieLabelGeometry> {
+    // 按自然 y 排序，保持扇区顺序
+    group.sort_by(|a, b| {
+        a.text_y
+            .partial_cmp(&b.text_y)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    // 标签高度 + 纵向间距
+    let label_h = font_size * 1.2;
+    let natural_gap = label_h + 4.0;
+
+    // 先判断是否存在重叠：相邻标签的 y 间距小于所需间距
+    let has_overlap = group.windows(2).any(|w| w[1].text_y - w[0].text_y < natural_gap);
+    if !has_overlap {
+        // 无重叠，保持贴合扇区的自然位置
+        return group;
+    }
+
+    let n = group.len();
+
+    // 画布纵向可用范围（两端预留安全边距）
+    const SAFE_MARGIN: f64 = 8.0;
+    let min_y = SAFE_MARGIN;
+    let max_y = (canvas_height - SAFE_MARGIN - label_h).max(min_y);
+    let available = (max_y - min_y).max(0.0);
+
+    // 均匀间距：优先自然间距；若总高放不下则等比压缩，确保不越界
+    let step = if n > 1 && (n - 1) as f64 * natural_gap > available {
+        available / (n - 1) as f64
     } else {
-        font_size * 1.2
+        natural_gap
     };
 
-    // 用统一的位移避让策略算出本组内各标签的目标坐标
-    let axis = if horizontal { 1 } else { 0 };
-    let boxes: Vec<LabelBox> = group
-        .iter()
-        .map(|g| {
-            if horizontal {
-                LabelBox::new(g.text_x, 0.0, 1.0, font_size * 1.2)
-            } else {
-                LabelBox::new(0.0, g.text_y, 1.0, font_size * 1.2)
-            }
-        })
-        .collect();
-    let resolver = DisplacementResolver::new(gap, axis);
-    let resolved = resolver.resolve(boxes);
+    // 围绕圆心对称排布，并将起点夹到范围内
+    let span = (n - 1) as f64 * step;
+    let start_y = (center_y - span * 0.5).clamp(min_y, max_y - span);
 
-    let mut result = group;
-    for (i, box_) in resolved.iter().enumerate() {
-        if horizontal {
-            // 横向避让：避让坐标在 box_.x，移动文本 x 与折点 x
-            let target = box_.x;
-            if (target - result[i].text_x).abs() < 1e-6 {
-                continue;
-            }
-            result[i].text_x = target;
-            result[i].line_kink.x = target;
-        } else {
-            // 纵向避让：避让坐标在 box_.y，移动文本 y 与折点 y
-            let target = box_.y;
-            if (target - result[i].text_y).abs() < 1e-6 {
-                continue;
-            }
-            result[i].text_y = target;
-            result[i].line_kink.y = target;
-        }
+    for (i, g) in group.iter_mut().enumerate() {
+        let target = start_y + i as f64 * step;
+        g.text_y = target;
+        g.line_kink.y = target;
     }
-    result
+    group
+}
+
+/// 顶部/底部标签的横向对称均匀分布。
+///
+/// 多个小扇区常聚集在正上/正下方，其自然 x 坐标都非常接近圆心 x，
+/// 若用单向位移避让，会把标签逐一向外推挤（最外侧可能被推出画布），
+/// 且中间标签可能仍挤在一起相互遮挡。
+/// 这里改为围绕圆心对称均匀排布，并把标签整体约束在画布范围内。
+fn distribute_horizontal(
+    mut group: Vec<PieLabelGeometry>,
+    font_size: f64,
+    center_x: f64,
+    canvas_width: f64,
+) -> Vec<PieLabelGeometry> {
+    // 按自然 x 排序，保持扇区顺序
+    group.sort_by(|a, b| {
+        a.text_x
+            .partial_cmp(&b.text_x)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let n = group.len();
+    let max_w = group
+        .iter()
+        .map(|g| crate::pipeline::axis_label::estimate_text_size(&g.text, font_size).0)
+        .fold(0.0_f64, f64::max);
+
+    // 画布横向可用范围（两端预留安全边距，最右侧还需留出文本宽度）
+    const SAFE_MARGIN: f64 = 8.0;
+    let min_x = SAFE_MARGIN;
+    let max_x = (canvas_width - SAFE_MARGIN - max_w).max(min_x);
+
+    let natural_gap = max_w + 12.0;
+    let available = (max_x - min_x).max(0.0);
+
+    // 均匀间距：优先自然间距；若总宽放不下则等比压缩，确保不越界
+    let step = if n > 1 && (n - 1) as f64 * natural_gap > available {
+        available / (n - 1) as f64
+    } else {
+        natural_gap
+    };
+
+    // 围绕圆心对称排布，并将起点夹到范围内
+    let span = (n - 1) as f64 * step;
+    let start_x = (center_x - span * 0.5).clamp(min_x, max_x - span);
+
+    for (i, g) in group.iter_mut().enumerate() {
+        let target = start_x + i as f64 * step;
+        g.text_x = target;
+    }
+    group
 }
 
 /// 饼图外部标签所在区域（决定文本放置与避让方向）
@@ -538,5 +648,89 @@ fn add_arc_eliptical(
         let p2_abs = Point::new(center.x + p2.x, center.y + p2.y);
 
         path.curve_to(cp1_abs, cp2_abs, p2_abs);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use vello_cpu::kurbo::Point;
+
+    fn mk_label(text_x: f64, text_y: f64) -> PieLabelGeometry {
+        PieLabelGeometry {
+            text: "样例标签".to_string(),
+            text_x,
+            text_y,
+            line_start: Point::new(text_x, text_y),
+            line_kink: Point::new(text_x, text_y),
+            region: PieRegion::Right,
+        }
+    }
+
+    #[test]
+    fn test_vertical_no_overlap_keeps_natural_positions() {
+        // 标签间距充足时不应被改动（贴合扇区）
+        let group = vec![mk_label(10.0, 100.0), mk_label(10.0, 200.0)];
+        let resolved = distribute_vertical(group, 12.0, 150.0, 300.0);
+        assert_eq!(resolved[0].text_y, 100.0);
+        assert_eq!(resolved[1].text_y, 200.0);
+    }
+
+    #[test]
+    fn test_vertical_overlap_symmetrical_and_within_canvas() {
+        // 三个重叠标签应围绕圆心对称分布，且不超出画布
+        let group = vec![
+            mk_label(10.0, 148.0),
+            mk_label(10.0, 150.0),
+            mk_label(10.0, 152.0),
+        ];
+        let resolved = distribute_vertical(group, 12.0, 150.0, 300.0);
+        // 均匀间距
+        let gap1 = resolved[1].text_y - resolved[0].text_y;
+        let gap2 = resolved[2].text_y - resolved[1].text_y;
+        assert!((gap1 - gap2).abs() < 1e-6);
+        // 不越界
+        assert!(resolved[0].text_y >= 8.0);
+        assert!(resolved[2].text_y <= 300.0 - 8.0);
+        // 围绕圆心对称
+        assert!((resolved[0].text_y - 150.0).abs() - (resolved[2].text_y - 150.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_vertical_crowded_compresses_to_stay_in_canvas() {
+        // 标签过多放不下时压缩间距，保证全部落在画布内
+        let group = (0..10)
+            .map(|_| mk_label(10.0, 150.0))
+            .collect::<Vec<_>>();
+        let resolved = distribute_vertical(group, 12.0, 150.0, 200.0);
+        assert!(resolved[0].text_y >= 8.0);
+        assert!(resolved[9].text_y <= 200.0 - 8.0 - 12.0 * 1.2);
+    }
+
+    #[test]
+    fn test_horizontal_clustered_spreads_within_canvas() {
+        // 顶部聚集的多个标签均匀分布且不越界
+        let group = vec![
+            mk_label(398.0, 10.0),
+            mk_label(400.0, 10.0),
+            mk_label(402.0, 10.0),
+            mk_label(401.0, 10.0),
+            mk_label(399.0, 10.0),
+        ];
+        let resolved = distribute_horizontal(group, 12.0, 400.0, 800.0);
+        let xs: Vec<f64> = resolved.iter().map(|g| g.text_x).collect();
+        // 均匀递增
+        for w in xs.windows(2) {
+            assert!(w[1] > w[0]);
+        }
+        let gap = xs[1] - xs[0];
+        assert!((xs[4] - xs[3] - gap).abs() < 1e-6);
+        // 不越界（最右文本宽度需留出空间）
+        let max_w = resolved
+            .iter()
+            .map(|g| crate::pipeline::axis_label::estimate_text_size(&g.text, 12.0).0)
+            .fold(0.0_f64, f64::max);
+        assert!(xs[0] >= 8.0);
+        assert!(xs[4] + max_w <= 800.0 - 8.0);
     }
 }

@@ -5,6 +5,28 @@ use parley::{
     style::{FontFamily, StyleProperty},
 };
 
+/// 默认字体栈：优先使用 CJK 字体，再回退到通用 sans-serif。
+///
+/// 若不指定具体 CJK 字体，parley/fontique 的泛型 `sans-serif` 在部分环境会把
+/// ASCII 数字/标点回退到过宽的字体，导致 `5.1%` 显示成 `5 .1 %`。
+/// 这里显式把 `Noto Sans CJK SC` 置于最前，使中文、数字、标点统一由同一字体渲染。
+pub const DEFAULT_FONT_STACK: &str = "Noto Sans CJK SC, sans-serif";
+
+/// 将用户配置的 `font_family` 解析为 parley 的字体栈。
+///
+/// - 当配置为默认的 `sans-serif`（或为空）时，使用 [`DEFAULT_FONT_STACK`]，
+///   即优先 `Noto Sans CJK SC`，再回退 `sans-serif`。
+/// - 否则尊重用户配置，以 CSS 逗号分隔列表的形式解析（支持用户自定义 fallback）。
+fn resolve_font_family(font_family: &str) -> FontFamily<'static> {
+    let trimmed = font_family.trim();
+    let source = if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("sans-serif") {
+        DEFAULT_FONT_STACK.to_string()
+    } else {
+        trimmed.to_string()
+    };
+    FontFamily::Source(std::borrow::Cow::Owned(source))
+}
+
 use crate::{
     error::ChartError,
     visual::{Color, TextAlign, TextBaseline, TextStyle},
@@ -113,7 +135,7 @@ pub fn create_text_layout_with_contexts(
     let mut builder = layout_cx.ranged_builder(font_cx, text, 1.0, true);
 
     // 应用样式
-    let font_stack = FontFamily::named(&style.font_family);
+    let font_stack = resolve_font_family(&style.font_family);
     builder.push_default(StyleProperty::FontFamily(font_stack));
     builder.push_default(StyleProperty::FontSize(style.font_size as f32));
     builder.push_default(StyleProperty::Brush(style.color));
@@ -187,7 +209,7 @@ pub fn layout_text_with_contexts(
     let mut builder = layout_cx.ranged_builder(font_cx, &combined, 1.0, true);
 
     let first_style = &texts[0].1;
-    let default_font_stack = FontFamily::named(&first_style.font_family);
+    let default_font_stack = resolve_font_family(&first_style.font_family);
     builder.push_default(StyleProperty::FontFamily(default_font_stack));
     builder.push_default(StyleProperty::FontSize(first_style.font_size as f32));
     builder.push_default(StyleProperty::Brush(first_style.color));
@@ -200,7 +222,7 @@ pub fn layout_text_with_contexts(
         }
         if style.font_family != first_style.font_family {
             builder.push(
-                StyleProperty::FontFamily(FontFamily::named(&style.font_family)),
+                StyleProperty::FontFamily(resolve_font_family(&style.font_family)),
                 start..end,
             );
         }
