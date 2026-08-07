@@ -2,8 +2,31 @@ use liecharts::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let json_config = r#"
-        {"legend":{"data":[],"top":"8%"},"series":[{"data":[7067,7265,13006,7533,5514,5881,6284],"label":{"show":false},"name":"每日请求量趋势","type":"line"}],"title":{"left":"center","text":"每日请求量趋势"},"tooltip":{"trigger":"axis"},"xAxis":[{"data":["2026-07-27 00:00:00 +0800 CST","2026-07-28 00:00:00 +0800 CST","2026-07-29 00:00:00 +0800 CST","2026-07-30 00:00:00 +0800 CST","2026-07-31 00:00:00 +0800 CST","2026-08-01 00:00:00 +0800 CST","2026-08-02 00:00:00 +0800 CST"],"type":"category"}],"yAxis":[{"type":"value"}]}
-    "#;
+{
+  "title": {"text": "安全事件类型分布"},
+  "tooltip": {"trigger": "item"},
+  "legend": {"orient": "vertical", "left": "left"},
+  "series": [{
+    "name": "安全事件类型分布",
+    "type": "pie",
+    "radius": ["0%", "70%"],
+    "label": {
+      "show": true,
+      "formatter": "{b}: {d}%"
+    },
+    "data": [
+      {"name": "运维监控", "value": 67403},
+      {"name": "拒绝服务", "value": 5764},
+      {"name": "数据泄露", "value": 4155},
+      {"name": "可疑行为", "value": 2458},
+      {"name": "登录操作", "value": 1536},
+      {"name": "漏洞攻击", "value": 141},
+      {"name": "web攻击", "value": 103},
+      {"name": "网络行为", "value": 27}
+    ]
+  }]
+}
+"#;
 
     let chart = ChartBuilder::from_option_json(json_config)?.build(800, 600)?;
     chart.render_to_svg("json_config.svg")?;

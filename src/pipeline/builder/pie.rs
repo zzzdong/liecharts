@@ -17,6 +17,22 @@ use crate::{
     },
 };
 
+/// 饼图外部标签的几何布局（用于碰撞避让）
+struct PieLabelGeometry {
+    /// 标签展示文本
+    text: String,
+    /// 文本锚点 X（引导线第 2 段终点外侧）
+    text_x: f64,
+    /// 文本锚点 Y（引导线第 2 段终点）
+    text_y: f64,
+    /// 引导线第 1 段起点（扇形边缘，沿角度方向径向）
+    line_start: Point,
+    /// 引导线折点
+    line_kink: Point,
+    /// 标签所在区域
+    region: PieRegion,
+}
+
 pub struct PieBuilder;
 
 impl SeriesBuilder<PieSeries> for PieBuilder {
@@ -40,6 +56,9 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
 
         let mut start_angle = 0.0; // 从 12 点钟方向开始
 
+        // 第一遍：绘制扇形，并收集外部标签几何（供碰撞避让）
+        let mut outside_labels: Vec<PieLabelGeometry> = Vec::new();
+
         for slice in &series.slices {
             let sweep_angle = slice.percent * 2.0 * PI;
             let end_angle = start_angle + sweep_angle;
@@ -54,157 +73,336 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
                 z_index: Z_SERIES_FILL,
             });
 
-            // 绘制标签和引导线（如果启用）
+            // 标签
             if series.label_show {
-                let label_elements = build_label(
-                    center,
-                    outer_radius,
-                    mid_angle,
-                    slice,
-                    series.label_position,
-                    series.label_font_size,
-                    series.label_formatter.as_deref(),
-                    ctx,
-                );
-                elements.extend(label_elements);
+                match series.label_position {
+                    LabelPosition::Inside => {
+                        let label_elements = build_inside_label(
+                            center,
+                            outer_radius,
+                            mid_angle,
+                            slice,
+                            series.label_formatter.as_deref(),
+                            ctx,
+                        );
+                        elements.extend(label_elements);
+                    }
+                    LabelPosition::Outside => {
+                        let text = format_label_text(slice, series.label_formatter.as_deref());
+                        if let Some(geo) = compute_label_geometry(
+                            center,
+                            outer_radius,
+                            mid_angle,
+                            &text,
+                        ) {
+                            outside_labels.push(geo);
+                        }
+                    }
+                }
             }
 
             start_angle = end_angle;
+        }
+
+        // 碰撞避让：对相邻标签做一维 Y 轴避让，避免重叠
+        let resolved = resolve_label_overlap(outside_labels, series.label_font_size);
+
+        // 第二遍：用避让后的几何生成引导线 + 文本
+        for geo in resolved {
+            elements.extend(emit_label_elements(&geo, ctx));
         }
 
         Ok(elements)
     }
 }
 
-/// 构建标签和引导线
-#[allow(clippy::too_many_arguments)]
-fn build_label(
+/// 饼图外部标签的碰撞避让。
+///
+/// 结合「引导线两段式」的布局要求（第 1 段「圆心 -> 扇形边缘」隐含不显示）：
+/// - **第 2 段**：从扇形边缘沿扇区角度方向径向引出（`line_start -> line_kink`）；
+/// - **第 3 段**：指向文本侧边（`line_kink -> line_end`），保持水平/垂直，指向文本端点的垂直/水平中心。
+///
+/// 碰撞避让原则：**按区域分组、独立避让**——
+/// - Left/Right 区域：文本在饼图左/右外缘垂直排布，组内做 **Y 轴避让**；
+/// - Top/Bottom 区域：文本在饼图上方/下方，组内做 **X 轴避让**。
+/// 避免右侧大扇区被左侧小扇区推挤，也避免顶部小扇区引导线横穿饼图。
+fn resolve_label_overlap(
+    labels: Vec<PieLabelGeometry>,
+    font_size: f64,
+) -> Vec<PieLabelGeometry> {
+    if labels.len() < 2 {
+        return labels;
+    }
+
+    let (mut tops, mut bottoms, mut lefts, mut rights): (
+        Vec<PieLabelGeometry>,
+        Vec<PieLabelGeometry>,
+        Vec<PieLabelGeometry>,
+        Vec<PieLabelGeometry>,
+    ) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+    for g in labels {
+        match g.region {
+            PieRegion::Top => tops.push(g),
+            PieRegion::Bottom => bottoms.push(g),
+            PieRegion::Left => lefts.push(g),
+            PieRegion::Right => rights.push(g),
+        }
+    }
+
+    // Left/Right 纵向避让，Top/Bottom 横向避让
+    rights = resolve_group(rights, font_size, false);
+    lefts = resolve_group(lefts, font_size, false);
+    tops = resolve_group(tops, font_size, true);
+    bottoms = resolve_group(bottoms, font_size, true);
+
+    let mut result = rights;
+    result.extend(lefts);
+    result.extend(tops);
+    result.extend(bottoms);
+    result
+}
+
+/// 对同一侧的一组标签做 Y 轴避让。
+///
+/// 对同一区域内的一组标签做避让。
+///
+/// 用统一的位移避让策略算出组内各标签的目标坐标后，**直接移动折点与文本**，
+/// 引导线第 1 段（`line_start -> line_kink`）随折点移动，整体在扇形外侧。
+/// - `horizontal=false`（Left/Right）：沿 Y 轴错开；
+/// - `horizontal=true`（Top/Bottom）：沿 X 轴错开。
+fn resolve_group(
+    group: Vec<PieLabelGeometry>,
+    font_size: f64,
+    horizontal: bool,
+) -> Vec<PieLabelGeometry> {
+    use crate::pipeline::collision::{CollisionResolver, DisplacementResolver, LabelBox};
+
+    if group.len() < 2 {
+        return group;
+    }
+
+    // 避让间隙：
+    // - 纵向（Left/Right）：用标签高度（上下不重叠）
+    // - 横向（Top/Bottom）：用最大文本宽度（左右不重叠）
+    let gap = if horizontal {
+        group
+            .iter()
+            .map(|g| crate::pipeline::axis_label::estimate_text_size(&g.text, font_size).0)
+            .fold(0.0_f64, f64::max)
+            + 8.0
+    } else {
+        font_size * 1.2
+    };
+
+    // 用统一的位移避让策略算出本组内各标签的目标坐标
+    let axis = if horizontal { 1 } else { 0 };
+    let boxes: Vec<LabelBox> = group
+        .iter()
+        .map(|g| {
+            if horizontal {
+                LabelBox::new(g.text_x, 0.0, 1.0, font_size * 1.2)
+            } else {
+                LabelBox::new(0.0, g.text_y, 1.0, font_size * 1.2)
+            }
+        })
+        .collect();
+    let resolver = DisplacementResolver::new(gap, axis);
+    let resolved = resolver.resolve(boxes);
+
+    let mut result = group;
+    for (i, box_) in resolved.iter().enumerate() {
+        if horizontal {
+            // 横向避让：避让坐标在 box_.x，移动文本 x 与折点 x
+            let target = box_.x;
+            if (target - result[i].text_x).abs() < 1e-6 {
+                continue;
+            }
+            result[i].text_x = target;
+            result[i].line_kink.x = target;
+        } else {
+            // 纵向避让：避让坐标在 box_.y，移动文本 y 与折点 y
+            let target = box_.y;
+            if (target - result[i].text_y).abs() < 1e-6 {
+                continue;
+            }
+            result[i].text_y = target;
+            result[i].line_kink.y = target;
+        }
+    }
+    result
+}
+
+/// 饼图外部标签所在区域（决定文本放置与避让方向）
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum PieRegion {
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+/// 计算饼图外部标签的几何布局（引导线两段 + 文本锚点）。
+///
+/// 按扇区角度将标签归入四区，避免引导线横穿饼图：
+/// - **Left/Right**：文本在饼图左/右外缘垂直排布（x 固定），后续做 Y 轴避让；
+/// - **Top/Bottom**：文本在饼图上方/下方沿角度方向外置，后续做 X 轴避让。
+/// 引导线统一「从扇形边缘沿角度方向径向引出」，向外不向内。
+fn compute_label_geometry(
+    center: Point,
+    outer_radius: f64,
+    mid_angle: f64,
+    text: &str,
+) -> Option<PieLabelGeometry> {
+    // 将角度转换为标准坐标系（0°=右侧，π/2=下方）
+    let angle = -PI / 2.0 + mid_angle;
+    let dir = (angle.cos(), angle.sin());
+    let (c, s) = dir;
+
+    // 扇形边缘（引导线第 2 段起点）
+    let line_start = Point::new(
+        center.x + outer_radius * c,
+        center.y + outer_radius * s,
+    );
+
+    // 判断区域：仅角度非常接近正上/正下（|cos| 很小）才归顶部/底部，
+    // 其余按左右分侧（避免多个标签横向堆积在顶部导致超界/重叠）。
+    let region = if s < -0.30 && c.abs() < 0.5 {
+        PieRegion::Top
+    } else if s > 0.30 && c.abs() < 0.5 {
+        PieRegion::Bottom
+    } else if c >= 0.0 {
+        PieRegion::Right
+    } else {
+        PieRegion::Left
+    };
+
+    // 文本锚点：按区域外置在饼图轮廓外侧
+    let text_margin = 12.0;
+    let (text_x, text_y) = match region {
+        PieRegion::Left => (center.x - outer_radius - text_margin, line_start.y),
+        PieRegion::Right => (center.x + outer_radius + text_margin, line_start.y),
+        // 顶部/底部：文本在饼图上方/下方，x 沿扇形方向
+        PieRegion::Top => (line_start.x, center.y - outer_radius - text_margin),
+        PieRegion::Bottom => (line_start.x, center.y + outer_radius + text_margin),
+    };
+
+    // 引导线第 2 段径向长度（从扇形边缘沿角度方向延伸）
+    let radial_len = 12.0;
+    let line_kink = Point::new(
+        center.x + (outer_radius + radial_len) * c,
+        center.y + (outer_radius + radial_len) * s,
+    );
+
+    Some(PieLabelGeometry {
+        text: text.to_string(),
+        text_x,
+        text_y,
+        line_start,
+        line_kink,
+        region,
+    })
+}
+
+/// 用最终几何生成引导线 + 文本元素。
+fn emit_label_elements(geo: &PieLabelGeometry, ctx: &RenderContext) -> Vec<VisualElement> {
+    let mut elements = Vec::new();
+
+    // 引导线第 3 段终点：指向文本侧边/顶底端点中心
+    let line_end = match geo.region {
+        PieRegion::Left => Point::new(geo.text_x + 5.0, geo.text_y),
+        PieRegion::Right => Point::new(geo.text_x - 5.0, geo.text_y),
+        PieRegion::Top => Point::new(geo.text_x, geo.text_y + 5.0),
+        PieRegion::Bottom => Point::new(geo.text_x, geo.text_y - 5.0),
+    };
+
+    // 绘制引导线（两段折线，第 1 段「圆心->扇形边缘」隐含不显示）：
+    // 第 2 段（径向）：扇形边缘(line_start) -> 折点(line_kink)
+    // 第 3 段（水平）：折点 -> 文本侧边中点(line_end)
+    let mut guide_path = BezPath::new();
+    guide_path.move_to(geo.line_start);
+    guide_path.line_to(geo.line_kink);
+    guide_path.line_to(line_end);
+
+    elements.push(VisualElement::Path {
+        path: guide_path,
+        style: FillStrokeStyle {
+            fill: None,
+            stroke: Some(Stroke {
+                color: ctx.colors.text_secondary_color,
+                width: 1.0,
+            }),
+        },
+        z_index: Z_SERIES_FILL + 1,
+    });
+
+    // 文本对齐：Left/Right 文本侧对齐；Top/Bottom 文本顶/底对齐且水平居中
+    let (align, baseline) = match geo.region {
+        PieRegion::Left => (TextAlign::Right, TextBaseline::Middle),
+        PieRegion::Right => (TextAlign::Left, TextBaseline::Middle),
+        PieRegion::Top => (TextAlign::Center, TextBaseline::Bottom),
+        PieRegion::Bottom => (TextAlign::Center, TextBaseline::Top),
+    };
+
+    elements.push(VisualElement::TextRun {
+        text: geo.text.clone(),
+        position: Point::new(geo.text_x, geo.text_y),
+        style: TextStyle {
+            color: ctx.colors.text_color,
+            font_size: 12.0,
+            font_family: "sans-serif".to_string(),
+            font_weight: FontWeight::default(),
+            font_style: FontStyle::Normal,
+            align,
+            vertical_align: baseline,
+        },
+        rotation: 0.0,
+        max_width: None,
+        layout: None,
+        z_index: Z_SERIES_FILL + 2,
+    });
+
+    elements
+}
+
+/// 构建饼图内部标签（放于扇形内部中心，无需碰撞避让）。
+fn build_inside_label(
     center: Point,
     outer_radius: f64,
     mid_angle: f64,
     slice: &crate::pipeline::typed_series::PieSlice,
-    position: LabelPosition,
-    font_size: f64,
     formatter: Option<&str>,
-    ctx: &RenderContext,
+    _ctx: &RenderContext,
 ) -> Vec<VisualElement> {
     let mut elements = Vec::new();
 
     // 将角度转换为标准坐标系
     let angle = -PI / 2.0 + mid_angle;
 
-    // 标签文本：默认 "名称 百分比%"，支持 formatter 模板占位符替换
+    // 标签文本
     let label_text = format_label_text(slice, formatter);
 
-    match position {
-        LabelPosition::Outside => {
-            // 2段式引导线：
-            // 第1段：从圆弧中心出发，沿角度方向延伸
-            // 第2段：水平指出，到标签的左或右侧边缘中心
+    // 内部标签：放在扇形中心
+    let label_radius = outer_radius * 0.7;
+    let label_x = center.x + label_radius * angle.cos();
+    let label_y = center.y + label_radius * angle.sin();
 
-            let is_right_side = angle.cos() >= 0.0;
-
-            // 第1段起点：圆弧边缘（扇形中心）
-            let line_start = Point::new(
-                center.x + outer_radius * angle.cos(),
-                center.y + outer_radius * angle.sin(),
-            );
-
-            // 第1段终点：沿角度方向延伸一段距离
-            let first_segment_len = 20.0;
-            let line_kink = Point::new(
-                center.x + (outer_radius + first_segment_len) * angle.cos(),
-                center.y + (outer_radius + first_segment_len) * angle.sin(),
-            );
-
-            // 第2段终点：水平指出，到标签位置
-            let horizontal_len = 30.0;
-            let line_end = Point::new(
-                if is_right_side {
-                    line_kink.x + horizontal_len
-                } else {
-                    line_kink.x - horizontal_len
-                },
-                line_kink.y, // 保持同一水平线
-            );
-
-            // 绘制引导线（两段折线）
-            let mut guide_path = BezPath::new();
-            guide_path.move_to(line_start);
-            guide_path.line_to(line_kink);
-            guide_path.line_to(line_end);
-
-            elements.push(VisualElement::Path {
-                path: guide_path,
-                style: FillStrokeStyle {
-                    fill: None,
-                    stroke: Some(Stroke {
-                        color: ctx.colors.text_secondary_color,
-                        width: 1.0,
-                    }),
-                },
-                z_index: Z_SERIES_FILL + 1,
-            });
-
-            // 绘制标签文本
-            // 标签位于第2段终点的左侧或右侧边缘中心
-            let text_x = if is_right_side {
-                line_end.x + 5.0 // 右侧：文本从终点右侧开始
-            } else {
-                line_end.x - 5.0 // 左侧：文本从终点左侧开始
-            };
-            let text_y = line_end.y;
-
-            // 根据位置设置文本对齐方式
-            let (align, baseline) = if is_right_side {
-                (TextAlign::Left, TextBaseline::Middle)
-            } else {
-                (TextAlign::Right, TextBaseline::Middle)
-            };
-
-            elements.push(VisualElement::TextRun {
-                text: label_text,
-                position: Point::new(text_x, text_y),
-                style: TextStyle {
-                    color: ctx.colors.text_color,
-                    font_size,
-                    font_family: "sans-serif".to_string(),
-                    font_weight: FontWeight::default(),
-                    font_style: FontStyle::Normal,
-                    align,
-                    vertical_align: baseline,
-                },
-                rotation: 0.0,
-                max_width: None,
-                layout: None,
-                z_index: Z_SERIES_FILL + 2,
-            });
-        }
-        LabelPosition::Inside => {
-            // 内部标签：放在扇形中心
-            let label_radius = outer_radius * 0.7;
-            let label_x = center.x + label_radius * angle.cos();
-            let label_y = center.y + label_radius * angle.sin();
-
-            elements.push(VisualElement::TextRun {
-                text: label_text,
-                position: Point::new(label_x, label_y),
-                style: TextStyle {
-                    color: Color::new(255, 255, 255), // 白色文字
-                    font_size,
-                    font_family: "sans-serif".to_string(),
-                    font_weight: FontWeight::default(),
-                    font_style: FontStyle::Normal,
-                    align: TextAlign::Center,
-                    vertical_align: TextBaseline::Middle,
-                },
-                rotation: 0.0,
-                max_width: None,
-                layout: None,
-                z_index: Z_SERIES_FILL + 2,
-            });
-        }
-    }
+    elements.push(VisualElement::TextRun {
+        text: label_text,
+        position: Point::new(label_x, label_y),
+        style: TextStyle {
+            color: Color::new(255, 255, 255), // 白色文字
+            font_size: 12.0,
+            font_family: "sans-serif".to_string(),
+            font_weight: FontWeight::default(),
+            font_style: FontStyle::Normal,
+            align: TextAlign::Center,
+            vertical_align: TextBaseline::Middle,
+        },
+        rotation: 0.0,
+        max_width: None,
+        layout: None,
+        z_index: Z_SERIES_FILL + 2,
+    });
 
     elements
 }

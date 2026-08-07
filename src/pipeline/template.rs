@@ -74,7 +74,8 @@ pub fn render_template(tpl: Option<&str>, ctx: &TemplateContext, fallback: &str)
         out = out.replace("{value}", &s).replace("{c}", &s);
     }
     if let Some(p) = ctx.percent {
-        let s = format!("{:.1}%", p);
+        // ECharts 语义：`{d}` 是纯数字百分比（不含 %），由模板自行决定是否追加 "%"
+        let s = format!("{:.1}", p);
         out = out.replace("{d}", &s);
     }
     if let Some(name) = ctx.name {
@@ -99,8 +100,13 @@ mod tests {
             percent: Some(13.7),
         };
         assert_eq!(
-            render_template(Some("{a} | {b}: {c} ({d})"), &ctx, ""),
+            render_template(Some("{a} | {b}: {c} ({d}%)"), &ctx, ""),
             "告警 | 高危: 85 (13.7%)"
+        );
+        // `{d}` 本身是纯数字（不含 %），模板自行决定是否追加 "%"
+        assert_eq!(
+            render_template(Some("{d}"), &ctx, ""),
+            "13.7"
         );
     }
 

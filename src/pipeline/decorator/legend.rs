@@ -5,7 +5,7 @@
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
-    pipeline::types::{ChartSpec, ChartType, ColorContext},
+    pipeline::types::{ChartSpec, ChartType, ColorContext, LegendSpec},
     text::create_text_layout,
     theme::Theme,
     visual::{Color, FillStrokeStyle, TextAlign, TextBaseline, TextStyle, VisualElement, Z_TITLE},
@@ -23,10 +23,31 @@ pub fn render_legend(
 ) -> Vec<VisualElement> {
     let mut elements = Vec::new();
 
-    if let Some(legend) = &spec.legend {
-        if !legend.show {
-            return elements;
+    // 图例来源：
+    // - 用户显式配置了 legend → 遵循用户配置（show 决定显隐）
+    // - 未配置但图表需要颜色区分 → 按需自动绘制图例
+    let auto_legend = match &spec.legend {
+        Some(legend) => {
+            if !legend.show {
+                return elements;
+            }
+            None
         }
+        None if should_auto_legend(spec) => Some(LegendSpec {
+            show: true,
+            data: crate::pipeline::compat::collect_legend_names(&spec.series),
+            symbol_size: 10.0,
+            item_gap: 10.0,
+            formatter: None,
+        }),
+        None => return elements,
+    };
+
+    let legend = match (&spec.legend, &auto_legend) {
+        (Some(l), _) => l,
+        (None, Some(a)) => a,
+        _ => return elements,
+    };
 
         let legend_style = theme.get_legend_text_style();
         let legend_color = Color::from_hex(&legend_style.color).unwrap_or(colors.text_color);
@@ -148,7 +169,40 @@ pub fn render_legend(
 
             current_x += item_width;
         }
-    }
 
     elements
+}
+
+/// 判断是否应为图表自动绘制图例（当用户未显式配置 legend 时）。
+///
+/// 规则：
+/// - 按数据点着色的类型（饼图/环形图/极坐标柱状图）→ 需要（每个数据点一色）
+/// - 多系列图表（line/bar/scatter 等，且非热力图/仪表盘/表格）→ 需要
+/// - 其余（单系列、热力图、仪表盘、表格）→ 不需要
+fn should_auto_legend(spec: &ChartSpec) -> bool {
+    use crate::pipeline::types::SeriesConfig;
+
+    // 饼图 / 环形图 / 极坐标柱状图：按数据点着色，必须有图例
+    let has_palette_series = spec.series.iter().any(|s| {
+        matches!(
+            s.config,
+            SeriesConfig::Pie(_) | SeriesConfig::PolarBar(_)
+        )
+    });
+    if has_palette_series {
+        return true;
+    }
+
+    // 多系列（>1）且非热力图/仪表盘/表格：需要颜色区分
+    if spec.series.len() > 1 {
+        let has_color_exempt = spec.series.iter().any(|s| {
+            matches!(
+                s.config,
+                SeriesConfig::Heatmap(_) | SeriesConfig::Gauge(_) | SeriesConfig::Table(_)
+            )
+        });
+        return !has_color_exempt;
+    }
+
+    false
 }

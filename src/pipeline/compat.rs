@@ -933,6 +933,9 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         })
         .collect();
 
+    // 预计算自动图例名（在 series 被 move 进 ChartSpec 之前）
+    let auto_legend_names = collect_legend_names(&series);
+
     ChartSpec {
         width,
         height,
@@ -958,13 +961,21 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         }),
         legend: option.legend.as_ref().map(|l| LegendSpec {
             show: l.show.unwrap_or(true),
-            data: l
-                .data
-                .clone()
-                .unwrap_or_default()
-                .iter()
-                .map(|i| i.name().to_string())
-                .collect(),
+            // 显式提供的 data 优先；否则自动从系列回填展示名（与 ECharts 一致）
+            data: {
+                let explicit: Vec<String> = l
+                    .data
+                    .clone()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|i| i.name().to_string())
+                    .collect();
+                if explicit.is_empty() {
+                    auto_legend_names.clone()
+                } else {
+                    explicit
+                }
+            },
             symbol_size: l
                 .symbol_size
                 .as_ref()
@@ -1081,6 +1092,47 @@ fn parse_mark_line(
         }
     }
     specs
+}
+
+/// 当 legend 未显式提供 data 时，自动从系列收集展示名（与 ECharts 行为一致）。
+///
+/// - 饼图/环形图/极坐标柱状图：按数据点取色，图例项为**数据点名**（category 列）
+/// - 其他系列：图例项为**系列名**（series.name）
+pub(crate) fn collect_legend_names(
+    series: &[crate::pipeline::types::SeriesSpec],
+) -> Vec<String> {
+    use crate::pipeline::types::SeriesConfig;
+
+    let mut names = Vec::new();
+    for s in series {
+        match &s.config {
+            // 按数据点着色的类型：图例显示数据点名
+            SeriesConfig::Pie(cfg) => {
+                if let Some(col) = s.data.get_column(&cfg.category_col) {
+                    for i in 0..s.data.row_count() {
+                        if let Some(v) = col.as_string(i) {
+                            names.push(v);
+                        }
+                    }
+                }
+            }
+            SeriesConfig::PolarBar(cfg) => {
+                if let Some(col) = s.data.get_column(&cfg.angle_col) {
+                    for i in 0..s.data.row_count() {
+                        if let Some(v) = col.as_string(i) {
+                            names.push(v);
+                        }
+                    }
+                }
+            }
+            _ => {
+                if !s.name.is_empty() {
+                    names.push(s.name.clone());
+                }
+            }
+        }
+    }
+    names
 }
 
 /// 从 `option.visual_map` 解析热力图颜色映射。

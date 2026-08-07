@@ -1,55 +1,14 @@
 //! 坐标轴标签布局辅助
 //!
-//! 用于解决密集时间轴/分类轴的长文本标签互相遮挡问题：
-//! - 自动选择旋转角度（0° → 45° → 90°）
-//! - 旋转后仍放不下时按步长抽稀标签
-//! - 无字体引擎时的文本尺寸估计（GridPlanner 预留边距用）
+//! 用于解决密集时间轴/分类轴的长文本标签互相遮挡问题。
+//!
+//! 旋转/抽稀策略统一由 [`super::collision`] 提供（`CollisionResolver` /
+//! `auto_rotate` / `label_step` 等），本模块在此基础之上 re-export，
+//! 供坐标轴渲染层复用，并保留无字体引擎时的文本尺寸估计。
 
-/// 45° 旋转（弧度）
-pub const ROT_45: f64 = std::f64::consts::FRAC_PI_4;
-/// 90° 旋转（弧度）
-pub const ROT_90: f64 = std::f64::consts::FRAC_PI_2;
-
-/// 文本 w×h 旋转 θ 弧度后投影包围盒的尺寸。
-pub fn rotated_bounds(w: f64, h: f64, theta: f64) -> (f64, f64) {
-    let (s, c) = theta.sin_cos();
-    (w * c.abs() + h * s.abs(), w * s.abs() + h * c.abs())
-}
-
-/// 45° 旋转可接受的最大抽稀步长。
-///
-/// 45° 相比 90° 阅读更友好，因此只要 45° 旋转后通过抽稀仍能保持标签可读
-/// （抽稀步长不超过该值，即每隔至多 `MAX_STEP_45 - 1` 个位置显示一个），
-/// 就优先采用 45°；否则才降到 90°（90° 投影宽度极小，通常无需抽稀）。
-const MAX_STEP_45: usize = 2;
-
-/// 自动选择旋转角度（弧度）：
-///
-/// - 横向能放下 → 0°
-/// - 45° 旋转后投影宽度 ≤ 槽宽，或抽稀步长不超过 `MAX_STEP_45` → 45°（优先）
-/// - 否则 → 90°
-///
-/// 注意：决定旋转角时同样把抽稀纳入考量，避免"45° 略超槽宽但可抽稀"时
-/// 误跳到 90°。
-pub fn auto_rotate(max_w: f64, max_h: f64, slot_w: f64) -> f64 {
-    if max_w <= slot_w {
-        return 0.0;
-    }
-    let proj_45 = rotated_bounds(max_w, max_h, ROT_45).0;
-    if proj_45 <= slot_w || label_step(proj_45, slot_w) <= MAX_STEP_45 {
-        return ROT_45;
-    }
-    ROT_90
-}
-
-/// 计算标签渲染步长：每隔 `step` 个位置显示一个标签。
-/// 1 表示全部显示。`projected_max_w` 是旋转后标签的投影宽度。
-pub fn label_step(projected_max_w: f64, slot_w: f64) -> usize {
-    if slot_w <= 0.0 {
-        return 1;
-    }
-    (projected_max_w / slot_w).ceil().max(1.0) as usize
-}
+pub use super::collision::{
+    ROT_45, ROT_90, auto_rotate, label_step, rotated_bounds,
+};
 
 /// 粗略估计文本渲染尺寸（像素），不依赖字体引擎。
 ///
