@@ -246,9 +246,9 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "font-types"
-version = "0.12.2"
+version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a7299a780854a6d391be2ae1c8521c9368471b559dbfd6a8dbd9f407eaff100"
+checksum = "75382bc7392ef10aad10935f92fc3db36d2d4dad0e5d96d8d65e04f89a07ec39"
 dependencies = [
  "bytemuck",
 ]
@@ -517,6 +517,7 @@ dependencies = [
  "anyhow",
  "clap",
  "image",
+ "lievisual",
  "parley",
  "serde",
  "serde_json",
@@ -531,6 +532,17 @@ dependencies = [
  "liecharts",
  "serde_json",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "lievisual"
+version = "0.1.0-beta.3"
+dependencies = [
+ "kurbo",
+ "parley",
+ "png",
+ "skrifa 0.46.0",
+ "vello_cpu",
 ]
 
 [[package]]
@@ -783,6 +795,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "read-fonts"
+version = "0.43.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6b5cae85882cfb0167038e7726a426f47ebd808e67af78c2d6bcbb02acbf3ce"
+dependencies = [
+ "bytemuck",
+ "font-types",
+ "once_cell",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -864,6 +887,16 @@ checksum = "819ab7d62b1d3e72d9d9dea5650bac30424f9111364bb94928dbf5ecad1baa68"
 dependencies = [
  "bytemuck",
  "read-fonts 0.41.0",
+]
+
+[[package]]
+name = "skrifa"
+version = "0.46.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "de0bbcc507e438bfe765692ae5228059959781db7430fe36e1cfd569e7c88c89"
+dependencies = [
+ "bytemuck",
+ "read-fonts 0.43.0",
 ]
 
 [[package]]

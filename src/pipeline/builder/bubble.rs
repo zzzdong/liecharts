@@ -1,46 +1,30 @@
-//! Bubble Builder: 将 BubbleSeries 组装为 VisualElement
+//! Bubble Builder: 将 BubbleSeries 组装为 lievisual `SceneNode`
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_POINT, fill_stroke_style},
+        builder::{SeriesBuilder, Z_SERIES_POINT, circle, fill_stroke_style},
         typed_series::{BubbleSeries, RenderContext},
     },
-    visual::VisualElement,
 };
 
 pub struct BubbleBuilder;
 
 impl SeriesBuilder<BubbleSeries> for BubbleBuilder {
-    fn build(series: &BubbleSeries, _ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &BubbleSeries, _ctx: &RenderContext) -> Result<Vec<lievisual::scene::SceneNode>> {
         let mut elements = Vec::with_capacity(series.bubbles.len());
 
         for bubble in &series.bubbles {
-            elements.push(VisualElement::Circle {
-                center: bubble.center,
-                radius: bubble.radius,
-                style: fill_stroke_style(
-                    series.color.with_alpha(128), // 半透明填充
-                    series.color,
-                    1.0,
-                ),
-                z_index: Z_SERIES_POINT,
-            });
+            let mut fill = series.color;
+            fill.a = 128.0 / 255.0; // 半透明填充
+            elements.push(circle(
+                bubble.center,
+                bubble.radius,
+                fill_stroke_style(fill, series.color, 1.0),
+                Z_SERIES_POINT,
+            ));
         }
 
         Ok(elements)
-    }
-}
-
-/// 辅助 trait 扩展 Color
-trait ColorExt {
-    fn with_alpha(&self, alpha: u8) -> Self;
-}
-
-impl ColorExt for crate::visual::Color {
-    fn with_alpha(&self, alpha: u8) -> Self {
-        let mut color = *self;
-        color.a = alpha;
-        color
     }
 }

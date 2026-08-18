@@ -1,4 +1,5 @@
-use crate::{pipeline::types::ColorContext, theme::Theme, visual::Color};
+use crate::{pipeline::builder::ColorExt, pipeline::types::ColorContext, theme::Theme};
+use lievisual::Color;
 
 /// 颜色分配器
 ///
@@ -23,14 +24,14 @@ impl ColorAssigner {
     pub fn assign(&self, series_count: usize) -> ColorContext {
         // 使用默认调色板，为每个 series 分配颜色
         let default_palette = vec![
-            Color::new(99, 132, 255),  // #6384FF
-            Color::new(255, 159, 67),  // #FF9F43
-            Color::new(46, 203, 113),  // #2ECB71
-            Color::new(255, 99, 132),  // #FF6384
-            Color::new(153, 102, 255), // #9966FF
-            Color::new(255, 205, 86),  // #FFCD56
-            Color::new(75, 192, 192),  // #4BC0C0
-            Color::new(255, 159, 127), // #FF9F7F
+            Color::rgb(99, 132, 255),  // #6384FF
+            Color::rgb(255, 159, 67),  // #FF9F43
+            Color::rgb(46, 203, 113),  // #2ECB71
+            Color::rgb(255, 99, 132),  // #FF6384
+            Color::rgb(153, 102, 255), // #9966FF
+            Color::rgb(255, 205, 86),  // #FFCD56
+            Color::rgb(75, 192, 192),  // #4BC0C0
+            Color::rgb(255, 159, 127), // #FF9F7F
         ];
 
         let series_colors: Vec<Color> = (0..series_count)
@@ -39,19 +40,19 @@ impl ColorAssigner {
 
         ColorContext {
             palette: default_palette.clone(),
-            background: Color::new(255, 255, 255),
+            background: Color::rgb(255, 255, 255),
             series_colors,
-            axis_line_color: Color::new(200, 200, 200),
-            axis_label_color: Color::new(50, 50, 50),
-            grid_line_color: Color::new(230, 230, 230),
-            border_color: Color::new(255, 255, 255),
-            text_color: Color::new(51, 51, 51),
-            text_secondary_color: Color::new(102, 102, 102),
-            up_color: Color::new(234, 85, 67),
-            down_color: Color::new(80, 170, 94),
-            table_header_bg: Color::new(220, 220, 220),
-            table_row_even_bg: Color::new(248, 248, 248),
-            table_row_odd_bg: Color::new(255, 255, 255),
+            axis_line_color: Color::rgb(200, 200, 200),
+            axis_label_color: Color::rgb(50, 50, 50),
+            grid_line_color: Color::rgb(230, 230, 230),
+            border_color: Color::rgb(255, 255, 255),
+            text_color: Color::rgb(51, 51, 51),
+            text_secondary_color: Color::rgb(102, 102, 102),
+            up_color: Color::rgb(234, 85, 67),
+            down_color: Color::rgb(80, 170, 94),
+            table_header_bg: Color::rgb(220, 220, 220),
+            table_row_even_bg: Color::rgb(248, 248, 248),
+            table_row_odd_bg: Color::rgb(255, 255, 255),
         }
     }
 
@@ -67,14 +68,14 @@ impl ColorAssigner {
         // 如果主题调色板为空，使用默认调色板
         let palette = if palette.is_empty() {
             vec![
-                Color::new(99, 132, 255),  // #6384FF
-                Color::new(255, 159, 67),  // #FF9F43
-                Color::new(46, 203, 113),  // #2ECB71
-                Color::new(255, 99, 132),  // #FF6384
-                Color::new(153, 102, 255), // #9966FF
-                Color::new(255, 205, 86),  // #FFCD56
-                Color::new(75, 192, 192),  // #4BC0C0
-                Color::new(255, 159, 127), // #FF9F7F
+                Color::rgb(99, 132, 255),  // #6384FF
+                Color::rgb(255, 159, 67),  // #FF9F43
+                Color::rgb(46, 203, 113),  // #2ECB71
+                Color::rgb(255, 99, 132),  // #FF6384
+                Color::rgb(153, 102, 255), // #9966FF
+                Color::rgb(255, 205, 86),  // #FFCD56
+                Color::rgb(75, 192, 192),  // #4BC0C0
+                Color::rgb(255, 159, 127), // #FF9F7F
             ]
         } else {
             palette
@@ -87,17 +88,17 @@ impl ColorAssigner {
 
         // 从主题读取背景色
         let background =
-            Color::from_hex(&theme.background_color).unwrap_or(Color::new(255, 255, 255));
+            Color::from_hex(&theme.background_color).unwrap_or(Color::rgb(255, 255, 255));
 
         // 从主题读取轴相关颜色
         let axis_line_color =
-            Color::from_hex(&theme.axis.axis_line.color).unwrap_or(Color::new(200, 200, 200));
+            Color::from_hex(&theme.axis.axis_line.color).unwrap_or(Color::rgb(200, 200, 200));
 
         let axis_label_color =
-            Color::from_hex(&theme.axis.axis_label.color).unwrap_or(Color::new(50, 50, 50));
+            Color::from_hex(&theme.axis.axis_label.color).unwrap_or(Color::rgb(50, 50, 50));
 
         let grid_line_color =
-            Color::from_hex(&theme.axis.split_line.color).unwrap_or(Color::new(230, 230, 230));
+            Color::from_hex(&theme.axis.split_line.color).unwrap_or(Color::rgb(230, 230, 230));
 
         ColorContext {
             palette: palette.clone(),
@@ -106,14 +107,14 @@ impl ColorAssigner {
             axis_line_color,
             axis_label_color,
             grid_line_color,
-            border_color: Color::new(255, 255, 255),
-            text_color: Color::new(51, 51, 51),
-            text_secondary_color: Color::new(102, 102, 102),
-            up_color: Color::new(234, 85, 67),
-            down_color: Color::new(80, 170, 94),
-            table_header_bg: Color::new(220, 220, 220),
-            table_row_even_bg: Color::new(248, 248, 248),
-            table_row_odd_bg: Color::new(255, 255, 255),
+            border_color: Color::rgb(255, 255, 255),
+            text_color: Color::rgb(51, 51, 51),
+            text_secondary_color: Color::rgb(102, 102, 102),
+            up_color: Color::rgb(234, 85, 67),
+            down_color: Color::rgb(80, 170, 94),
+            table_header_bg: Color::rgb(220, 220, 220),
+            table_row_even_bg: Color::rgb(248, 248, 248),
+            table_row_odd_bg: Color::rgb(255, 255, 255),
         }
     }
 }

@@ -199,7 +199,7 @@ fn coord_to_slot(
 /// 在渐变颜色表中线性插值出 value 对应的颜色。
 fn value_to_color(value: f64, min: f64, max: f64, colors: &[Color]) -> Color {
     if colors.is_empty() {
-        return Color::new(128, 128, 128);
+        return Color::rgb(128, 128, 128);
     }
     if colors.len() == 1 {
         return colors[0];
@@ -214,10 +214,10 @@ fn value_to_color(value: f64, min: f64, max: f64, colors: &[Color]) -> Color {
 fn lerp_color(a: Color, b: Color, t: f64) -> Color {
     let t = t.clamp(0.0, 1.0);
     Color {
-        r: (a.r as f64 + (b.r as f64 - a.r as f64) * t).round() as u8,
-        g: (a.g as f64 + (b.g as f64 - a.g as f64) * t).round() as u8,
-        b: (a.b as f64 + (b.b as f64 - a.b as f64) * t).round() as u8,
-        a: (a.a as f64 + (b.a as f64 - a.a as f64) * t).round() as u8,
+        r: a.r + (b.r - a.r) * t,
+        g: a.g + (b.g - a.g) * t,
+        b: a.b + (b.b - a.b) * t,
+        a: a.a + (b.a - a.a) * t,
     }
 }
 
@@ -227,23 +227,30 @@ mod tests {
 
     #[test]
     fn test_value_to_color_endpoints_and_midpoint() {
-        let colors = vec![Color::new(0, 0, 0), Color::new(255, 255, 255)];
+        let colors = vec![Color::rgb(0, 0, 0), Color::rgb(255, 255, 255)];
         assert_eq!(value_to_color(0.0, 0.0, 10.0, &colors), colors[0]);
         assert_eq!(value_to_color(10.0, 0.0, 10.0, &colors), colors[1]);
         let mid = value_to_color(5.0, 0.0, 10.0, &colors);
-        assert_eq!((mid.r, mid.g, mid.b), (128, 128, 128));
+        assert_eq!(
+            (
+                (mid.r * 255.0).round() as u8,
+                (mid.g * 255.0).round() as u8,
+                (mid.b * 255.0).round() as u8
+            ),
+            (128, 128, 128)
+        );
     }
 
     #[test]
     fn test_value_to_color_out_of_range_clamps() {
-        let colors = vec![Color::new(10, 20, 30), Color::new(200, 210, 220)];
+        let colors = vec![Color::rgb(10, 20, 30), Color::rgb(200, 210, 220)];
         assert_eq!(value_to_color(-100.0, 0.0, 10.0, &colors), colors[0]);
         assert_eq!(value_to_color(100.0, 0.0, 10.0, &colors), colors[1]);
     }
 
     #[test]
     fn test_value_to_color_single_stop() {
-        let colors = vec![Color::new(1, 2, 3)];
+        let colors = vec![Color::rgb(1, 2, 3)];
         assert_eq!(value_to_color(7.0, 0.0, 10.0, &colors), colors[0]);
     }
 }

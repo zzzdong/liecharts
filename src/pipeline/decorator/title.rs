@@ -2,14 +2,17 @@
 //!
 //! 使用 layout_text 统一排版主标题和副标题，支持不同样式。
 
+use lievisual::scene::{Element, SceneNode};
+use lievisual::text::{RichSpan, TextStyle};
 use vello_cpu::kurbo::Point;
 
 use crate::{
     pipeline::types::{ChartSpec, ColorContext},
     text::create_text_layout,
     theme::Theme,
-    visual::{Color, TextStyle, VisualElement, Z_TITLE},
 };
+use lievisual::Color;
+use crate::pipeline::builder::{ColorExt, Z_TITLE};
 
 /// 构建标题元素
 ///
@@ -19,7 +22,7 @@ pub fn render_title(
     width: u32,
     theme: &Theme,
     colors: &ColorContext,
-) -> (Vec<VisualElement>, f64) {
+) -> (Vec<SceneNode>, f64) {
     let mut elements = Vec::new();
     let mut title_height = 0.0;
 
@@ -39,58 +42,52 @@ pub fn render_title(
 
         if let Some(text) = &title.text {
             // 构建文本样式
-            let main_text_style = TextStyle {
-                font_size: title.font_size.unwrap_or(title_style.font_size),
-                color: title_color,
-                font_family: title_style.font_family.clone(),
-                font_weight: crate::option::FontWeight::Named(
-                    crate::option::FontWeightNamed::Normal,
-                ),
-                ..Default::default()
-            };
+            let mut main_text_style = TextStyle::new(
+                title_color,
+                title.font_size.unwrap_or(title_style.font_size),
+                title_style.font_family.clone(),
+            );
+            main_text_style.font_weight = 400.0;
 
             let layout = create_text_layout(text, &main_text_style, None);
-            let position_x = (width as f64 - layout.width() as f64) / 2.0;
+            let position_x = (width as f64 - layout.width) / 2.0;
             let position_y = y_offset;
 
-            y_offset += layout.height() as f64;
-            title_height += layout.height() as f64;
+            y_offset += layout.height;
+            title_height += layout.height;
 
-            elements.push(VisualElement::TextRun {
-                text: text.clone(),
-                position: Point::new(position_x, position_y),
-                style: main_text_style,
-                rotation: 0.0,
-                max_width: None,
-                layout: Some(Box::new(layout)),
-                z_index: Z_TITLE,
-            });
+            elements.push(
+                SceneNode::new(Element::Text {
+                    spans: vec![RichSpan::new(text.clone(), main_text_style.clone())],
+                    position: Point::new(position_x, position_y),
+                    style: main_text_style,
+                    layout: Some(std::sync::Arc::new(layout)),
+                })
+                .with_z(Z_TITLE),
+            );
         }
 
         if let Some(subtext) = &title.subtext {
-            let sub_text_style = TextStyle {
-                font_size: title.subfont_size.unwrap_or(subtitle_style.font_size),
-                color: subtitle_color,
-                font_family: subtitle_style.font_family.clone(),
-                font_weight: crate::option::FontWeight::Named(
-                    crate::option::FontWeightNamed::Normal,
-                ),
-                ..Default::default()
-            };
+            let mut sub_text_style = TextStyle::new(
+                subtitle_color,
+                title.subfont_size.unwrap_or(subtitle_style.font_size),
+                subtitle_style.font_family.clone(),
+            );
+            sub_text_style.font_weight = 400.0;
 
             let layout = create_text_layout(subtext, &sub_text_style, None);
-            let position_x = (width as f64 - layout.width() as f64) / 2.0;
-            let position_y = y_offset + layout.height() as f64 * 0.1;
-            title_height += layout.height() as f64 * 1.1;
-            elements.push(VisualElement::TextRun {
-                text: subtext.clone(),
-                position: Point::new(position_x, position_y),
-                style: sub_text_style,
-                rotation: 0.0,
-                max_width: None,
-                layout: Some(Box::new(layout)),
-                z_index: Z_TITLE,
-            });
+            let position_x = (width as f64 - layout.width) / 2.0;
+            let position_y = y_offset + layout.height * 0.1;
+            title_height += layout.height * 1.1;
+            elements.push(
+                SceneNode::new(Element::Text {
+                    spans: vec![RichSpan::new(subtext.clone(), sub_text_style.clone())],
+                    position: Point::new(position_x, position_y),
+                    style: sub_text_style,
+                    layout: Some(std::sync::Arc::new(layout)),
+                })
+                .with_z(Z_TITLE),
+            );
         }
     }
 

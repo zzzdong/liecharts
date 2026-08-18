@@ -5,15 +5,18 @@
 
 use std::f64::consts::PI;
 
+use lievisual::scene::{FillStrokeStyle, SceneNode, Stroke};
+use lievisual::text::{TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{Circle, Point, Shape as KurboShape};
 
 use crate::{
-    pipeline::types::{ColorContext, SubplotSpec, TextMeasurer},
-    visual::{
-        Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, TextStyle,
-        VisualElement, Z_GRID, Z_LABEL,
+    pipeline::{
+        builder::{path, text_el},
+        types::{ColorContext, SubplotSpec, TextMeasurer},
     },
 };
+use lievisual::Color;
+use crate::pipeline::builder::{Z_GRID, Z_LABEL};
 
 /// 极坐标轴渲染器
 ///
@@ -29,7 +32,7 @@ impl PolarAxisRenderer {
         subplot: &SubplotSpec,
         colors: &ColorContext,
         _text_measurer: &mut TextMeasurer,
-    ) -> Vec<VisualElement> {
+    ) -> Vec<SceneNode> {
         let mut elements = Vec::new();
 
         let bounds = subplot.bounds;
@@ -52,35 +55,27 @@ impl PolarAxisRenderer {
             let circle = Circle::new(center, level_radius);
             let circle_path = circle.to_path(0.1);
 
-            elements.push(VisualElement::Path {
-                path: circle_path,
-                style: FillStrokeStyle {
+            elements.push(path(
+                circle_path,
+                FillStrokeStyle {
                     fill: None,
-                    stroke: Some(Stroke {
-                        color: Color::new(200, 200, 200),
-                        width: 1.0,
-                    }),
+                    stroke: Some(Stroke::new(Color::rgb(200, 200, 200), 1.0)),
                 },
-                z_index: Z_GRID,
-            });
+                false,
+                Z_GRID,
+            ));
 
             // 添加半径标签
             let label_value = level * 100 / grid_levels;
-            elements.push(VisualElement::TextRun {
-                text: label_value.to_string(),
-                position: Point::new(center.x + level_radius + 5.0, center.y),
-                style: TextStyle {
-                    color: colors.axis_label_color,
-                    font_size: 10.0,
-                    align: TextAlign::Left,
-                    vertical_align: TextBaseline::Middle,
-                    ..Default::default()
-                },
-                rotation: 0.0,
-                max_width: None,
-                layout: None,
-                z_index: Z_LABEL,
-            });
+            let mut style = TextStyle::new(colors.axis_label_color, 10.0, "sans-serif");
+            style.align = TextAlign::Left;
+            style.baseline = TextBaseline::Middle;
+            elements.push(text_el(
+                label_value.to_string(),
+                Point::new(center.x + level_radius + 5.0, center.y),
+                style,
+                Z_LABEL,
+            ));
         }
 
         // 绘制角度射线（8个方向）
@@ -90,15 +85,12 @@ impl PolarAxisRenderer {
             let end_x = center.x + radius * angle.cos();
             let end_y = center.y + radius * angle.sin();
 
-            elements.push(VisualElement::Line {
-                start: center,
-                end: Point::new(end_x, end_y),
-                style: StrokeStyle {
-                    color: Color::new(200, 200, 200),
-                    width: 1.0,
-                },
-                z_index: Z_GRID,
-            });
+            elements.push(crate::pipeline::builder::line(
+                center,
+                Point::new(end_x, end_y),
+                Stroke::new(Color::rgb(200, 200, 200), 1.0),
+                Z_GRID,
+            ));
         }
 
         elements

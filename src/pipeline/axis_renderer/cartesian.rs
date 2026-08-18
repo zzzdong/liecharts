@@ -3,22 +3,23 @@
 //! 处理 X/Y 轴线和网格线的生成。内部根据轴类型（Value / Category）分支
 //! 处理不同的刻度计算和标签生成策略。
 
+use lievisual::scene::{SceneNode, Stroke};
+use lievisual::text::{TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{Point, Rect};
 
 use super::axis_ticks;
 use crate::{
     pipeline::{
         axis_label::{auto_rotate, label_step, rotated_bounds},
+        builder::{text_el, Z_GRID},
         types::{
             AxisPosition, AxisSpec, AxisType, ColorContext, ResolvedAxisRanges, SubplotSpec,
             TextMeasurer,
         },
     },
-    visual::{
-        Color, StrokeStyle, TextAlign, TextBaseline, TextStyle, VisualElement, Z_AXIS, Z_GRID,
-        Z_LABEL,
-    },
 };
+use lievisual::Color;
+use crate::pipeline::builder::{Z_AXIS, Z_LABEL};
 
 /// 应用 formatter 格式化标签文本
 ///
@@ -34,13 +35,10 @@ fn format_label(value: &str, formatter: &Option<String>) -> String {
 
 /// 轴标签基准样式（渲染时位置已预计算为文本块左上角，故统一使用 Left/Top 对齐）
 fn label_style(colors: &ColorContext) -> TextStyle {
-    TextStyle {
-        font_size: 11.0,
-        color: colors.axis_label_color,
-        align: TextAlign::Left,
-        vertical_align: TextBaseline::Top,
-        ..Default::default()
-    }
+    let mut s = TextStyle::new(colors.axis_label_color, 11.0, "sans-serif");
+    s.align = TextAlign::Left;
+    s.baseline = TextBaseline::Top;
+    s
 }
 
 /// 计算 X/Y 轴标签的旋转角度（弧度）与抽稀步长。
@@ -100,12 +98,8 @@ fn measure_labels(
 /// - 未旋转（0°）：文本块顶部居中对齐锚点（水平居中于数据点）。
 /// - 旋转时：文本块开头（左上角）对准锚点（数据点），围绕该点旋转。
 ///   底部 X 轴顺时针旋转（文本向右下延伸）、顶部 X 轴逆时针旋转（文本向右上延伸）。
-///
-/// 这样锚点（= 旋转中心 = 文本左上角）就是旋转后 y 坐标最小的点，
-/// 因此旋转长标签时文本整体保持在锚点一侧、不跨过坐标轴侵入绘图区，
-/// 也避免"绕顶边中点旋转"导致文本条上端甩进绘图区。
 fn push_x_label(
-    elements: &mut Vec<VisualElement>,
+    elements: &mut Vec<SceneNode>,
     text: &str,
     anchor: Point,
     rotation: f64,
@@ -122,15 +116,9 @@ fn push_x_label(
         let draw_rotation = if downward { rotation } else { -rotation };
         (anchor.x, anchor.y, draw_rotation)
     };
-    elements.push(VisualElement::TextRun {
-        text: text.to_string(),
-        position: Point::new(x, y),
-        style,
-        rotation: draw_rotation,
-        max_width: None,
-        layout: None,
-        z_index: Z_LABEL,
-    });
+    let mut s = style;
+    s.rotation = draw_rotation;
+    elements.push(text_el(text.to_string(), Point::new(x, y), s, Z_LABEL));
 }
 
 /// 笛卡尔坐标轴渲染器
@@ -147,7 +135,7 @@ impl CartesianAxisRenderer {
         axis_ranges: &ResolvedAxisRanges,
         colors: &ColorContext,
         text_measurer: &mut TextMeasurer,
-    ) -> Vec<VisualElement> {
+    ) -> Vec<SceneNode> {
         let mut elements = Vec::new();
         let bounds = subplot.bounds;
 
@@ -224,17 +212,17 @@ impl CartesianAxisRenderer {
         elements
     }
 
-    fn draw_axis_line(elements: &mut Vec<VisualElement>, start: Point, end: Point, color: Color) {
-        elements.push(VisualElement::Line {
+    fn draw_axis_line(elements: &mut Vec<SceneNode>, start: Point, end: Point, color: Color) {
+        elements.push(crate::pipeline::builder::line(
             start,
             end,
-            style: StrokeStyle { color, width: 1.0 },
-            z_index: Z_AXIS,
-        });
+            Stroke::new(color, 1.0),
+            Z_AXIS,
+        ));
     }
 
     fn draw_x_grid_lines(
-        elements: &mut Vec<VisualElement>,
+        elements: &mut Vec<SceneNode>,
         bounds: Rect,
         axis_cfg: &AxisSpec,
         x_min: f64,
@@ -247,15 +235,12 @@ impl CartesianAxisRenderer {
                 for i in 0..=n {
                     let t = i as f64 / n as f64;
                     let x = bounds.x0 + t * bounds.width();
-                    elements.push(VisualElement::Line {
-                        start: Point::new(x, bounds.y0),
-                        end: Point::new(x, bounds.y1),
-                        style: StrokeStyle {
-                            color: colors.grid_line_color,
-                            width: 0.5,
-                        },
-                        z_index: Z_GRID,
-                    });
+                    elements.push(crate::pipeline::builder::line(
+                        Point::new(x, bounds.y0),
+                        Point::new(x, bounds.y1),
+                        Stroke::new(colors.grid_line_color, 0.5),
+                        Z_GRID,
+                    ));
                 }
             }
         } else {
@@ -263,21 +248,18 @@ impl CartesianAxisRenderer {
             let (positions, _labels) = axis_ticks(axis_cfg.axis_type, x_min, x_max);
             for t in positions {
                 let x = bounds.x0 + t * bounds.width();
-                elements.push(VisualElement::Line {
-                    start: Point::new(x, bounds.y0),
-                    end: Point::new(x, bounds.y1),
-                    style: StrokeStyle {
-                        color: colors.grid_line_color,
-                        width: 0.5,
-                    },
-                    z_index: Z_GRID,
-                });
+                elements.push(crate::pipeline::builder::line(
+                    Point::new(x, bounds.y0),
+                    Point::new(x, bounds.y1),
+                    Stroke::new(colors.grid_line_color, 0.5),
+                    Z_GRID,
+                ));
             }
         }
     }
 
     fn draw_y_grid_lines(
-        elements: &mut Vec<VisualElement>,
+        elements: &mut Vec<SceneNode>,
         bounds: Rect,
         axis_cfg: &AxisSpec,
         y_min: f64,
@@ -288,20 +270,17 @@ impl CartesianAxisRenderer {
         for t in positions {
             // Y 轴自下而上：t=(v-min)/(max-min)，像素 y = y0 + (1-t)*height
             let y = bounds.y0 + (1.0 - t) * bounds.height();
-            elements.push(VisualElement::Line {
-                start: Point::new(bounds.x0, y),
-                end: Point::new(bounds.x1, y),
-                style: StrokeStyle {
-                    color: colors.grid_line_color,
-                    width: 0.5,
-                },
-                z_index: Z_GRID,
-            });
+            elements.push(crate::pipeline::builder::line(
+                Point::new(bounds.x0, y),
+                Point::new(bounds.x1, y),
+                Stroke::new(colors.grid_line_color, 0.5),
+                Z_GRID,
+            ));
         }
     }
 
     fn draw_x_tick_labels(
-        elements: &mut Vec<VisualElement>,
+        elements: &mut Vec<SceneNode>,
         bounds: Rect,
         axis_cfg: &AxisSpec,
         x_min: f64,
@@ -447,7 +426,7 @@ impl CartesianAxisRenderer {
 
     #[allow(clippy::too_many_arguments)]
     fn draw_y_tick_labels_side(
-        elements: &mut Vec<VisualElement>,
+        elements: &mut Vec<SceneNode>,
         bounds: Rect,
         axis_cfg: &AxisSpec,
         y_min: f64,
@@ -468,49 +447,32 @@ impl CartesianAxisRenderer {
         // 生成单个 Y 轴标签：未旋转时保持现有对齐方式，旋转时锚点对齐旋转后包围盒
         // 的外侧边缘（左侧轴贴右边缘、右侧轴贴左边缘），并保持垂直居中于刻度，
         // 避免旋转标签被拉到轴线另一侧而侵入绘图区。
-        let push_y_label = |elements: &mut Vec<VisualElement>,
+        let push_y_label = |elements: &mut Vec<SceneNode>,
                             text: &str,
                             anchor: Point,
                             rotation: f64,
                             colors: &ColorContext,
                             text_measurer: &mut TextMeasurer| {
             if rotation == 0.0 {
-                elements.push(VisualElement::TextRun {
-                    text: text.to_string(),
-                    position: anchor,
-                    style: TextStyle {
-                        font_size: 11.0,
-                        color: colors.axis_label_color,
-                        align,
-                        vertical_align: TextBaseline::Middle,
-                        ..Default::default()
-                    },
-                    rotation: 0.0,
-                    max_width: None,
-                    layout: None,
-                    z_index: Z_LABEL,
-                });
+                let mut s = TextStyle::new(colors.axis_label_color, 11.0, "sans-serif");
+                s.align = align;
+                s.baseline = TextBaseline::Middle;
+                elements.push(text_el(text.to_string(), anchor, s, Z_LABEL));
             } else {
                 let style = label_style(colors);
                 let (w, h) = text_measurer.measure(text, &style);
-                let (s, c) = rotation.sin_cos();
-                let rotated_w = w * c.abs() + h * s.abs();
-                let rotated_h = w * s.abs() + h * c.abs();
+                let (s2, c) = rotation.sin_cos();
+                let rotated_w = w * c.abs() + h * s2.abs();
+                let rotated_h = w * s2.abs() + h * c.abs();
                 let x = if is_right {
                     anchor.x
                 } else {
                     anchor.x - rotated_w
                 };
                 let y = anchor.y - rotated_h / 2.0;
-                elements.push(VisualElement::TextRun {
-                    text: text.to_string(),
-                    position: Point::new(x, y),
-                    style,
-                    rotation,
-                    max_width: None,
-                    layout: None,
-                    z_index: Z_LABEL,
-                });
+                let mut s = style;
+                s.rotation = rotation;
+                elements.push(text_el(text.to_string(), Point::new(x, y), s, Z_LABEL));
             }
         };
 
@@ -635,6 +597,7 @@ impl CartesianAxisRenderer {
 
 #[cfg(test)]
 mod tests {
+    use lievisual::scene::Element;
     use vello_cpu::kurbo::Rect;
 
     use super::*;
@@ -713,16 +676,16 @@ mod tests {
             &mut measurer,
         );
 
-        let text_runs: Vec<&VisualElement> = elements
+        let text_runs: Vec<&SceneNode> = elements
             .iter()
-            .filter(|e| matches!(e, VisualElement::TextRun { .. }))
+            .filter(|e| matches!(&e.element, Element::Text { .. }))
             .collect();
         let rotated = text_runs
             .iter()
             .filter(|e| {
                 matches!(
-                    e,
-                    VisualElement::TextRun { rotation, .. } if *rotation != 0.0
+                    &e.element,
+                    Element::Text { style, .. } if style.rotation != 0.0
                 )
             })
             .count();
@@ -787,20 +750,20 @@ mod tests {
         // 轴线画在绘图区上边缘
         let has_top_line = elements.iter().any(|e| {
             matches!(
-                e,
-                VisualElement::Line { start, end, .. }
+                &e.element,
+                Element::Line { start, end, .. }
                     if start.y == 40.0 && end.y == 40.0 && start.x == 0.0 && end.x == 400.0
             )
         });
         assert!(has_top_line, "顶部 X 轴轴线应位于绘图区上边缘");
 
         // 标签绘制在绘图区上方
-        let labels_above: Vec<&VisualElement> = elements
+        let labels_above: Vec<&SceneNode> = elements
             .iter()
             .filter(|e| {
                 matches!(
-                    e,
-                    VisualElement::TextRun { position, .. } if position.y < 40.0 && position.y >= 0.0
+                    &e.element,
+                    Element::Text { position, .. } if position.y < 40.0 && position.y >= 0.0
                 )
             })
             .collect();
@@ -872,23 +835,23 @@ mod tests {
             &mut measurer,
         );
 
-        let rotated_x_labels: Vec<&VisualElement> = elements
+        let rotated_x_labels: Vec<&SceneNode> = elements
             .iter()
             .filter(|e| {
                 matches!(
-                    e,
-                    VisualElement::TextRun { position, rotation, .. }
-                        if *rotation != 0.0 && position.x >= subplot.bounds.x0 && position.x <= subplot.bounds.x1
+                    &e.element,
+                    Element::Text { position, style, .. }
+                        if style.rotation != 0.0 && position.x >= subplot.bounds.x0 && position.x <= subplot.bounds.x1
                 )
             })
             .collect();
         assert!(!rotated_x_labels.is_empty(), "长标签应自动旋转");
         for label in &rotated_x_labels {
-            if let VisualElement::TextRun { position, .. } = label {
+            if let Element::Text { position, .. } = &label.element {
                 // 文本开头（旋转中心）应贴齐锚点（y1 + 14），不能上移到 y1 之上（侵入绘图区）
                 let expected_top = subplot.bounds.y1 + 14.0;
                 assert!(
-                    (*position).y >= expected_top - 1.0,
+                    position.y >= expected_top - 1.0,
                     "旋转标签文本开头应位于轴线下方（>={}), 实际 y={}",
                     expected_top,
                     position.y

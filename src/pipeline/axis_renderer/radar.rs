@@ -5,16 +5,19 @@
 
 use std::f64::consts::PI;
 
+use lievisual::scene::{FillStrokeStyle, SceneNode, Stroke};
+use lievisual::text::{TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
     option::RadarIndicatorOption,
-    pipeline::types::{ColorContext, SubplotSpec},
-    visual::{
-        Color, FillStrokeStyle, Stroke, StrokeStyle, TextAlign, TextBaseline, TextStyle,
-        VisualElement, Z_GRID, Z_LABEL,
+    pipeline::{
+        builder::{line, path, text_el},
+        types::{ColorContext, SubplotSpec},
     },
 };
+use lievisual::Color;
+use crate::pipeline::builder::{Z_GRID, Z_LABEL};
 
 /// 雷达图坐标轴渲染器
 ///
@@ -30,7 +33,7 @@ impl RadarAxisRenderer {
         subplot: &SubplotSpec,
         indicators: &[RadarIndicatorOption],
         colors: &ColorContext,
-    ) -> Vec<VisualElement> {
+    ) -> Vec<SceneNode> {
         let mut elements = Vec::new();
 
         let indicator_count = indicators.len().max(3);
@@ -65,17 +68,15 @@ impl RadarAxisRenderer {
             }
             grid_path.close_path();
 
-            elements.push(VisualElement::Path {
-                path: grid_path,
-                style: FillStrokeStyle {
+            elements.push(path(
+                grid_path,
+                FillStrokeStyle {
                     fill: None,
-                    stroke: Some(Stroke {
-                        color: Color::new(200, 200, 200),
-                        width: 1.0,
-                    }),
+                    stroke: Some(Stroke::new(Color::rgb(200, 200, 200), 1.0)),
                 },
-                z_index: Z_GRID,
-            });
+                true,
+                Z_GRID,
+            ));
         }
 
         // 绘制从中心到各顶点的轴线
@@ -84,15 +85,12 @@ impl RadarAxisRenderer {
             let end_x = center.x + radius * angle.cos();
             let end_y = center.y + radius * angle.sin();
 
-            elements.push(VisualElement::Line {
-                start: center,
-                end: Point::new(end_x, end_y),
-                style: StrokeStyle {
-                    color: Color::new(200, 200, 200),
-                    width: 1.0,
-                },
-                z_index: Z_GRID,
-            });
+            elements.push(line(
+                center,
+                Point::new(end_x, end_y),
+                Stroke::new(Color::rgb(200, 200, 200), 1.0),
+                Z_GRID,
+            ));
         }
 
         // 绘制指示器标签
@@ -103,21 +101,15 @@ impl RadarAxisRenderer {
                 let label_x = center.x + label_radius * angle.cos();
                 let label_y = center.y + label_radius * angle.sin();
 
-                elements.push(VisualElement::TextRun {
-                    text: name.clone(),
-                    position: Point::new(label_x, label_y),
-                    style: TextStyle {
-                        color: colors.axis_label_color,
-                        font_size: 12.0,
-                        align: TextAlign::Center,
-                        vertical_align: TextBaseline::Middle,
-                        ..Default::default()
-                    },
-                    rotation: 0.0,
-                    max_width: None,
-                    layout: None,
-                    z_index: Z_LABEL,
-                });
+                let mut style = TextStyle::new(colors.axis_label_color, 12.0, "sans-serif");
+                style.align = TextAlign::Center;
+                style.baseline = TextBaseline::Middle;
+                elements.push(text_el(
+                    name.clone(),
+                    Point::new(label_x, label_y),
+                    style,
+                    Z_LABEL,
+                ));
             }
         }
 

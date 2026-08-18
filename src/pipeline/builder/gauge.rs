@@ -1,27 +1,28 @@
-//! Gauge Builder: 将 GaugeSeries 组装为 VisualElement
+//! Gauge Builder: 将 GaugeSeries 组装为 lievisual `SceneNode`
 //!
 //! 使用真圆弧 (Arc) 绘制平滑轨道，色带采用渐变色（绿→黄→红）。
 
 use std::f64::consts::PI;
 
+use lievisual::scene::{Element, FillStrokeStyle, GradientStop, LinearGradient, SceneNode};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{Arc, BezPath, PathSeg, Point, Shape};
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LINE, stroke_style},
+        builder::{
+            SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, Z_SERIES_LINE, circle, gradient_path,
+            line, path, stroke_style,
+        },
         typed_series::{GaugeSeries, RenderContext},
-    },
-    visual::{
-        Color, FillStrokeStyle, GradientDef, TextAlign, TextBaseline, TextStyle, VisualElement,
-        Z_LABEL,
     },
 };
 
 pub struct GaugeBuilder;
 
 impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
-    fn build(series: &GaugeSeries, ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &GaugeSeries, ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::new();
 
         let bounds = ctx.bounds;
@@ -61,16 +62,26 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
         // 绘制填充色带（使用平滑渐变）
         if value_angle > start_angle + 1e-6 {
             let filled_path = build_arc_ribbon(center, inner_r, outer_r, start_angle, value_angle);
-            elements.push(VisualElement::GradientPath {
-                path: filled_path,
-                gradient: GradientDef::new(vec![
-                    (0.00, Color::new(80, 180, 80)),  // 绿
-                    (0.50, Color::new(255, 200, 50)), // 黄
-                    (1.00, Color::new(220, 80, 80)),  // 红
-                ]),
-                stroke: None,
-                z_index: Z_SERIES_FILL,
-            });
+            let bbox = filled_path.bounding_box();
+            let gradient = LinearGradient {
+                start: Point::new(bbox.x0, bbox.y0),
+                end: Point::new(bbox.x1, bbox.y1),
+                stops: vec![
+                    GradientStop {
+                        offset: 0.00,
+                        color: crate::visual::Color::rgb(80, 180, 80), // 绿
+                    },
+                    GradientStop {
+                        offset: 0.50,
+                        color: crate::visual::Color::rgb(255, 200, 50), // 黄
+                    },
+                    GradientStop {
+                        offset: 1.00,
+                        color: crate::visual::Color::rgb(220, 80, 80), // 红
+                    },
+                ],
+            };
+            elements.push(gradient_path(filled_path, gradient, None, Z_SERIES_FILL));
         }
 
         // 绘制未填充的剩余段（淡灰色）
@@ -80,14 +91,15 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             let gray_path =
                 build_arc_ribbon(center, inner_r, outer_r, remaining_start, remaining_end);
 
-            elements.push(VisualElement::Path {
-                path: gray_path,
-                style: FillStrokeStyle {
-                    fill: Some(Color::new(220, 220, 220)),
+            elements.push(path(
+                gray_path,
+                FillStrokeStyle {
+                    fill: Some(lievisual::scene::Fill::Solid(crate::visual::Color::rgb(220, 220, 220))),
                     stroke: None,
                 },
-                z_index: Z_SERIES_FILL,
-            });
+                true,
+                Z_SERIES_FILL,
+            ));
         }
 
         // 绘制刻度线和标签
@@ -105,12 +117,12 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             let x2 = center.x + tick_outer * angle.cos();
             let y2 = center.y + tick_outer * angle.sin();
 
-            elements.push(VisualElement::Line {
-                start: Point::new(x1, y1),
-                end: Point::new(x2, y2),
-                style: stroke_style(Color::new(84, 85, 90), 1.5),
-                z_index: Z_SERIES_LINE + 1,
-            });
+            elements.push(line(
+                Point::new(x1, y1),
+                Point::new(x2, y2),
+                stroke_style(crate::visual::Color::rgb(84, 85, 90), 1.5),
+                Z_SERIES_LINE + 1,
+            ));
 
             // 标签
             let label_val = series.min + (series.max - series.min) * i as f64 / split_number as f64;
@@ -123,21 +135,18 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
                 format!("{:.1}", label_val)
             };
 
-            elements.push(VisualElement::TextRun {
-                text: label_text,
-                position: Point::new(lx, ly),
-                style: TextStyle {
-                    color: Color::new(84, 85, 90),
-                    font_size: 11.0,
-                    align: TextAlign::Center,
-                    vertical_align: TextBaseline::Middle,
-                    ..Default::default()
-                },
-                rotation: 0.0,
-                max_width: None,
-                layout: None,
-                z_index: Z_LABEL,
-            });
+            let mut style = TextStyle::new(crate::visual::Color::rgb(84, 85, 90), 11.0, "sans-serif");
+            style.align = TextAlign::Center;
+            style.baseline = TextBaseline::Middle;
+            elements.push(
+                SceneNode::new(Element::Text {
+                    spans: vec![RichSpan::new(label_text, style.clone())],
+                    position: Point::new(lx, ly),
+                    style,
+                    layout: None,
+                })
+                .with_z(Z_SERIES_LABEL),
+            );
         }
 
         // 绘制指针
@@ -147,57 +156,46 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             center.y + needle_length * value_angle.sin(),
         );
 
-        elements.push(VisualElement::Line {
-            start: center,
-            end: needle_end,
-            style: stroke_style(series.color, 3.0),
-            z_index: Z_SERIES_LINE + 1,
-        });
+        elements.push(line(center, needle_end, stroke_style(series.color, 3.0), Z_SERIES_LINE + 1));
 
         // 中心圆点
-        elements.push(VisualElement::Circle {
+        elements.push(circle(
             center,
-            radius: 5.0,
-            style: FillStrokeStyle {
-                fill: Some(series.color),
+            5.0,
+            FillStrokeStyle {
+                fill: Some(lievisual::scene::Fill::Solid(series.color)),
                 stroke: None,
             },
-            z_index: Z_SERIES_LINE + 2,
-        });
+            Z_SERIES_LINE + 2,
+        ));
 
         // 中心数值显示
         let value_text = format!("{:.1}%", series.value);
-        elements.push(VisualElement::TextRun {
-            text: value_text,
-            position: Point::new(center.x, center.y + 4.0),
-            style: TextStyle {
-                color: Color::new(60, 60, 65),
-                font_size: 28.0,
-                align: TextAlign::Center,
-                vertical_align: TextBaseline::Middle,
-                ..Default::default()
-            },
-            rotation: 0.0,
-            max_width: None,
-            layout: None,
-            z_index: Z_LABEL,
-        });
+        let mut style = TextStyle::new(crate::visual::Color::rgb(60, 60, 65), 28.0, "sans-serif");
+        style.align = TextAlign::Center;
+        style.baseline = TextBaseline::Middle;
+        elements.push(
+            SceneNode::new(Element::Text {
+                spans: vec![RichSpan::new(value_text, style.clone())],
+                position: Point::new(center.x, center.y + 4.0),
+                style,
+                layout: None,
+            })
+            .with_z(Z_SERIES_LABEL),
+        );
         // 数值单位标签
-        elements.push(VisualElement::TextRun {
-            text: series.name.clone(),
-            position: Point::new(center.x, center.y - 28.0),
-            style: TextStyle {
-                color: Color::new(132, 132, 138),
-                font_size: 12.0,
-                align: TextAlign::Center,
-                vertical_align: TextBaseline::Middle,
-                ..Default::default()
-            },
-            rotation: 0.0,
-            max_width: None,
-            layout: None,
-            z_index: Z_LABEL,
-        });
+        let mut style = TextStyle::new(crate::visual::Color::rgb(132, 132, 138), 12.0, "sans-serif");
+        style.align = TextAlign::Center;
+        style.baseline = TextBaseline::Middle;
+        elements.push(
+            SceneNode::new(Element::Text {
+                spans: vec![RichSpan::new(series.name.clone(), style.clone())],
+                position: Point::new(center.x, center.y - 28.0),
+                style,
+                layout: None,
+            })
+            .with_z(Z_SERIES_LABEL),
+        );
 
         Ok(elements)
     }

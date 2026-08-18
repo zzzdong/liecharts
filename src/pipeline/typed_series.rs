@@ -3,9 +3,8 @@
 //! 这是 Materialize 阶段的输出，Builder 阶段的输入。
 //! 所有坐标已经是像素空间，渲染器无需再做任何计算或字段提取。
 
+use lievisual::geometry::Color;
 use vello_cpu::kurbo::{Point, Rect};
-
-use crate::visual::Color;
 
 /// 管线中间产物：所有字段已完全解析为像素空间和具体值
 /// 渲染器无需再做任何计算或字段提取

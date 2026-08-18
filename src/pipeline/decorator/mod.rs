@@ -20,32 +20,28 @@ use crate::{
     visual::VisualElement,
 };
 
-/// 计算文本布局（为所有未计算布局的 TextRun 执行真实文本排布）
+/// 计算文本布局（为所有未计算布局的 Text 执行真实文本排布）
 ///
-/// 遍历所有 VisualElement，对 `layout: None` 的 TextRun 调用 create_text_layout，
-/// 并根据对齐/基线方式计算锚点偏移。
-pub fn compute_text_layouts(elements: &mut [VisualElement]) {
-    for element in elements.iter_mut() {
-        if let VisualElement::TextRun {
-            text,
+/// 遍历所有 SceneNode，对 `layout: None` 的 `Element::Text` 调用 create_text_layout，
+/// 并根据对齐/基线方式计算锚点偏移，同时把文本块的纯文本写入 span。
+pub fn compute_text_layouts(elements: &mut [lievisual::scene::SceneNode]) {
+    use lievisual::scene::Element;
+    for node in elements.iter_mut() {
+        if let Element::Text {
+            spans,
+            position,
             style,
-            max_width,
             layout,
-            ..
-        } = element
+        } = &mut node.element
             && layout.is_none()
         {
-            let text_layout = create_text_layout(text, style, *max_width);
-            let (x_off, y_off) =
-                compute_text_offset(&text_layout, style.align, style.vertical_align);
-            if let VisualElement::TextRun {
-                position, layout, ..
-            } = element
-            {
-                position.x += x_off;
-                position.y += y_off;
-                *layout = Some(Box::new(text_layout));
-            }
+            // 拼接纯文本（单 span 最常见）
+            let text: String = spans.iter().map(|s| s.text.clone()).collect();
+            let text_layout = create_text_layout(&text, style, style.max_width);
+            let (x_off, y_off) = compute_text_offset(&text_layout, style.align, style.baseline);
+            position.x += x_off;
+            position.y += y_off;
+            *layout = Some(std::sync::Arc::new(text_layout));
         }
     }
 }

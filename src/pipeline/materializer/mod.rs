@@ -282,7 +282,7 @@ pub fn compute_mark_lines(
         result.push(MarkLineRender {
             y: map_y_to_pixel(value, y_range, bounds),
             label: format!("{}: {}", name, text),
-            color: crate::visual::Color::new(220, 60, 60),
+            color: crate::visual::Color::rgb(220, 60, 60),
         });
     }
     result
@@ -560,7 +560,7 @@ fn first_bar_label_config(
         .map(|c| crate::pipeline::typed_series::SeriesLabelConfig {
             show: true,
             position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
-            color: Color::new(60, 60, 65),
+            color: Color::rgb(60, 60, 65),
             font_size: c.label_font_size,
             formatter: c.label_formatter.clone(),
         })
@@ -1027,7 +1027,7 @@ fn materialize_one_stacked_line_group(
                 Some(crate::pipeline::typed_series::SeriesLabelConfig {
                     show: true,
                     position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
-                    color: crate::visual::Color::new(60, 60, 65),
+                    color: crate::visual::Color::rgb(60, 60, 65),
                     font_size: cfg.label_font_size,
                     formatter: cfg.label_formatter.clone(),
                 })

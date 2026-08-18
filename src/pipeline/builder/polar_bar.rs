@@ -1,22 +1,25 @@
-//! PolarBar Builder: 将 PolarBarSeries 组装为 VisualElement
+//! PolarBar Builder: 将 PolarBarSeries 组装为 lievisual `SceneNode`
 
 use std::f64::consts::PI;
 
+use lievisual::scene::{Element, SceneNode};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style},
+        builder::{
+            SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style, line, path,
+        },
         typed_series::{PolarBarSeries, RenderContext},
     },
-    visual::{Color, StrokeStyle, TextAlign, TextBaseline, TextStyle, VisualElement},
 };
 
 pub struct PolarBarBuilder;
 
 impl SeriesBuilder<PolarBarSeries> for PolarBarBuilder {
-    fn build(series: &PolarBarSeries, ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &PolarBarSeries, ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::with_capacity(series.bars.len() * 3); // 柱子 + 引导线 + 标签
 
         let bounds = ctx.bounds;
@@ -45,14 +48,10 @@ impl SeriesBuilder<PolarBarSeries> for PolarBarBuilder {
             let angle_rad = bar.angle * PI / 180.0;
 
             // 生成从中心到边缘的扇形路径
-            let path = build_polar_bar_path(center_x, center_y, bar.angle, r, sweep_deg);
+            let p = build_polar_bar_path(center_x, center_y, bar.angle, r, sweep_deg);
 
             // 使用柱子自己的颜色
-            elements.push(VisualElement::Path {
-                path,
-                style: fill_style(bar.color),
-                z_index: Z_SERIES_FILL,
-            });
+            elements.push(path(p, fill_style(bar.color), true, Z_SERIES_FILL));
 
             // 计算柱子外边缘中点位置
             let outer_x = center_x + r * angle_rad.cos();
@@ -63,32 +62,27 @@ impl SeriesBuilder<PolarBarSeries> for PolarBarBuilder {
             let label_y = center_y + label_radius * angle_rad.sin();
 
             // 添加引导线（从柱子外边缘到标签）
-            elements.push(VisualElement::Line {
-                start: Point::new(outer_x, outer_y),
-                end: Point::new(label_x, label_y),
-                style: StrokeStyle::new(Color::new(200, 200, 200), 1.0),
-                z_index: Z_SERIES_LABEL,
-            });
+            elements.push(line(
+                Point::new(outer_x, outer_y),
+                Point::new(label_x, label_y),
+                lievisual::scene::Stroke::new(crate::visual::Color::rgb(200, 200, 200), 1.0),
+                Z_SERIES_LABEL,
+            ));
 
             // 添加数值标签
             let label_text = format!("{:.0}", bar.value);
-            elements.push(VisualElement::TextRun {
-                text: label_text,
-                position: Point::new(label_x, label_y),
-                style: TextStyle {
-                    color: Color::new(60, 60, 65),
-                    font_size: 11.0,
-                    font_family: "sans-serif".to_string(),
-                    font_weight: Default::default(),
-                    font_style: Default::default(),
-                    align: TextAlign::Center,
-                    vertical_align: TextBaseline::Middle,
-                },
-                rotation: 0.0,
-                max_width: None,
-                layout: None,
-                z_index: Z_SERIES_LABEL,
-            });
+            let mut style = TextStyle::new(crate::visual::Color::rgb(60, 60, 65), 11.0, "sans-serif");
+            style.align = TextAlign::Center;
+            style.baseline = TextBaseline::Middle;
+            elements.push(
+                SceneNode::new(Element::Text {
+                    spans: vec![RichSpan::new(label_text, style.clone())],
+                    position: Point::new(label_x, label_y),
+                    style,
+                    layout: None,
+                })
+                .with_z(Z_SERIES_LABEL),
+            );
         }
 
         Ok(elements)

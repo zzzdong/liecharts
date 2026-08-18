@@ -337,7 +337,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .and_then(|c| {
                                 let v = c.as_vec();
                                 v.first().map(|first| {
-                                    crate::visual::Color::new(first.r, first.g, first.b)
+                                    crate::visual::Color::rgb(first.r as u8, first.g as u8, first.b as u8)
                                 })
                             }),
                         area_opacity: ls
@@ -707,12 +707,12 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         color: bs.item_style.as_ref().and_then(|is| {
                             is.color
                                 .as_ref()
-                                .map(|c| crate::visual::Color::new(c.r, c.g, c.b))
+                                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8))
                         }),
                         border_color: bs.item_style.as_ref().and_then(|is| {
                             is.border_color
                                 .as_ref()
-                                .map(|c| crate::visual::Color::new(c.r, c.g, c.b))
+                                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8))
                         }),
                         border_width: bs
                             .item_style
@@ -756,7 +756,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         border_color: hs.item_style.as_ref().and_then(|is| {
                             is.border_color
                                 .as_ref()
-                                .map(|c| crate::visual::Color::new(c.r, c.g, c.b))
+                                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8))
                         }),
                         border_width: hs
                             .item_style
@@ -952,12 +952,12 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 .text_style
                 .as_ref()
                 .and_then(|s| s.color.as_ref())
-                .map(|c| crate::visual::Color::new(c.r, c.g, c.b)),
+                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8)),
             subcolor: t
                 .subtext_style
                 .as_ref()
                 .and_then(|s| s.color.as_ref())
-                .map(|c| crate::visual::Color::new(c.r, c.g, c.b)),
+                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8)),
         }),
         legend: option.legend.as_ref().map(|l| LegendSpec {
             show: l.show.unwrap_or(true),
@@ -984,7 +984,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
             item_gap: l.item_gap.unwrap_or(10.0),
             formatter: l.formatter.clone(),
         }),
-        background: crate::visual::Color::new(255, 255, 255),
+        background: crate::visual::Color::rgb(255, 255, 255),
         palette: vec![],
         theme_name: None,
     }
@@ -1146,9 +1146,9 @@ fn resolve_visual_map(
     use crate::pipeline::dataframe::DataValue;
 
     let default_colors = vec![
-        crate::visual::Color::new(80, 163, 186), // #50a3ba
-        crate::visual::Color::new(234, 199, 54), // #eac736
-        crate::visual::Color::new(217, 78, 93),  // #d94e5d
+        crate::visual::Color::rgb(80, 163, 186), // #50a3ba
+        crate::visual::Color::rgb(234, 199, 54), // #eac736
+        crate::visual::Color::rgb(217, 78, 93),  // #d94e5d
     ];
 
     // 数据范围（visualMap min/max 缺失时的回退值）
@@ -1197,7 +1197,7 @@ fn resolve_visual_map(
         .filter(|c| !c.is_empty())
         .map(|c| {
             c.iter()
-                .map(|co| crate::visual::Color::new(co.r, co.g, co.b))
+                .map(|co| crate::visual::Color::rgb(co.r as u8, co.g as u8, co.b as u8))
                 .collect()
         })
         .unwrap_or(default_colors);

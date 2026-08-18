@@ -1,4 +1,5 @@
 use liecharts::{api::*, pipeline::dataframe::DataValue};
+use lievisual::Color;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 7 天 × 8 小时的模拟打卡数据
@@ -30,11 +31,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .min(0.0)
                 .max(10.0)
                 .colors([
-                    liecharts::visual::Color::new(80, 163, 186),
-                    liecharts::visual::Color::new(234, 199, 54),
-                    liecharts::visual::Color::new(217, 78, 93),
+                    Color::rgb(80, 163, 186),
+                    Color::rgb(234, 199, 54),
+                    Color::rgb(217, 78, 93),
                 ])
-                .border_color(liecharts::visual::Color::new(255, 255, 255))
+                .border_color(Color::rgb(255, 255, 255))
                 .border_width(1.0)
                 .name("打卡次数"),
         )

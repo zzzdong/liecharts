@@ -1,5 +1,7 @@
-//! Line Builder: 将 LineSeries 组装为 VisualElement
+//! Line Builder: 将 LineSeries 组装为 lievisual `SceneNode`
 
+use lievisual::scene::{Element, SceneNode};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
@@ -7,17 +9,16 @@ use crate::{
     pipeline::{
         builder::{
             SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, Z_SERIES_LINE, Z_SERIES_POINT,
-            fill_stroke_style, render_mark_lines,
+            circle, fill_stroke_style, path, rect, render_mark_lines,
         },
         typed_series::{LineSeries, RenderContext, SeriesLabelPosition, StepType, SymbolType},
     },
-    visual::{FillStrokeStyle, TextAlign, TextBaseline, TextStyle, VisualElement},
 };
 
 pub struct LineBuilder;
 
 impl SeriesBuilder<LineSeries> for LineBuilder {
-    fn build(series: &LineSeries, ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &LineSeries, ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::new();
 
         // 1. 面积填充（使用已解析的像素基线；单个数据点画不出面积）
@@ -26,7 +27,7 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
         {
             let alpha = (255.0 * series.area_opacity).clamp(0.0, 255.0) as u8;
             let mut fill = *area_color;
-            fill.a = alpha;
+            fill.a = f64::from(alpha) / 255.0;
             let area_path = if let Some(ref baseline_points) = series.baseline_points {
                 // 堆叠面积：使用上一系列的轮廓作为底部边界
                 build_stacked_area_path(&series.points, baseline_points, series.smooth, series.step)
@@ -39,36 +40,32 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
                     series.step,
                 )
             };
-            elements.push(VisualElement::Path {
-                path: area_path,
-                style: FillStrokeStyle {
-                    fill: Some(fill),
-                    stroke: None,
-                },
-                z_index: Z_SERIES_FILL,
-            });
+            elements.push(path(
+                area_path,
+                crate::pipeline::builder::fill_style(fill),
+                false,
+                Z_SERIES_FILL,
+            ));
         }
 
         // 2. 线条（单个数据点画不出线，跳过）
         if series.points.len() >= 2 {
-            let path = if let Some(step) = series.step {
+            let p = if let Some(step) = series.step {
                 build_step_path(&series.points, step)
             } else if series.smooth {
                 build_smooth_path(&series.points)
             } else {
                 build_polyline_path(&series.points)
             };
-            elements.push(VisualElement::Path {
-                path,
-                style: FillStrokeStyle {
+            elements.push(path(
+                p,
+                lievisual::scene::FillStrokeStyle {
                     fill: None,
-                    stroke: Some(crate::visual::Stroke {
-                        color: series.color,
-                        width: series.line_width,
-                    }),
+                    stroke: Some(lievisual::scene::Stroke::new(series.color, series.line_width)),
                 },
-                z_index: Z_SERIES_LINE,
-            });
+                false,
+                Z_SERIES_LINE,
+            ));
         }
 
         // 3. 数据点符号（单个数据点也要渲染，否则完全看不到）
@@ -102,21 +99,18 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
                     }
                 };
 
-                elements.push(VisualElement::TextRun {
-                    text,
-                    position: Point::new(x, y),
-                    style: TextStyle {
-                        color: label_cfg.color,
-                        font_size: label_cfg.font_size,
-                        align: TextAlign::Center,
-                        vertical_align: TextBaseline::Bottom,
-                        ..Default::default()
-                    },
-                    rotation: 0.0,
-                    max_width: None,
-                    layout: None,
-                    z_index: Z_SERIES_LABEL,
-                });
+                let mut style = TextStyle::new(label_cfg.color, label_cfg.font_size, "sans-serif");
+                style.align = TextAlign::Center;
+                style.baseline = TextBaseline::Bottom;
+                elements.push(
+                    SceneNode::new(Element::Text {
+                        spans: vec![RichSpan::new(text, style.clone())],
+                        position: Point::new(x, y),
+                        style,
+                        layout: None,
+                    })
+                    .with_z(Z_SERIES_LABEL),
+                );
             }
         }
 
@@ -311,51 +305,47 @@ fn build_symbol(
     symbol_type: SymbolType,
     size: f64,
     color: crate::visual::Color,
-) -> Vec<VisualElement> {
+) -> Vec<SceneNode> {
     let mut elements = Vec::new();
 
     match symbol_type {
         SymbolType::Circle => {
-            elements.push(VisualElement::Circle {
-                center: *center,
-                radius: size,
-                style: fill_stroke_style(color, color, 1.0),
-                z_index: Z_SERIES_POINT,
-            });
+            elements.push(circle(
+                *center,
+                size,
+                fill_stroke_style(color, color, 1.0),
+                Z_SERIES_POINT,
+            ));
         }
         SymbolType::EmptyCircle => {
             // 空心圆：只描边、不填充（ECharts line 默认符号）
-            elements.push(VisualElement::Circle {
-                center: *center,
-                radius: size,
-                style: FillStrokeStyle {
+            elements.push(circle(
+                *center,
+                size,
+                lievisual::scene::FillStrokeStyle {
                     fill: None,
-                    stroke: Some(crate::visual::Stroke { color, width: 1.0 }),
+                    stroke: Some(lievisual::scene::Stroke::new(color, 1.0)),
                 },
-                z_index: Z_SERIES_POINT,
-            });
+                Z_SERIES_POINT,
+            ));
         }
         SymbolType::Rect => {
-            let rect = vello_cpu::kurbo::Rect::new(
+            let r = vello_cpu::kurbo::Rect::new(
                 center.x - size,
                 center.y - size,
                 center.x + size,
                 center.y + size,
             );
-            elements.push(VisualElement::Rect {
-                rect,
-                style: fill_stroke_style(color, color, 1.0),
-                z_index: Z_SERIES_POINT,
-            });
+            elements.push(rect(r, fill_stroke_style(color, color, 1.0), Z_SERIES_POINT));
         }
         _ => {
             // 默认使用圆形
-            elements.push(VisualElement::Circle {
-                center: *center,
-                radius: size,
-                style: fill_stroke_style(color, color, 1.0),
-                z_index: Z_SERIES_POINT,
-            });
+            elements.push(circle(
+                *center,
+                size,
+                fill_stroke_style(color, color, 1.0),
+                Z_SERIES_POINT,
+            ));
         }
     }
 
@@ -372,7 +362,7 @@ mod tests {
     fn single_point_series() -> LineSeries {
         LineSeries {
             name: "test".into(),
-            color: crate::visual::Color::new(80, 112, 221),
+            color: crate::visual::Color::rgb(80, 112, 221),
             line_width: 2.0,
             smooth: true,
             step: None,
@@ -401,8 +391,8 @@ mod tests {
 
         // 单个数据点画不出线，但必须渲染出数据点符号
         assert_eq!(elements.len(), 1, "单点折线图应渲染出 1 个符号");
-        match &elements[0] {
-            VisualElement::Circle { style, .. } => {
+        match &elements[0].element {
+            Element::Circle { style, .. } => {
                 assert!(style.fill.is_none(), "ECharts 默认折线符号是空心圆");
                 assert!(style.stroke.is_some());
             }
@@ -430,12 +420,12 @@ mod tests {
         assert!(
             elements
                 .iter()
-                .any(|e| matches!(e, VisualElement::Path { .. }))
+                .any(|e| matches!(&e.element, Element::Path { .. }))
         );
         assert_eq!(
             elements
                 .iter()
-                .filter(|e| matches!(e, VisualElement::Circle { .. }))
+                .filter(|e| matches!(&e.element, Element::Circle { .. }))
                 .count(),
             3
         );

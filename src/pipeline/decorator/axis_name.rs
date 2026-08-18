@@ -2,14 +2,17 @@
 //!
 //! 渲染 X/Y 轴的名称标签，支持旋转和位置调整。
 
+use lievisual::scene::{Element, SceneNode};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::Point;
 
 use crate::{
     pipeline::types::{AxisPosition, ChartSpec, ColorContext, SubplotSpec},
     text::create_text_layout,
     theme::Theme,
-    visual::{Color, TextAlign, TextBaseline, TextStyle, VisualElement, Z_LABEL},
 };
+use lievisual::Color;
+use crate::pipeline::builder::{ColorExt, Z_LABEL};
 
 /// 构建轴名称元素
 pub fn render_axis_name(
@@ -19,11 +22,11 @@ pub fn render_axis_name(
     specs: &[SubplotSpec],
     _colors: &ColorContext,
     theme: &Theme,
-) -> Vec<VisualElement> {
+) -> Vec<SceneNode> {
     let mut elements = Vec::new();
 
     let axis_label_style = theme.get_axis_label_style();
-    let label_color = Color::from_hex(&axis_label_style.color).unwrap_or(Color::new(84, 85, 90));
+    let label_color = Color::from_hex(&axis_label_style.color).unwrap_or(Color::rgb(84, 85, 90));
 
     for spec_item in specs {
         let bounds = spec_item.bounds;
@@ -37,17 +40,13 @@ pub fn render_axis_name(
                     || (y_axis.position != AxisPosition::Right && i > 0);
 
                 let (initial_align, initial_baseline) = (TextAlign::Left, TextBaseline::Top);
-                let text_style = TextStyle {
-                    font_size: axis_label_style.font_size,
-                    color: label_color,
-                    font_family: axis_label_style.font_family.clone(),
-                    align: initial_align,
-                    vertical_align: initial_baseline,
-                    ..Default::default()
-                };
+                let mut text_style =
+                    TextStyle::new(label_color, axis_label_style.font_size, axis_label_style.font_family.clone());
+                text_style.align = initial_align;
+                text_style.baseline = initial_baseline;
                 let text_layout = create_text_layout(name, &text_style, None);
-                let _text_width = text_layout.width() as f64;
-                let text_height = text_layout.height() as f64;
+                let _text_width = text_layout.width;
+                let text_height = text_layout.height;
 
                 let margin = 15.0;
                 let label_margin = 8.0;
@@ -76,22 +75,20 @@ pub fn render_axis_name(
                 };
                 let y = bounds.y0 + bounds.height() / 2.0;
 
-                elements.push(VisualElement::TextRun {
-                    text: name.clone(),
-                    position: Point::new(x, y),
-                    style: TextStyle {
-                        font_size: axis_label_style.font_size,
-                        color: label_color,
-                        font_family: axis_label_style.font_family.clone(),
-                        align,
-                        vertical_align: baseline,
-                        ..Default::default()
-                    },
-                    rotation,
-                    max_width: None,
-                    layout: Some(Box::new(text_layout)),
-                    z_index: Z_LABEL,
-                });
+                let mut style =
+                    TextStyle::new(label_color, axis_label_style.font_size, axis_label_style.font_family.clone());
+                style.align = align;
+                style.baseline = baseline;
+                style.rotation = rotation;
+                elements.push(
+                    SceneNode::new(Element::Text {
+                        spans: vec![RichSpan::new(name.clone(), style.clone())],
+                        position: Point::new(x, y),
+                        style,
+                        layout: Some(std::sync::Arc::new(text_layout)),
+                    })
+                    .with_z(Z_LABEL),
+                );
             }
         }
 
@@ -111,22 +108,19 @@ pub fn render_axis_name(
                     (bounds.y1 + 35.0).min(height as f64 - font_size - 10.0)
                 };
 
-                elements.push(VisualElement::TextRun {
-                    text: name.clone(),
-                    position: Point::new(x, y),
-                    style: TextStyle {
-                        font_size: axis_label_style.font_size,
-                        color: label_color,
-                        font_family: axis_label_style.font_family.clone(),
-                        align: TextAlign::Center,
-                        vertical_align: TextBaseline::Middle,
-                        ..Default::default()
-                    },
-                    rotation: 0.0,
-                    max_width: None,
-                    layout: None,
-                    z_index: Z_LABEL,
-                });
+                let mut style =
+                    TextStyle::new(label_color, axis_label_style.font_size, axis_label_style.font_family.clone());
+                style.align = TextAlign::Center;
+                style.baseline = TextBaseline::Middle;
+                elements.push(
+                    SceneNode::new(Element::Text {
+                        spans: vec![RichSpan::new(name.clone(), style.clone())],
+                        position: Point::new(x, y),
+                        style,
+                        layout: None,
+                    })
+                    .with_z(Z_LABEL),
+                );
             }
         }
     }

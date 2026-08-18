@@ -1,24 +1,23 @@
-//! Radar Builder: 将 RadarSeries 组装为 VisualElement
+//! Radar Builder: 将 RadarSeries 组装为 lievisual `SceneNode`
 
 use std::f64::consts::PI;
 
+use lievisual::scene::{Element, FillStrokeStyle, SceneNode, Stroke};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{BezPath, Point, Rect};
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_LINE, Z_SERIES_POINT},
+        builder::{SeriesBuilder, Z_SERIES_LINE, Z_SERIES_POINT, Z_SERIES_FILL},
         typed_series::{RadarSeries, RenderContext},
-    },
-    visual::{
-        Color, FillStrokeStyle, Stroke, TextAlign, TextBaseline, TextStyle, VisualElement, Z_LABEL,
     },
 };
 
 pub struct RadarBuilder;
 
 impl SeriesBuilder<RadarSeries> for RadarBuilder {
-    fn build(series: &RadarSeries, ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &RadarSeries, ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::new();
 
         let indicator_count = series.indicators.len().max(3);
@@ -68,44 +67,40 @@ impl SeriesBuilder<RadarSeries> for RadarBuilder {
 
         // 填充区域（半透明）
         let mut fill_color = series.color;
-        fill_color.a = 64; // 半透明
+        fill_color.a = 64.0 / 255.0; // 半透明
 
-        elements.push(VisualElement::Path {
-            path: path.clone(),
-            style: FillStrokeStyle {
-                fill: Some(fill_color),
+        elements.push(crate::pipeline::builder::path(
+            path.clone(),
+            FillStrokeStyle {
+                fill: Some(lievisual::scene::Fill::Solid(fill_color)),
                 stroke: None,
             },
-            z_index: Z_SERIES_LINE - 1,
-        });
+            true,
+            Z_SERIES_FILL,
+        ));
 
         // 描边
-        elements.push(VisualElement::Path {
+        elements.push(crate::pipeline::builder::path(
             path,
-            style: FillStrokeStyle {
+            FillStrokeStyle {
                 fill: None,
-                stroke: Some(Stroke {
-                    color: series.color,
-                    width: 2.0,
-                }),
+                stroke: Some(Stroke::new(series.color, 2.0)),
             },
-            z_index: Z_SERIES_LINE,
-        });
+            true,
+            Z_SERIES_LINE,
+        ));
 
         // 数据点
         for point in &points {
-            elements.push(VisualElement::Circle {
-                center: *point,
-                radius: 3.0,
-                style: FillStrokeStyle {
-                    fill: Some(series.color),
-                    stroke: Some(Stroke {
-                        color: series.color,
-                        width: 1.0,
-                    }),
+            elements.push(crate::pipeline::builder::circle(
+                *point,
+                3.0,
+                FillStrokeStyle {
+                    fill: Some(lievisual::scene::Fill::Solid(series.color)),
+                    stroke: Some(Stroke::new(series.color, 1.0)),
                 },
-                z_index: Z_SERIES_POINT,
-            });
+                Z_SERIES_POINT,
+            ));
         }
 
         // Indicator 标签由 build_radar_indicators 在 subplot 级别调用一次，
@@ -116,7 +111,7 @@ impl SeriesBuilder<RadarSeries> for RadarBuilder {
 }
 
 /// 在 subplot 级别渲染雷达图的指示器标签（仅调用一次）
-pub fn build_radar_indicators(series: &RadarSeries, bounds: Rect) -> Vec<VisualElement> {
+pub fn build_radar_indicators(series: &RadarSeries, bounds: Rect) -> Vec<SceneNode> {
     let mut elements = Vec::new();
 
     let indicator_count = series.indicators.len().max(3);
@@ -154,21 +149,18 @@ pub fn build_radar_indicators(series: &RadarSeries, bounds: Rect) -> Vec<VisualE
             (TextAlign::Center, TextBaseline::Middle)
         };
 
-        elements.push(VisualElement::TextRun {
-            text: label,
-            position: Point::new(lx, ly),
-            style: TextStyle {
-                color: Color::new(84, 85, 90),
-                font_size: 12.0,
-                align,
-                vertical_align: va,
-                ..Default::default()
-            },
-            rotation: 0.0,
-            max_width: None,
-            layout: None,
-            z_index: Z_LABEL,
-        });
+        let mut style = TextStyle::new(crate::visual::Color::rgb(84, 85, 90), 12.0, "sans-serif");
+        style.align = align;
+        style.baseline = va;
+        elements.push(
+            SceneNode::new(Element::Text {
+                spans: vec![RichSpan::new(label, style.clone())],
+                position: Point::new(lx, ly),
+                style,
+                layout: None,
+            })
+            .with_z(crate::pipeline::builder::Z_AXIS_LABEL),
+        );
     }
 
     elements

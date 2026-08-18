@@ -1,20 +1,20 @@
-//! Candlestick Builder: 将 CandlestickSeries 组装为 VisualElement
+//! Candlestick Builder: 将 CandlestickSeries 组装为 lievisual `SceneNode`
 
+use lievisual::scene::{FillStrokeStyle, SceneNode, Stroke};
 use vello_cpu::kurbo::Point;
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LINE, fill_stroke_style, stroke_style},
+        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LINE, fill_stroke_style, line, rect, stroke_style},
         typed_series::{CandlestickSeries, RenderContext},
     },
-    visual::{FillStrokeStyle, Stroke, VisualElement},
 };
 
 pub struct CandlestickBuilder;
 
 impl SeriesBuilder<CandlestickSeries> for CandlestickBuilder {
-    fn build(series: &CandlestickSeries, _ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &CandlestickSeries, _ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::with_capacity(series.candles.len() * 5); // 每个蜡烛：上影线+端线、下影线+端线、实体
 
         for candle in &series.candles {
@@ -28,53 +28,43 @@ impl SeriesBuilder<CandlestickSeries> for CandlestickBuilder {
             let cx = candle.body_rect.x0 + half_width; // 蜡烛中心 x
 
             // 上影线 + 端点横线
-            elements.push(VisualElement::Line {
-                start: candle.high_line.0,
-                end: candle.high_line.1,
-                style: stroke_style(color, 1.0),
-                z_index: Z_SERIES_LINE,
-            });
+            elements.push(line(candle.high_line.0, candle.high_line.1, stroke_style(color, 1.0), Z_SERIES_LINE));
             // 上影线顶端的横线（与蜡烛体同宽）
-            elements.push(VisualElement::Line {
-                start: Point::new(cx - half_width, candle.high_line.0.y),
-                end: Point::new(cx + half_width, candle.high_line.0.y),
-                style: stroke_style(color, 1.0),
-                z_index: Z_SERIES_LINE,
-            });
+            elements.push(line(
+                Point::new(cx - half_width, candle.high_line.0.y),
+                Point::new(cx + half_width, candle.high_line.0.y),
+                stroke_style(color, 1.0),
+                Z_SERIES_LINE,
+            ));
 
             // 下影线 + 端点横线
-            elements.push(VisualElement::Line {
-                start: candle.low_line.0,
-                end: candle.low_line.1,
-                style: stroke_style(color, 1.0),
-                z_index: Z_SERIES_LINE,
-            });
+            elements.push(line(candle.low_line.0, candle.low_line.1, stroke_style(color, 1.0), Z_SERIES_LINE));
             // 下影线底端的横线（与蜡烛体同宽）
-            elements.push(VisualElement::Line {
-                start: Point::new(cx - half_width, candle.low_line.1.y),
-                end: Point::new(cx + half_width, candle.low_line.1.y),
-                style: stroke_style(color, 1.0),
-                z_index: Z_SERIES_LINE,
-            });
+            elements.push(line(
+                Point::new(cx - half_width, candle.low_line.1.y),
+                Point::new(cx + half_width, candle.low_line.1.y),
+                stroke_style(color, 1.0),
+                Z_SERIES_LINE,
+            ));
 
             // 实体 — 阳线空心（仅描边），阴线实心（填充）
             if candle.is_up {
                 // 阳线：仅描边，空心
-                elements.push(VisualElement::Rect {
-                    rect: candle.body_rect,
-                    style: FillStrokeStyle {
+                elements.push(rect(
+                    candle.body_rect,
+                    FillStrokeStyle {
                         fill: None,
-                        stroke: Some(Stroke { color, width: 1.5 }),
+                        stroke: Some(Stroke::new(color, 1.5)),
                     },
-                    z_index: Z_SERIES_FILL,
-                });
+                    Z_SERIES_FILL,
+                ));
             } else {
                 // 阴线：实心填充
-                elements.push(VisualElement::Rect {
-                    rect: candle.body_rect,
-                    style: fill_stroke_style(color, color, 1.0),
-                    z_index: Z_SERIES_FILL,
-                });
+                elements.push(rect(
+                    candle.body_rect,
+                    fill_stroke_style(color, color, 1.0),
+                    Z_SERIES_FILL,
+                ));
             }
         }
 

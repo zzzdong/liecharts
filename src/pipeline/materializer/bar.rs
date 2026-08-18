@@ -172,7 +172,7 @@ impl SeriesMaterializer for BarMaterializer {
                 Some(crate::pipeline::typed_series::SeriesLabelConfig {
                     show: true,
                     position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
-                    color: Color::new(60, 60, 65),
+                    color: Color::rgb(60, 60, 65),
                     font_size: cfg.label_font_size,
                     formatter: cfg.label_formatter.clone(),
                 })

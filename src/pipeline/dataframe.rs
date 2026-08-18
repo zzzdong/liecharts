@@ -303,7 +303,7 @@ impl PieDataTransformer {
             palette
                 .get(i)
                 .map(|&c| DataValue::Color(c))
-                .unwrap_or(DataValue::Color(crate::visual::Color::new(128, 128, 128)))
+                .unwrap_or(DataValue::Color(crate::visual::Color::rgb(128, 128, 128)))
         });
 
         // 添加 start_angle, end_angle 列（用于绘制扇区）
@@ -413,8 +413,8 @@ mod tests {
         ));
 
         let palette = vec![
-            crate::visual::Color::new(99, 132, 255),
-            crate::visual::Color::new(255, 159, 67),
+            crate::visual::Color::rgb(99, 132, 255),
+            crate::visual::Color::rgb(255, 159, 67),
         ];
 
         let result = PieDataTransformer::transform(&df, &palette);

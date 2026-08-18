@@ -1,28 +1,29 @@
-//! GroupedBar Builder: 将 GroupedBarSeries 组装为 VisualElement
+//! GroupedBar Builder: 将 GroupedBarSeries 组装为 lievisual `SceneNode`
 
+use lievisual::scene::{Element, SceneNode};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::Point;
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style},
+        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style, rect},
         typed_series::{GroupedBarSeries, RenderContext, SeriesLabelPosition},
     },
-    visual::{TextAlign, TextBaseline, TextStyle, VisualElement},
 };
 
 pub struct GroupedBarBuilder;
 
 impl SeriesBuilder<GroupedBarSeries> for GroupedBarBuilder {
-    fn build(series: &GroupedBarSeries, _ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &GroupedBarSeries, _ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::with_capacity(series.rows.len());
 
         for row in &series.rows {
-            elements.push(VisualElement::Rect {
-                rect: row.bar_rect,
-                style: fill_style(row.color),
-                z_index: Z_SERIES_FILL,
-            });
+            elements.push(rect(
+                row.bar_rect,
+                fill_style(row.color),
+                Z_SERIES_FILL,
+            ));
 
             // 值标签
             if let Some(ref label_cfg) = series.label
@@ -65,7 +66,7 @@ impl SeriesBuilder<GroupedBarSeries> for GroupedBarBuilder {
                     (
                         bar_rect.x0 + bar_rect.width() / 2.0,
                         y,
-                        crate::visual::Color::new(255, 255, 255),
+                        crate::visual::Color::rgb(255, 255, 255),
                         va,
                     )
                 } else {
@@ -78,21 +79,18 @@ impl SeriesBuilder<GroupedBarSeries> for GroupedBarBuilder {
                     )
                 };
 
-                elements.push(VisualElement::TextRun {
-                    text,
-                    position: Point::new(x, y),
-                    style: TextStyle {
-                        color: label_color,
-                        font_size: label_cfg.font_size,
-                        align: TextAlign::Center,
-                        vertical_align: va,
-                        ..Default::default()
-                    },
-                    rotation: 0.0,
-                    max_width: None,
-                    layout: None,
-                    z_index: Z_SERIES_LABEL,
-                });
+                let mut style = TextStyle::new(label_color, label_cfg.font_size, "sans-serif");
+                style.align = TextAlign::Center;
+                style.baseline = va;
+                elements.push(
+                    SceneNode::new(Element::Text {
+                        spans: vec![RichSpan::new(text, style.clone())],
+                        position: Point::new(x, y),
+                        style,
+                        layout: None,
+                    })
+                    .with_z(Z_SERIES_LABEL),
+                );
             }
         }
 

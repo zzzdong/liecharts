@@ -144,7 +144,7 @@ impl SeriesMaterializer for LineMaterializer {
                 Some(crate::pipeline::typed_series::SeriesLabelConfig {
                     show: true,
                     position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
-                    color: crate::visual::Color::new(60, 60, 65),
+                    color: crate::visual::Color::rgb(60, 60, 65),
                     font_size: cfg.label_font_size,
                     formatter: cfg.label_formatter.clone(),
                 })

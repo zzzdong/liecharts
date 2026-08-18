@@ -1,20 +1,34 @@
-//! Table Builder: 将 TableSeries 组装为 VisualElement
+//! Table Builder: 将 TableSeries 组装为 lievisual `SceneNode`
 
+use lievisual::scene::{Element, SceneNode};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, fill_style},
+        builder::{SeriesBuilder, Z_SERIES_FILL, fill_style, line, rect, stroke_style},
         typed_series::{RenderContext, TableSeries},
     },
-    visual::{TextStyle, VisualElement},
+    option::{FontWeight, FontWeightNamed},
 };
+
+fn weight_to_f32(w: &FontWeight) -> f32 {
+    match w {
+        FontWeight::Named(n) => match n {
+            FontWeightNamed::Bold => 700.0,
+            FontWeightNamed::Bolder => 700.0,
+            FontWeightNamed::Lighter => 300.0,
+            FontWeightNamed::Normal => 400.0,
+        },
+        FontWeight::Numeric(n) => *n as f32,
+    }
+}
 
 pub struct TableBuilder;
 
 impl SeriesBuilder<TableSeries> for TableBuilder {
-    fn build(series: &TableSeries, ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &TableSeries, ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::new();
 
         // 表格布局：使用子图 bounds 定位，动态计算单元格尺寸
@@ -35,66 +49,57 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
             start_x + cell_width * col_count as f64,
             start_y + cell_height,
         );
-        elements.push(VisualElement::Rect {
-            rect: header_rect,
-            style: fill_style(series.header_bg),
-            z_index: Z_SERIES_FILL,
-        });
+        elements.push(rect(header_rect, fill_style(series.header_bg), Z_SERIES_FILL));
 
         // 2. 绘制表头文本（居中对齐）
         for (col_idx, header) in series.headers.iter().enumerate() {
             let x = start_x + col_idx as f64 * cell_width + cell_width / 2.0;
             let y = start_y + cell_height / 2.0;
 
-            elements.push(VisualElement::TextRun {
-                text: header.clone(),
-                position: Point::new(x, y),
-                style: TextStyle {
-                    font_size: 12.0,
-                    color: ctx.colors.text_color,
-                    font_family: "Arial".to_string(),
-                    font_weight: crate::option::FontWeight::Named(
-                        crate::option::FontWeightNamed::Bold,
-                    ),
-                    font_style: crate::visual::FontStyle::Normal,
-                    align: crate::visual::TextAlign::Center,
-                    vertical_align: crate::visual::TextBaseline::Middle,
-                },
-                rotation: 0.0,
-                max_width: Some(cell_width - 10.0),
-                layout: None,
-                z_index: Z_SERIES_FILL + 1,
-            });
+            let mut style = TextStyle::new(ctx.colors.text_color, 12.0, "Arial");
+            style.font_weight = weight_to_f32(&FontWeight::Named(FontWeightNamed::Bold));
+            style.align = TextAlign::Center;
+            style.baseline = TextBaseline::Middle;
+            style.max_width = Some(cell_width - 10.0);
+            elements.push(
+                SceneNode::new(Element::Text {
+                    spans: vec![RichSpan::new(header.clone(), style.clone())],
+                    position: Point::new(x, y),
+                    style,
+                    layout: None,
+                })
+                .with_z(Z_SERIES_FILL + 1),
+            );
         }
 
         // 3. 绘制表头顶部和底部分隔线
         let header_bottom_y = start_y + cell_height;
 
         // 顶部边框
-        elements.push(VisualElement::Line {
-            start: Point::new(start_x, start_y),
-            end: Point::new(start_x + cell_width * col_count as f64, start_y),
-            style: crate::pipeline::builder::stroke_style(series.header_border_color, 1.0),
-            z_index: Z_SERIES_FILL + 2,
-        });
+        elements.push(line(
+            Point::new(start_x, start_y),
+            Point::new(start_x + cell_width * col_count as f64, start_y),
+            stroke_style(series.header_border_color, 1.0),
+            Z_SERIES_FILL + 2,
+        ));
 
         // 底部边框
-        elements.push(VisualElement::Line {
-            start: Point::new(start_x, header_bottom_y),
-            end: Point::new(start_x + cell_width * col_count as f64, header_bottom_y),
-            style: crate::pipeline::builder::stroke_style(series.header_border_color, 1.0),
-            z_index: Z_SERIES_FILL + 2,
-        });
+        elements.push(line(
+            Point::new(start_x, header_bottom_y),
+            Point::new(start_x + cell_width * col_count as f64, header_bottom_y),
+            stroke_style(series.header_border_color, 1.0),
+            Z_SERIES_FILL + 2,
+        ));
 
         // 4. 绘制表头区域纵向分隔线（使用可见颜色，与灰色背景区分）
         for col_idx in 0..=col_count {
             let x = start_x + col_idx as f64 * cell_width;
-            elements.push(VisualElement::Line {
-                start: Point::new(x, start_y),
-                end: Point::new(x, header_bottom_y),
-                style: crate::pipeline::builder::stroke_style(series.header_border_color, 1.0),
-                z_index: Z_SERIES_FILL + 2,
-            });
+            elements.push(line(
+                Point::new(x, start_y),
+                Point::new(x, header_bottom_y),
+                stroke_style(series.header_border_color, 1.0),
+                Z_SERIES_FILL + 2,
+            ));
         }
 
         // 5. 绘制行
@@ -113,36 +118,27 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
                 start_x + cell_width * col_count as f64,
                 y + cell_height,
             );
-            elements.push(VisualElement::Rect {
-                rect: row_rect,
-                style: fill_style(bg_color),
-                z_index: Z_SERIES_FILL,
-            });
+            elements.push(rect(row_rect, fill_style(bg_color), Z_SERIES_FILL));
 
             // 行文本（居中对齐）
             for (col_idx, cell) in row.iter().enumerate() {
                 let x = start_x + col_idx as f64 * cell_width + cell_width / 2.0;
                 let text_y = y + cell_height / 2.0;
 
-                elements.push(VisualElement::TextRun {
-                    text: cell.clone(),
-                    position: Point::new(x, text_y),
-                    style: TextStyle {
-                        font_size: 11.0,
-                        color: ctx.colors.text_color,
-                        font_family: "Arial".to_string(),
-                        font_weight: crate::option::FontWeight::Named(
-                            crate::option::FontWeightNamed::Normal,
-                        ),
-                        font_style: crate::visual::FontStyle::Normal,
-                        align: crate::visual::TextAlign::Center,
-                        vertical_align: crate::visual::TextBaseline::Middle,
-                    },
-                    rotation: 0.0,
-                    max_width: Some(cell_width - 10.0),
-                    layout: None,
-                    z_index: Z_SERIES_FILL + 1,
-                });
+                let mut style = TextStyle::new(ctx.colors.text_color, 11.0, "Arial");
+                style.font_weight = weight_to_f32(&FontWeight::Named(FontWeightNamed::Normal));
+                style.align = TextAlign::Center;
+                style.baseline = TextBaseline::Middle;
+                style.max_width = Some(cell_width - 10.0);
+                elements.push(
+                    SceneNode::new(Element::Text {
+                        spans: vec![RichSpan::new(cell.clone(), style.clone())],
+                        position: Point::new(x, text_y),
+                        style,
+                        layout: None,
+                    })
+                    .with_z(Z_SERIES_FILL + 1),
+                );
             }
         }
 
@@ -152,23 +148,23 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
         // 垂直线（从表头底部开始）
         for col_idx in 0..=col_count {
             let x = start_x + col_idx as f64 * cell_width;
-            elements.push(VisualElement::Line {
-                start: Point::new(x, header_bottom_y),
-                end: Point::new(x, start_y + (row_count + 1) as f64 * cell_height),
-                style: crate::pipeline::builder::stroke_style(grid_color, 1.0),
-                z_index: Z_SERIES_FILL + 2,
-            });
+            elements.push(line(
+                Point::new(x, header_bottom_y),
+                Point::new(x, start_y + (row_count + 1) as f64 * cell_height),
+                stroke_style(grid_color, 1.0),
+                Z_SERIES_FILL + 2,
+            ));
         }
 
         // 7. 水平线（从第三行开始，顶部和表头底部边框已在步骤3绘制）
         for row_idx in 2..=row_count + 1 {
             let y = start_y + row_idx as f64 * cell_height;
-            elements.push(VisualElement::Line {
-                start: Point::new(start_x, y),
-                end: Point::new(start_x + cell_width * col_count as f64, y),
-                style: crate::pipeline::builder::stroke_style(grid_color, 1.0),
-                z_index: Z_SERIES_FILL + 2,
-            });
+            elements.push(line(
+                Point::new(start_x, y),
+                Point::new(start_x + cell_width * col_count as f64, y),
+                stroke_style(grid_color, 1.0),
+                Z_SERIES_FILL + 2,
+            ));
         }
 
         Ok(elements)

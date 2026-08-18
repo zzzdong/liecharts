@@ -1,19 +1,16 @@
-//! Pie Builder: 将 PieSeries 组装为 VisualElement
+//! Pie Builder: 将 PieSeries 组装为 lievisual `SceneNode`
 
 use std::f64::consts::PI;
 
+use lievisual::scene::{Element, FillStrokeStyle, SceneNode, Stroke};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,
-    option::FontWeight,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, fill_style},
+        builder::{SeriesBuilder, Z_SERIES_FILL, fill_style, path},
         typed_series::{LabelPosition, PieSeries, RenderContext},
-    },
-    visual::{
-        Color, FillStrokeStyle, FontStyle, Stroke, TextAlign, TextBaseline, TextStyle,
-        VisualElement,
     },
 };
 
@@ -36,7 +33,7 @@ struct PieLabelGeometry {
 pub struct PieBuilder;
 
 impl SeriesBuilder<PieSeries> for PieBuilder {
-    fn build(series: &PieSeries, ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &PieSeries, ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::with_capacity(series.slices.len() * 2);
 
         let bounds = ctx.bounds;
@@ -65,13 +62,9 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
             let mid_angle = start_angle + sweep_angle * 0.5;
 
             // 绘制扇形
-            let path = build_arc_path(center, inner_radius, outer_radius, start_angle, end_angle);
+            let arc_path = build_arc_path(center, inner_radius, outer_radius, start_angle, end_angle);
 
-            elements.push(VisualElement::Path {
-                path,
-                style: fill_style(slice.color),
-                z_index: Z_SERIES_FILL,
-            });
+            elements.push(path(arc_path, fill_style(slice.color), true, Z_SERIES_FILL));
 
             // 标签
             if series.label_show {
@@ -414,7 +407,7 @@ fn compute_label_geometry(
 }
 
 /// 用最终几何生成引导线 + 文本元素。
-fn emit_label_elements(geo: &PieLabelGeometry, ctx: &RenderContext) -> Vec<VisualElement> {
+fn emit_label_elements(geo: &PieLabelGeometry, ctx: &RenderContext) -> Vec<SceneNode> {
     let mut elements = Vec::new();
 
     // 引导线第 3 段终点：指向文本侧边/顶底端点中心
@@ -433,17 +426,15 @@ fn emit_label_elements(geo: &PieLabelGeometry, ctx: &RenderContext) -> Vec<Visua
     guide_path.line_to(geo.line_kink);
     guide_path.line_to(line_end);
 
-    elements.push(VisualElement::Path {
-        path: guide_path,
-        style: FillStrokeStyle {
+    elements.push(path(
+        guide_path,
+        FillStrokeStyle {
             fill: None,
-            stroke: Some(Stroke {
-                color: ctx.colors.text_secondary_color,
-                width: 1.0,
-            }),
+            stroke: Some(Stroke::new(ctx.colors.text_secondary_color, 1.0)),
         },
-        z_index: Z_SERIES_FILL + 1,
-    });
+        false,
+        Z_SERIES_FILL + 1,
+    ));
 
     // 文本对齐：Left/Right 文本侧对齐；Top/Bottom 文本顶/底对齐且水平居中
     let (align, baseline) = match geo.region {
@@ -453,23 +444,18 @@ fn emit_label_elements(geo: &PieLabelGeometry, ctx: &RenderContext) -> Vec<Visua
         PieRegion::Bottom => (TextAlign::Center, TextBaseline::Top),
     };
 
-    elements.push(VisualElement::TextRun {
-        text: geo.text.clone(),
-        position: Point::new(geo.text_x, geo.text_y),
-        style: TextStyle {
-            color: ctx.colors.text_color,
-            font_size: 12.0,
-            font_family: "sans-serif".to_string(),
-            font_weight: FontWeight::default(),
-            font_style: FontStyle::Normal,
-            align,
-            vertical_align: baseline,
-        },
-        rotation: 0.0,
-        max_width: None,
-        layout: None,
-        z_index: Z_SERIES_FILL + 2,
-    });
+    let mut style = TextStyle::new(ctx.colors.text_color, 12.0, "sans-serif");
+    style.align = align;
+    style.baseline = baseline;
+    elements.push(
+        SceneNode::new(Element::Text {
+            spans: vec![RichSpan::new(geo.text.clone(), style.clone())],
+            position: Point::new(geo.text_x, geo.text_y),
+            style,
+            layout: None,
+        })
+        .with_z(Z_SERIES_FILL + 2),
+    );
 
     elements
 }
@@ -482,7 +468,7 @@ fn build_inside_label(
     slice: &crate::pipeline::typed_series::PieSlice,
     formatter: Option<&str>,
     _ctx: &RenderContext,
-) -> Vec<VisualElement> {
+) -> Vec<SceneNode> {
     let mut elements = Vec::new();
 
     // 将角度转换为标准坐标系
@@ -496,23 +482,18 @@ fn build_inside_label(
     let label_x = center.x + label_radius * angle.cos();
     let label_y = center.y + label_radius * angle.sin();
 
-    elements.push(VisualElement::TextRun {
-        text: label_text,
-        position: Point::new(label_x, label_y),
-        style: TextStyle {
-            color: Color::new(255, 255, 255), // 白色文字
-            font_size: 12.0,
-            font_family: "sans-serif".to_string(),
-            font_weight: FontWeight::default(),
-            font_style: FontStyle::Normal,
-            align: TextAlign::Center,
-            vertical_align: TextBaseline::Middle,
-        },
-        rotation: 0.0,
-        max_width: None,
-        layout: None,
-        z_index: Z_SERIES_FILL + 2,
-    });
+    let mut style = TextStyle::new(crate::visual::Color::rgb(255, 255, 255), 12.0, "sans-serif");
+    style.align = TextAlign::Center;
+    style.baseline = TextBaseline::Middle;
+    elements.push(
+        SceneNode::new(Element::Text {
+            spans: vec![RichSpan::new(label_text, style.clone())],
+            position: Point::new(label_x, label_y),
+            style,
+            layout: None,
+        })
+        .with_z(Z_SERIES_FILL + 2),
+    );
 
     elements
 }

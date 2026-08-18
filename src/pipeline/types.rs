@@ -410,9 +410,9 @@ impl Default for HeatmapConfig {
             min: None,
             max: None,
             colors: vec![
-                Color::new(80, 163, 186), // #50a3ba
-                Color::new(234, 199, 54), // #eac736
-                Color::new(217, 78, 93),  // #d94e5d
+                Color::rgb(80, 163, 186), // #50a3ba
+                Color::rgb(234, 199, 54), // #eac736
+                Color::rgb(217, 78, 93),  // #d94e5d
             ],
             border_color: None,
             border_width: 0.0,
@@ -769,19 +769,19 @@ impl Default for ColorContext {
     fn default() -> Self {
         Self {
             palette: Vec::new(),
-            background: Color::new(255, 255, 255),
+            background: Color::rgb(255, 255, 255),
             series_colors: Vec::new(),
-            axis_line_color: Color::new(200, 200, 200),
-            axis_label_color: Color::new(50, 50, 50),
-            grid_line_color: Color::new(230, 230, 230),
-            border_color: Color::new(255, 255, 255),
-            text_color: Color::new(51, 51, 51),
-            text_secondary_color: Color::new(102, 102, 102),
-            up_color: Color::new(234, 85, 67),
-            down_color: Color::new(80, 170, 94),
-            table_header_bg: Color::new(220, 220, 220),
-            table_row_even_bg: Color::new(248, 248, 248),
-            table_row_odd_bg: Color::new(255, 255, 255),
+            axis_line_color: Color::rgb(200, 200, 200),
+            axis_label_color: Color::rgb(50, 50, 50),
+            grid_line_color: Color::rgb(230, 230, 230),
+            border_color: Color::rgb(255, 255, 255),
+            text_color: Color::rgb(51, 51, 51),
+            text_secondary_color: Color::rgb(102, 102, 102),
+            up_color: Color::rgb(234, 85, 67),
+            down_color: Color::rgb(80, 170, 94),
+            table_header_bg: Color::rgb(220, 220, 220),
+            table_row_even_bg: Color::rgb(248, 248, 248),
+            table_row_odd_bg: Color::rgb(255, 255, 255),
         }
     }
 }
@@ -796,19 +796,19 @@ impl ColorContext {
             .unwrap_or_else(|| {
                 // 回退到默认调色板
                 let default_colors = [
-                    Color::new(80, 112, 221), // 蓝色
-                    Color::new(182, 214, 52), // 绿色
-                    Color::new(234, 85, 67),  // 红色
-                    Color::new(255, 193, 7),  // 黄色
-                    Color::new(156, 39, 176), // 紫色
-                    Color::new(0, 188, 212),  // 青色
-                    Color::new(255, 87, 34),  // 橙色
-                    Color::new(96, 125, 139), // 蓝灰色
+                    Color::rgb(80, 112, 221), // 蓝色
+                    Color::rgb(182, 214, 52), // 绿色
+                    Color::rgb(234, 85, 67),  // 红色
+                    Color::rgb(255, 193, 7),  // 黄色
+                    Color::rgb(156, 39, 176), // 紫色
+                    Color::rgb(0, 188, 212),  // 青色
+                    Color::rgb(255, 87, 34),  // 橙色
+                    Color::rgb(96, 125, 139), // 蓝灰色
                 ];
                 default_colors
                     .get(index % default_colors.len())
                     .copied()
-                    .unwrap_or(Color::new(80, 112, 221))
+                    .unwrap_or(Color::rgb(80, 112, 221))
             })
     }
 
@@ -826,7 +826,7 @@ impl ColorContext {
             .first()
             .copied()
             .or_else(|| self.palette.first().copied())
-            .unwrap_or(Color::new(80, 112, 221))
+            .unwrap_or(Color::rgb(80, 112, 221))
     }
 }
 
@@ -855,7 +855,7 @@ impl TextMeasurer {
     /// 使用 parley 进行真实的文本排版，而非简单估算。
     pub fn measure(&mut self, text: &str, style: &TextStyle) -> (f64, f64) {
         let layout = create_text_layout(text, style, None);
-        (layout.width() as f64, layout.height() as f64)
+        (layout.width, layout.height)
     }
 
     /// 测量文本，支持最大宽度限制（自动换行）
@@ -868,6 +868,6 @@ impl TextMeasurer {
         max_width: f64,
     ) -> (f64, f64) {
         let layout = create_text_layout(text, style, Some(max_width));
-        (layout.width() as f64, layout.height() as f64)
+        (layout.width, layout.height)
     }
 }

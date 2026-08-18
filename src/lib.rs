@@ -10,7 +10,32 @@ pub mod render;
 pub mod sampling;
 pub mod text;
 pub mod theme;
-pub mod visual;
+
+/// 渲染类型命名空间：统一指向 lievisual 的 Scene IR。
+///
+/// `VisualElement` 即 `lievisual::scene::SceneNode`，pipeline 直接产出 lievisual 节点；
+/// 其余类型（`Color`/`Stroke`/`FillStrokeStyle`/`TextStyle` 等）均来自 lievisual，
+/// 此处仅为兼容旧路径 `crate::visual::*` 的扁平别名。
+pub mod visual {
+    pub use lievisual::{
+        Color, Fill, FillStrokeStyle, FontStyle, Point, Rect, Scene, SceneNode, Stroke,
+        TextAlign, TextBaseline, TextStyle, Transform, Vec2,
+    };
+    /// 渲染节点别名：pipeline 直接产出 lievisual 的 `SceneNode`。
+    pub type VisualElement = lievisual::scene::SceneNode;
+    /// 兼容别名：liecharts 旧 `StrokeStyle`（`{ color, width }`）对应 lievisual `Stroke`。
+    pub use lievisual::scene::Stroke as StrokeStyle;
+
+    pub const Z_BACKGROUND: i32 = 0;
+    pub const Z_GRID: i32 = 10;
+    pub const Z_SERIES: i32 = 20;
+    pub const Z_SERIES_FILL: i32 = 20;
+    pub const Z_SERIES_LINE: i32 = 21;
+    pub const Z_SERIES_POINT: i32 = 22;
+    pub const Z_AXIS: i32 = 30;
+    pub const Z_LABEL: i32 = 40;
+    pub const Z_TITLE: i32 = 50;
+}
 
 pub use builder::ChartBuilder;
 pub use chart::Chart;

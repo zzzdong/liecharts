@@ -1,22 +1,25 @@
-//! PolarScatter Builder: 将 PolarScatterSeries 组装为 VisualElement
+//! PolarScatter Builder: 将 PolarScatterSeries 组装为 lievisual `SceneNode`
 
 use std::f64::consts::PI;
 
+use lievisual::scene::{Element, SceneNode};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::Point;
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_LABEL, Z_SERIES_POINT, fill_stroke_style},
+        builder::{
+            SeriesBuilder, Z_SERIES_LABEL, Z_SERIES_POINT, circle, fill_stroke_style,
+        },
         typed_series::{PolarScatterSeries, RenderContext},
     },
-    visual::{Color, TextAlign, TextBaseline, TextStyle, VisualElement},
 };
 
 pub struct PolarScatterBuilder;
 
 impl SeriesBuilder<PolarScatterSeries> for PolarScatterBuilder {
-    fn build(series: &PolarScatterSeries, ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &PolarScatterSeries, ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::with_capacity(series.points.len() * 2);
 
         let bounds = ctx.bounds;
@@ -40,12 +43,12 @@ impl SeriesBuilder<PolarScatterSeries> for PolarScatterBuilder {
             let center = Point::new(x, y);
 
             // 使用每个点自己的大小（基于风速）
-            elements.push(VisualElement::Circle {
+            elements.push(circle(
                 center,
-                radius: point.size,
-                style: fill_stroke_style(series.color, series.color, 1.0),
-                z_index: Z_SERIES_POINT,
-            });
+                point.size,
+                fill_stroke_style(series.color, series.color, 1.0),
+                Z_SERIES_POINT,
+            ));
 
             // 计算风向标签位置（更外侧）
             let label_x = center_x + label_radius * angle_rad.cos();
@@ -54,23 +57,18 @@ impl SeriesBuilder<PolarScatterSeries> for PolarScatterBuilder {
             // 获取风向名称
             let wind_direction = angle_to_wind_direction(point.angle);
 
-            elements.push(VisualElement::TextRun {
-                text: wind_direction,
-                position: Point::new(label_x, label_y),
-                style: TextStyle {
-                    color: Color::new(84, 85, 90),
-                    font_size: 10.0,
-                    font_family: "sans-serif".to_string(),
-                    font_weight: Default::default(),
-                    font_style: Default::default(),
-                    align: TextAlign::Center,
-                    vertical_align: TextBaseline::Middle,
-                },
-                rotation: 0.0,
-                max_width: None,
-                layout: None,
-                z_index: Z_SERIES_LABEL,
-            });
+            let mut style = TextStyle::new(crate::visual::Color::rgb(84, 85, 90), 10.0, "sans-serif");
+            style.align = TextAlign::Center;
+            style.baseline = TextBaseline::Middle;
+            elements.push(
+                SceneNode::new(Element::Text {
+                    spans: vec![RichSpan::new(wind_direction, style.clone())],
+                    position: Point::new(label_x, label_y),
+                    style,
+                    layout: None,
+                })
+                .with_z(Z_SERIES_LABEL),
+            );
         }
 
         Ok(elements)

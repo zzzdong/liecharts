@@ -943,9 +943,9 @@ impl Chart {
                         max: l.max,
                         colors: l.colors.clone().unwrap_or_else(|| {
                             vec![
-                                Color::new(80, 163, 186),
-                                Color::new(234, 199, 54),
-                                Color::new(217, 78, 93),
+                                Color::rgb(80, 163, 186),
+                                Color::rgb(234, 199, 54),
+                                Color::rgb(217, 78, 93),
                             ]
                         }),
                         border_color: l.border_color,
@@ -1192,7 +1192,7 @@ impl Chart {
                 item_gap: 10.0,
                 formatter: l.formatter.clone(),
             }),
-            background: self.background_color.unwrap_or(Color::new(255, 255, 255)),
+            background: self.background_color.unwrap_or(Color::rgb(255, 255, 255)),
             palette: vec![],
             theme_name: self.theme_name.clone(),
         }

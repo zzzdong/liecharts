@@ -26,7 +26,7 @@ use crate::{
         },
     },
     theme::Theme,
-    visual::{FillStrokeStyle, VisualElement, Z_BACKGROUND},
+    visual::{Fill, FillStrokeStyle, VisualElement, Z_BACKGROUND},
 };
 
 /// 从 ChartSpec 构建图表（新 API 入口）
@@ -90,14 +90,14 @@ fn build_chart_internal(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualEle
     let mut all_elements: Vec<VisualElement> = Vec::new();
 
     // 添加背景
-    all_elements.push(VisualElement::Rect {
-        rect: Rect::new(0.0, 0.0, width as f64, height as f64),
-        style: FillStrokeStyle {
-            fill: Some(colors.background),
+    all_elements.push(crate::pipeline::builder::rect(
+        Rect::new(0.0, 0.0, width as f64, height as f64),
+        FillStrokeStyle {
+            fill: Some(Fill::Solid(colors.background)),
             stroke: None,
         },
-        z_index: Z_BACKGROUND,
-    });
+        Z_BACKGROUND,
+    ));
 
     // 5. 渲染轴（跳过纯表格子图，表格不需要坐标轴）
     let mut text_measurer = TextMeasurer::new();
@@ -231,7 +231,7 @@ mod tests {
                 subcolor: None,
             }),
             legend: None,
-            background: crate::visual::Color::new(255, 255, 255),
+            background: crate::visual::Color::rgb(255, 255, 255),
             palette: vec![],
             theme_name: None,
         };
@@ -245,7 +245,7 @@ mod tests {
 
         let sector_count = elements
             .iter()
-            .filter(|e| matches!(e, VisualElement::Path { .. }))
+            .filter(|e| matches!(&e.element, lievisual::scene::Element::Path { .. }))
             .count();
         assert!(sector_count >= 3, "Should have at least 3 pie sectors");
     }

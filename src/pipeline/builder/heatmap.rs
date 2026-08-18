@@ -1,18 +1,17 @@
-//! Heatmap Builder: 将 HeatmapSeries 组装为 VisualElement
+//! Heatmap Builder: 将 HeatmapSeries 组装为 lievisual `SceneNode`
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, fill_stroke_style, fill_style},
+        builder::{SeriesBuilder, Z_SERIES_FILL, fill_stroke_style, fill_style, rect},
         typed_series::{HeatmapSeries, RenderContext},
     },
-    visual::VisualElement,
 };
 
 pub struct HeatmapBuilder;
 
 impl SeriesBuilder<HeatmapSeries> for HeatmapBuilder {
-    fn build(series: &HeatmapSeries, _ctx: &RenderContext) -> Result<Vec<VisualElement>> {
+    fn build(series: &HeatmapSeries, _ctx: &RenderContext) -> Result<Vec<lievisual::scene::SceneNode>> {
         let mut elements = Vec::with_capacity(series.cells.len());
 
         for cell in &series.cells {
@@ -26,11 +25,7 @@ impl SeriesBuilder<HeatmapSeries> for HeatmapBuilder {
                 fill_style(cell.color)
             };
 
-            elements.push(VisualElement::Rect {
-                rect: cell.rect,
-                style,
-                z_index: Z_SERIES_FILL,
-            });
+            elements.push(rect(cell.rect, style, Z_SERIES_FILL));
         }
 
         Ok(elements)

@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{error::Result, visual::Color};
+use crate::error::Result;
+use crate::pipeline::builder::ColorExt;
+use lievisual::Color;
 
 /// Design tokens representing a complete chart color and typography palette.
 ///
@@ -769,12 +771,12 @@ impl Theme {
             .theme
             .get(index % tokens.color.theme.len())
             .unwrap_or(&tokens.color.primary[0]);
-        Color::from_hex(color_str).unwrap_or(Color::new(80, 112, 221))
+        Color::from_hex(color_str).unwrap_or(Color::rgb(80, 112, 221))
     }
 
     /// 获取背景色
     pub fn get_background_color(&self) -> Color {
-        Color::from_hex(&self.tokens().color.background).unwrap_or(Color::new(255, 255, 255))
+        Color::from_hex(&self.tokens().color.background).unwrap_or(Color::rgb(255, 255, 255))
     }
 
     /// 获取标题文本样式
