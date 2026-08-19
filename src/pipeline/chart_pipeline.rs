@@ -142,13 +142,17 @@ fn build_chart_internal(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualEle
         )?;
 
         // Build 阶段：将 TypedSeries 组装为 VisualElement
+        // 指示器标签在每个 subplot 级别只绘制一次（取第一个雷达系列的 indicators），
+        // 避免多系列雷达图时每个系列都重复绘制标签。
+        let mut radar_indicators_drawn = false;
         for typed_series in typed_series_list {
-            // 复用同一次 materialize 的结果，直接取第一个雷达系列的 indicators
-            // 绘制指示器标签（仅一次），避免对每个系列重复 materialize
-            if let crate::pipeline::typed_series::TypedSeries::Radar(radar) = &typed_series {
+            if !radar_indicators_drawn
+                && let crate::pipeline::typed_series::TypedSeries::Radar(radar) = &typed_series
+            {
                 let indicator_elements =
                     crate::pipeline::builder::radar::build_radar_indicators(radar, subplot.bounds);
                 all_elements.extend(indicator_elements);
+                radar_indicators_drawn = true;
             }
 
             let elements = build_typed_series(&typed_series, &ctx)?;

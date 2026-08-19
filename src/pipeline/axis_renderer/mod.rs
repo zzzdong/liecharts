@@ -81,15 +81,28 @@ pub fn axis_ticks(
         crate::pipeline::types::AxisType::Time => {
             // 时间戳（秒/毫秒）仍按线性刻度，标签格式化为日期
             let ticks = compute_nice_ticks(min, max, 5);
+            let positions = normalize_ticks(&ticks, min, max);
             let labels: Vec<String> = ticks.iter().map(|&v| format_time_label(v)).collect();
-            (ticks, labels)
+            (positions, labels)
         }
         _ => {
             let ticks = compute_nice_ticks(min, max, 5);
+            let positions = normalize_ticks(&ticks, min, max);
             let labels: Vec<String> = ticks.iter().map(|&v| format!("{:.0}", v)).collect();
-            (ticks, labels)
+            (positions, labels)
         }
     }
+}
+
+/// 将原始刻度值归一化为 `[0,1]` 区间内的位置，供坐标轴网格线/标签定位使用。
+///
+/// `(v - min) / (max - min)`。当 `max == min`（区间退化）时返回 0，避免除零。
+fn normalize_ticks(ticks: &[f64], min: f64, max: f64) -> Vec<f64> {
+    let range = max - min;
+    if range.abs() < f64::EPSILON {
+        return vec![0.0; ticks.len()];
+    }
+    ticks.iter().map(|&v| (v - min) / range).collect()
 }
 
 /// 生成 Log 轴刻度。min/max 为 log10 空间，返回归一化位置与对应标签。

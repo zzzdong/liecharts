@@ -438,10 +438,34 @@ impl CartesianAxisRenderer {
         if !axis_cfg.label_show {
             return;
         }
-        let (x, align) = if is_right {
+        let (mut x, align) = if is_right {
             (bounds.x1 + 8.0, TextAlign::Left)
         } else {
             (bounds.x0 - 8.0, TextAlign::Right)
+        };
+
+        // 先排版得到刻度标签的实际尺寸，再据此校准锚点，避免左轴标签超出画布左边界。
+        // 对左轴（右对齐）锚点至少为 `max_label_w + 8`，确保标签左边缘距画布边界 ≥ 8px。
+        let mut adjust_left_anchor = |labels: &[String],
+                                  rotation: f64,
+                                  text_measurer: &mut TextMeasurer,
+                                  colors: &ColorContext| {
+            if is_right {
+                return;
+            }
+            let style = label_style(colors);
+            let mut max_proj_w: f64 = 0.0;
+            for l in labels {
+                let (w, h) = text_measurer.measure(l, &style);
+                let (proj_w, _) = rotated_bounds(w, h, rotation);
+                max_proj_w = max_proj_w.max(proj_w);
+            }
+            eprintln!("[adjust] is_right={} max_proj_w={:.1} x={} labels={:?}", is_right, max_proj_w, x, labels);
+            let min_anchor = max_proj_w + 8.0;
+            if x < min_anchor {
+                eprintln!("[adjust] -> {}", min_anchor);
+                x = min_anchor;
+            }
         };
 
         // 生成单个 Y 轴标签：未旋转时保持现有对齐方式，旋转时锚点对齐旋转后包围盒
@@ -494,6 +518,7 @@ impl CartesianAxisRenderer {
                 text_measurer,
                 colors,
             );
+            adjust_left_anchor(&labels, rotation, text_measurer, colors);
 
             // 与柱状图渲染保持一致：category 0 在底部，category n-1 在顶部
             let mut last_rendered: Option<usize> = None;
@@ -560,6 +585,7 @@ impl CartesianAxisRenderer {
             text_measurer,
             colors,
         );
+        adjust_left_anchor(&labels, rotation, text_measurer, colors);
 
         for i in (0..positions.len()).step_by(step) {
             push_y_label(
