@@ -200,10 +200,12 @@ fn test_candlestick_chart() {
     assert_eq!(opens.last(), Some(&120.0));
 
     // 端到端渲染不应报 Missing column
-    let elements =
-        liecharts::chart::Chart::new(option, liecharts::theme::Theme::echarts(), 800, 600)
-            .collect_visual_elements()
-            .expect("candlestick 渲染不应失败");
+    let elements = liecharts::ChartBuilder::from_option(option)
+        .with_theme(liecharts::theme::Theme::echarts())
+        .build(800, 600)
+        .unwrap()
+        .collect_visual_elements()
+        .expect("candlestick 渲染不应失败");
     assert!(!elements.is_empty());
 }
 
@@ -247,10 +249,12 @@ fn test_heatmap_chart() {
     assert!(series.data.get_column("value").is_some());
 
     // 端到端渲染：应生成 56 个热力图单元格
-    let elements =
-        liecharts::chart::Chart::new(option, liecharts::theme::Theme::echarts(), 800, 600)
-            .collect_visual_elements()
-            .expect("heatmap 渲染不应失败");
+    let elements = liecharts::ChartBuilder::from_option(option)
+        .with_theme(liecharts::theme::Theme::echarts())
+        .build(800, 600)
+        .unwrap()
+        .collect_visual_elements()
+        .expect("heatmap 渲染不应失败");
     assert!(!elements.is_empty());
 }
 

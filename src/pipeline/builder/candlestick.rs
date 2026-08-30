@@ -6,7 +6,10 @@ use vello_cpu::kurbo::Point;
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LINE, fill_stroke_style, line, rect, stroke_style},
+        builder::{
+            SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LINE, fill_stroke_style, line, rect,
+            stroke_style,
+        },
         typed_series::{CandlestickSeries, RenderContext},
     },
 };
@@ -28,7 +31,12 @@ impl SeriesBuilder<CandlestickSeries> for CandlestickBuilder {
             let cx = candle.body_rect.x0 + half_width; // 蜡烛中心 x
 
             // 上影线 + 端点横线
-            elements.push(line(candle.high_line.0, candle.high_line.1, stroke_style(color, 1.0), Z_SERIES_LINE));
+            elements.push(line(
+                candle.high_line.0,
+                candle.high_line.1,
+                stroke_style(color, 1.0),
+                Z_SERIES_LINE,
+            ));
             // 上影线顶端的横线（与蜡烛体同宽）
             elements.push(line(
                 Point::new(cx - half_width, candle.high_line.0.y),
@@ -38,7 +46,12 @@ impl SeriesBuilder<CandlestickSeries> for CandlestickBuilder {
             ));
 
             // 下影线 + 端点横线
-            elements.push(line(candle.low_line.0, candle.low_line.1, stroke_style(color, 1.0), Z_SERIES_LINE));
+            elements.push(line(
+                candle.low_line.0,
+                candle.low_line.1,
+                stroke_style(color, 1.0),
+                Z_SERIES_LINE,
+            ));
             // 下影线底端的横线（与蜡烛体同宽）
             elements.push(line(
                 Point::new(cx - half_width, candle.low_line.1.y),

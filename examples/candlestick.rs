@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("K线图示例").subtext("股票价格走势"))
         .legend(Legend::new().data(["日K"]))
         .add_candlestick(
@@ -20,8 +22,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .high("high")
                 .name("日K"),
         )
-        .render_to_svg("candlestick.svg")?;
-    println!("K线图已保存到 candlestick.svg");
+    ;
+    common::save(&chart, "candlestick.svg")?;
 
     Ok(())
 }

@@ -1,5 +1,7 @@
 use liecharts::prelude::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let json_config = r#"
 {
@@ -29,8 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 "#;
 
     let chart = ChartBuilder::from_option_json(json_config)?.build(800, 600)?;
-    chart.render_to_svg("json_config.svg")?;
-    println!("JSON配置图表已保存到 json_config.svg");
+    common::save(&chart, "json_config.svg")?;
 
     Ok(())
 }

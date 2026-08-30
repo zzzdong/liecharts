@@ -1,15 +1,21 @@
 //! 复现 Y 轴刻度标签左侧超界问题：读取临时高值 JSON 渲染
-use liecharts::chart::Chart;
-use liecharts::option::ChartOption;
-use liecharts::theme::Theme;
+use liecharts::{ChartBuilder, option::ChartOption, theme::Theme};
 
-fn main() {
-    let json = std::fs::read_to_string("site/examples/_high_value.json").unwrap();
+#[test]
+fn axis_overflow() {
+    let json = std::fs::read_to_string(format!(
+        "{}/site/examples/_high_value.json",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
     let option: ChartOption = serde_json::from_str(&json).unwrap();
-    let chart = Chart::new(option, Theme::echarts(), 800, 600);
+    let chart = ChartBuilder::from_option(option)
+        .with_theme(Theme::echarts())
+        .build(800, 600)
+        .unwrap();
     let elements = chart.collect_visual_elements().unwrap();
     // 打印绘图区边界（z=Z_BACKGROUND..Z_GRID 之间的 rect 或轴线 line）
-    use liecharts::visual::SceneNode;
+    use liecharts::SceneNode;
     fn walk(nodes: &[SceneNode], depth: usize) {
         for n in nodes {
             if let lievisual::scene::Element::Rect { rect, .. } = &n.element {
@@ -33,6 +39,9 @@ fn main() {
     }
     walk(&elements, 0);
     let svg = chart.render_svg().unwrap();
-    std::fs::write("axis_overflow.svg", svg).unwrap();
-    println!("saved");
+    std::fs::create_dir_all("svg_output").ok();
+    std::fs::write("svg_output/axis_overflow.svg", &svg).unwrap();
+    assert!(!elements.is_empty(), "应渲染出可视元素");
+    assert!(!svg.is_empty(), "SVG 不应为空");
+    println!("axis_overflow 回归渲染完成");
 }

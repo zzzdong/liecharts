@@ -2,7 +2,7 @@
 //!
 //! 职责：
 //! - 接收 `&ChartSpec` + `&ColorContext` + `&Theme` + 布局信息
-//! - 产生 `Vec<VisualElement>`
+//! - 产生 `Vec<SceneNode>`
 //! - 不修改任何管线状态，纯函数式渲染
 
 mod axis_name;
@@ -11,18 +11,18 @@ mod title;
 
 pub use axis_name::render_axis_name;
 pub use legend::render_legend;
+use lievisual::text::measure_text;
 pub use title::render_title;
 
 use crate::{
+    SceneNode,
     pipeline::types::{ChartSpec, ColorContext, SubplotSpec},
-    text::create_text_layout,
-    theme::Theme,
-    visual::VisualElement,
+    theme::{DEFAULT_FONT_STACK, Theme},
 };
 
 /// 计算文本布局（为所有未计算布局的 Text 执行真实文本排布）
 ///
-/// 遍历所有 SceneNode，对 `layout: None` 的 `Element::Text` 调用 create_text_layout，
+/// 遍历所有 SceneNode，对 `layout: None` 的 `Element::Text` 调用 `lievisual::text::measure_text` 排版，
 /// 并把文本块的纯文本写入 span。
 ///
 /// 注意：`position` 保持「锚点」语义（canvas `fillText` 语义），水平对齐由
@@ -31,7 +31,7 @@ use crate::{
 /// 右对齐/居中文本被平移两次（历史 bug：Y 轴标签左移一个文本宽、仪表盘
 /// 中心数值偏离圆心）。
 pub fn compute_text_layouts(elements: &mut [lievisual::scene::SceneNode]) {
-    use lievisual::scene::Element;
+    use lievisual::{scene::Element, text::RichSpan};
     for node in elements.iter_mut() {
         if let Element::Text {
             spans,
@@ -43,11 +43,18 @@ pub fn compute_text_layouts(elements: &mut [lievisual::scene::SceneNode]) {
         {
             // 拼接纯文本（单 span 最常见）
             let text: String = spans.iter().map(|s| s.text.clone()).collect();
-            *layout = Some(std::sync::Arc::new(create_text_layout(
-                &text,
-                style,
-                style.max_width,
-            )));
+            let mut lv_style = style.clone();
+            if lv_style.font_family.trim().is_empty()
+                || lv_style
+                    .font_family
+                    .trim()
+                    .eq_ignore_ascii_case("sans-serif")
+            {
+                lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+            }
+            *layout = Some(std::sync::Arc::new(
+                (*measure_text(&[RichSpan::new(text, lv_style)], style.max_width).layout).clone(),
+            ));
         }
     }
 }
@@ -63,7 +70,7 @@ pub fn render_all_decorators(
     specs: &[SubplotSpec],
     colors: &ColorContext,
     theme: &Theme,
-) -> (Vec<VisualElement>, f64) {
+) -> (Vec<SceneNode>, f64) {
     let mut all_elements = Vec::new();
 
     // 1. 标题

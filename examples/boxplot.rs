@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("箱线图示例").subtext("统计分布"))
         .legend(Legend::new().data(["实验组 A"]))
         .add_boxplot(
@@ -21,9 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .q3("q3")
                 .max("max")
                 .name("实验组 A"),
-        )
-        .render_to_svg("boxplot.svg")?;
-    println!("箱线图已保存到 boxplot.svg");
+        );
+    common::save(&chart, "boxplot.svg")?;
 
     Ok(())
 }

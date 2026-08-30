@@ -6,6 +6,7 @@
 //! - 将数据点分配到轴槽位 → 像素坐标
 //! - Bar 系列先收集，最后做分组分析
 
+use lievisual::Color;
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
@@ -14,7 +15,6 @@ use crate::{
         typed_series::{GroupedBarRow, LineSeries, TypedSeries},
         types::{ChartSpec, ChartType, ColorContext, ResolvedAxisRanges, SeriesSpec},
     },
-    visual::Color,
 };
 
 pub mod bar;
@@ -282,7 +282,7 @@ pub fn compute_mark_lines(
         result.push(MarkLineRender {
             y: map_y_to_pixel(value, y_range, bounds),
             label: format!("{}: {}", name, text),
-            color: crate::visual::Color::rgb(220, 60, 60),
+            color: Color::rgb(220, 60, 60),
         });
     }
     result
@@ -1027,7 +1027,7 @@ fn materialize_one_stacked_line_group(
                 Some(crate::pipeline::typed_series::SeriesLabelConfig {
                     show: true,
                     position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
-                    color: crate::visual::Color::rgb(60, 60, 65),
+                    color: Color::rgb(60, 60, 65),
                     font_size: cfg.label_font_size,
                     formatter: cfg.label_formatter.clone(),
                 })

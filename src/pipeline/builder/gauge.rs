@@ -4,8 +4,11 @@
 
 use std::f64::consts::PI;
 
-use lievisual::scene::{Element, FillStrokeStyle, GradientStop, LinearGradient, SceneNode};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, FillStrokeStyle, GradientStop, LinearGradient, SceneNode},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::{Arc, BezPath, PathSeg, Point, Shape};
 
 use crate::{
@@ -69,15 +72,15 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
                 stops: vec![
                     GradientStop {
                         offset: 0.00,
-                        color: crate::visual::Color::rgb(80, 180, 80), // 绿
+                        color: Color::rgb(80, 180, 80), // 绿
                     },
                     GradientStop {
                         offset: 0.50,
-                        color: crate::visual::Color::rgb(255, 200, 50), // 黄
+                        color: Color::rgb(255, 200, 50), // 黄
                     },
                     GradientStop {
                         offset: 1.00,
-                        color: crate::visual::Color::rgb(220, 80, 80), // 红
+                        color: Color::rgb(220, 80, 80), // 红
                     },
                 ],
             };
@@ -94,7 +97,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             elements.push(path(
                 gray_path,
                 FillStrokeStyle {
-                    fill: Some(lievisual::scene::Fill::Solid(crate::visual::Color::rgb(220, 220, 220))),
+                    fill: Some(lievisual::scene::Fill::Solid(Color::rgb(220, 220, 220))),
                     stroke: None,
                 },
                 true,
@@ -120,7 +123,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             elements.push(line(
                 Point::new(x1, y1),
                 Point::new(x2, y2),
-                stroke_style(crate::visual::Color::rgb(84, 85, 90), 1.5),
+                stroke_style(Color::rgb(84, 85, 90), 1.5),
                 Z_SERIES_LINE + 1,
             ));
 
@@ -135,7 +138,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
                 format!("{:.1}", label_val)
             };
 
-            let mut style = TextStyle::new(crate::visual::Color::rgb(84, 85, 90), 11.0, "sans-serif");
+            let mut style = TextStyle::new(Color::rgb(84, 85, 90), 11.0, "sans-serif");
             style.align = TextAlign::Center;
             style.baseline = TextBaseline::Middle;
             elements.push(
@@ -156,7 +159,12 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             center.y + needle_length * value_angle.sin(),
         );
 
-        elements.push(line(center, needle_end, stroke_style(series.color, 3.0), Z_SERIES_LINE + 1));
+        elements.push(line(
+            center,
+            needle_end,
+            stroke_style(series.color, 3.0),
+            Z_SERIES_LINE + 1,
+        ));
 
         // 中心圆点
         elements.push(circle(
@@ -171,7 +179,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
 
         // 中心数值显示
         let value_text = format!("{:.1}%", series.value);
-        let mut style = TextStyle::new(crate::visual::Color::rgb(60, 60, 65), 28.0, "sans-serif");
+        let mut style = TextStyle::new(Color::rgb(60, 60, 65), 28.0, "sans-serif");
         style.align = TextAlign::Center;
         style.baseline = TextBaseline::Middle;
         elements.push(
@@ -184,7 +192,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             .with_z(Z_SERIES_LABEL),
         );
         // 数值单位标签
-        let mut style = TextStyle::new(crate::visual::Color::rgb(132, 132, 138), 12.0, "sans-serif");
+        let mut style = TextStyle::new(Color::rgb(132, 132, 138), 12.0, "sans-serif");
         style.align = TextAlign::Center;
         style.baseline = TextBaseline::Middle;
         elements.push(

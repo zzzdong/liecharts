@@ -3,6 +3,7 @@
 use vello_cpu::kurbo::Rect;
 
 use crate::{
+    Color,
     error::Result,
     pipeline::{
         dataframe::DataValue,
@@ -10,7 +11,6 @@ use crate::{
         typed_series::{TableSeries, TypedSeries},
         types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
-    visual::Color,
 };
 
 /// 将 DataValue 格式化为可直接显示的字符串（不带类型包装）

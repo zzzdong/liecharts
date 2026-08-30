@@ -11,7 +11,10 @@ use crate::{
 pub struct HeatmapBuilder;
 
 impl SeriesBuilder<HeatmapSeries> for HeatmapBuilder {
-    fn build(series: &HeatmapSeries, _ctx: &RenderContext) -> Result<Vec<lievisual::scene::SceneNode>> {
+    fn build(
+        series: &HeatmapSeries,
+        _ctx: &RenderContext,
+    ) -> Result<Vec<lievisual::scene::SceneNode>> {
         let mut elements = Vec::with_capacity(series.cells.len());
 
         for cell in &series.cells {

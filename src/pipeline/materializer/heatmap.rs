@@ -3,6 +3,7 @@
 use vello_cpu::kurbo::Rect;
 
 use crate::{
+    Color,
     error::{ChartError, Result},
     pipeline::{
         dataframe::DataValue,
@@ -10,7 +11,6 @@ use crate::{
         typed_series::{HeatmapCell, HeatmapSeries, TypedSeries},
         types::{ColorContext, ResolvedAxisRange, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
-    visual::Color,
 };
 
 pub struct HeatmapMaterializer;

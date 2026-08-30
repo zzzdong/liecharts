@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(1000, 900)
+    let chart = Chart::new(1000, 900)
         .title(Title::new("混合布局图表").subtext("sub_grid 闭包风格"))
         .sub_grid(
             Grid::new()
@@ -86,8 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .name("折线图-子图4"),
                     )
             },
-        )
-        .render_to_svg("mixed_grid.svg")?;
-    println!("混合布局图表已保存到 mixed_grid.svg");
+        );
+    common::save(&chart, "mixed_grid.svg")?;
     Ok(())
 }

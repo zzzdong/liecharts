@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("混合图表示例").subtext("柱状图和折线图组合"))
         .legend(Legend::new().data(["销量", "增长率"]))
         .y_axis(Axis::value().name("销量").position(AxisPosition::Left))
@@ -30,8 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .y("value")
                 .name("增长率")
                 .right_axis(),
-        )
-        .render_to_svg("mixed.svg")?;
-    println!("混合图表已保存到 mixed.svg");
+        );
+    common::save(&chart, "mixed.svg")?;
     Ok(())
 }

@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("产品销售数据表").subtext("Table Chart"))
         .add_table(
             Table::new()
@@ -13,9 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "评分" => [4.8, 4.6, 4.5, 4.7]
                 ))
                 .name("销售数据"),
-        )
-        .render_to_svg("table.svg")?;
-    println!("数据表已保存到 table.svg");
+        );
+    common::save(&chart, "table.svg")?;
 
     Ok(())
 }

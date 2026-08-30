@@ -3,6 +3,8 @@
 //! 将 ECharts JSON 反序列化而来的 ChartOption 转换为 ChartSpec（管线核心类型）。
 //! 此模块是 ECharts 兼容层的核心，仅 ChartOption → ChartSpec 单向转换。
 
+use lievisual::Color;
+
 use crate::{
     option::{self, ChartOption, PositionOption, PositionPreset, SeriesOption},
     pipeline::{
@@ -336,9 +338,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .and_then(|a| a.color.as_ref())
                             .and_then(|c| {
                                 let v = c.as_vec();
-                                v.first().map(|first| {
-                                    crate::visual::Color::rgb(first.r, first.g, first.b)
-                                })
+                                v.first().map(|first| Color::rgb(first.r, first.g, first.b))
                             }),
                         area_opacity: ls
                             .area_style
@@ -704,23 +704,19 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         q3_col: "q3".into(),
                         max_col: "max".into(),
                     };
-                    let item_style = ItemStyleSpec {
-                        color: bs.item_style.as_ref().and_then(|is| {
-                            is.color
-                                .as_ref()
-                                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b))
-                        }),
-                        border_color: bs.item_style.as_ref().and_then(|is| {
-                            is.border_color
-                                .as_ref()
-                                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b))
-                        }),
-                        border_width: bs
-                            .item_style
-                            .as_ref()
-                            .and_then(|is| is.border_width.as_ref().and_then(|v| v.as_number())),
-                        opacity: None,
-                    };
+                    let item_style =
+                        ItemStyleSpec {
+                            color: bs.item_style.as_ref().and_then(|is| {
+                                is.color.as_ref().map(|c| Color::rgb(c.r, c.g, c.b))
+                            }),
+                            border_color: bs.item_style.as_ref().and_then(|is| {
+                                is.border_color.as_ref().map(|c| Color::rgb(c.r, c.g, c.b))
+                            }),
+                            border_width: bs.item_style.as_ref().and_then(|is| {
+                                is.border_width.as_ref().and_then(|v| v.as_number())
+                            }),
+                            opacity: None,
+                        };
                     SeriesSpec {
                         name,
                         data,
@@ -755,9 +751,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     let item_style = ItemStyleSpec {
                         color: None,
                         border_color: hs.item_style.as_ref().and_then(|is| {
-                            is.border_color
-                                .as_ref()
-                                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b))
+                            is.border_color.as_ref().map(|c| Color::rgb(c.r, c.g, c.b))
                         }),
                         border_width: hs
                             .item_style
@@ -954,12 +948,12 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 .text_style
                 .as_ref()
                 .and_then(|s| s.color.as_ref())
-                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b)),
+                .map(|c| Color::rgb(c.r, c.g, c.b)),
             subcolor: t
                 .subtext_style
                 .as_ref()
                 .and_then(|s| s.color.as_ref())
-                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b)),
+                .map(|c| Color::rgb(c.r, c.g, c.b)),
         }),
         legend: option.legend.as_ref().map(|l| LegendSpec {
             show: l.show.unwrap_or(true),
@@ -986,7 +980,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
             item_gap: l.item_gap.unwrap_or(10.0),
             formatter: l.formatter.clone(),
         }),
-        background: crate::visual::Color::rgb(255, 255, 255),
+        background: Color::rgb(255, 255, 255),
         palette: vec![],
         theme_name: None,
     }
@@ -1100,9 +1094,7 @@ fn parse_mark_line(
 ///
 /// - 饼图/环形图/极坐标柱状图：按数据点取色，图例项为**数据点名**（category 列）
 /// - 其他系列：图例项为**系列名**（series.name）
-pub(crate) fn collect_legend_names(
-    series: &[crate::pipeline::types::SeriesSpec],
-) -> Vec<String> {
+pub(crate) fn collect_legend_names(series: &[crate::pipeline::types::SeriesSpec]) -> Vec<String> {
     use crate::pipeline::types::SeriesConfig;
 
     let mut names = Vec::new();
@@ -1144,13 +1136,13 @@ pub(crate) fn collect_legend_names(
 fn resolve_visual_map(
     option: &ChartOption,
     data: &crate::pipeline::dataframe::DataFrame,
-) -> (Option<f64>, Option<f64>, Vec<crate::visual::Color>) {
+) -> (Option<f64>, Option<f64>, Vec<Color>) {
     use crate::pipeline::dataframe::DataValue;
 
     let default_colors = vec![
-        crate::visual::Color::rgb(80, 163, 186), // #50a3ba
-        crate::visual::Color::rgb(234, 199, 54), // #eac736
-        crate::visual::Color::rgb(217, 78, 93),  // #d94e5d
+        Color::rgb(80, 163, 186), // #50a3ba
+        Color::rgb(234, 199, 54), // #eac736
+        Color::rgb(217, 78, 93),  // #d94e5d
     ];
 
     // 数据范围（visualMap min/max 缺失时的回退值）
@@ -1195,13 +1187,9 @@ fn resolve_visual_map(
         .map(|c| c.as_vec())
         .or_else(|| vm.color.clone());
 
-    let colors: Vec<crate::visual::Color> = raw_colors
+    let colors: Vec<Color> = raw_colors
         .filter(|c| !c.is_empty())
-        .map(|c| {
-            c.iter()
-                .map(|co| crate::visual::Color::rgb(co.r, co.g, co.b))
-                .collect()
-        })
+        .map(|c| c.iter().map(|co| Color::rgb(co.r, co.g, co.b)).collect())
         .unwrap_or(default_colors);
 
     (min, max, colors)

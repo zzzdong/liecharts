@@ -1,5 +1,6 @@
 use std::fmt;
 
+use lievisual::TextAlign;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
     de::{self, SeqAccess, Visitor},
@@ -4537,12 +4538,12 @@ pub enum TextAlignOption {
     Right,
 }
 
-impl From<TextAlignOption> for crate::visual::TextAlign {
+impl From<TextAlignOption> for TextAlign {
     fn from(option: TextAlignOption) -> Self {
         match option {
-            TextAlignOption::Left => crate::visual::TextAlign::Left,
-            TextAlignOption::Center => crate::visual::TextAlign::Center,
-            TextAlignOption::Right => crate::visual::TextAlign::Right,
+            TextAlignOption::Left => TextAlign::Left,
+            TextAlignOption::Center => TextAlign::Center,
+            TextAlignOption::Right => TextAlign::Right,
         }
     }
 }

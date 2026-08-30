@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("极坐标散点图").subtext("风向风速分布"))
         .legend(Legend::new().data(["风速"]))
         .add_polar_scatter(
@@ -15,8 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .radius("radius")
                 .symbol_size(5.0),
         )
-        .render_to_svg("polar_scatter.svg")?;
-    println!("极坐标散点图已保存到 polar_scatter.svg");
+    ;
+    common::save(&chart, "polar_scatter.svg")?;
 
     Ok(())
 }

@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use lievisual::Color;
+
 /// 数据值类型
 #[derive(Debug, Clone, PartialEq)]
 pub enum DataValue {
@@ -8,7 +10,7 @@ pub enum DataValue {
     Integer(i64),
     Float(f64),
     String(String),
-    Color(crate::visual::Color),
+    Color(Color),
 }
 
 impl From<f64> for DataValue {
@@ -59,8 +61,8 @@ impl From<String> for DataValue {
     }
 }
 
-impl From<crate::visual::Color> for DataValue {
-    fn from(v: crate::visual::Color) -> Self {
+impl From<Color> for DataValue {
+    fn from(v: Color) -> Self {
         DataValue::Color(v)
     }
 }
@@ -114,7 +116,7 @@ impl Series {
     }
 
     /// 获取 Color 值
-    pub fn as_color(&self, index: usize) -> Option<crate::visual::Color> {
+    pub fn as_color(&self, index: usize) -> Option<Color> {
         self.data.get(index).and_then(|v| match v {
             DataValue::Color(c) => Some(*c),
             _ => None,
@@ -277,7 +279,7 @@ impl PieDataTransformer {
     /// 将原始数据转换为饼图 DataFrame
     /// 输入: category, value 列
     /// 输出: category, value, percent, color, start_angle, end_angle 列
-    pub fn transform(df: &DataFrame, palette: &[crate::visual::Color]) -> DataFrame {
+    pub fn transform(df: &DataFrame, palette: &[Color]) -> DataFrame {
         let mut result = df.clone();
 
         // 计算总值
@@ -303,7 +305,7 @@ impl PieDataTransformer {
             palette
                 .get(i)
                 .map(|&c| DataValue::Color(c))
-                .unwrap_or(DataValue::Color(crate::visual::Color::rgb(128, 128, 128)))
+                .unwrap_or(DataValue::Color(Color::rgb(128, 128, 128)))
         });
 
         // 添加 start_angle, end_angle 列（用于绘制扇区）
@@ -339,7 +341,7 @@ impl LineDataTransformer {
     /// 输出: x, y, color, point_x, point_y（像素坐标）列
     pub fn transform(
         df: &DataFrame,
-        color: crate::visual::Color,
+        color: Color,
         x_range: (f64, f64),
         y_range: (f64, f64),
         bounds: &vello_cpu::kurbo::Rect,
@@ -412,10 +414,7 @@ mod tests {
             vec![DataValue::Float(10.0), DataValue::Float(30.0)],
         ));
 
-        let palette = vec![
-            crate::visual::Color::rgb(99, 132, 255),
-            crate::visual::Color::rgb(255, 159, 67),
-        ];
+        let palette = vec![Color::rgb(99, 132, 255), Color::rgb(255, 159, 67)];
 
         let result = PieDataTransformer::transform(&df, &palette);
 

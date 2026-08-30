@@ -11,7 +11,10 @@ use crate::{
 pub struct BubbleBuilder;
 
 impl SeriesBuilder<BubbleSeries> for BubbleBuilder {
-    fn build(series: &BubbleSeries, _ctx: &RenderContext) -> Result<Vec<lievisual::scene::SceneNode>> {
+    fn build(
+        series: &BubbleSeries,
+        _ctx: &RenderContext,
+    ) -> Result<Vec<lievisual::scene::SceneNode>> {
         let mut elements = Vec::with_capacity(series.bubbles.len());
 
         for bubble in &series.bubbles {

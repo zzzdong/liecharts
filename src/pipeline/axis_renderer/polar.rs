@@ -5,18 +5,17 @@
 
 use std::f64::consts::PI;
 
-use lievisual::scene::{FillStrokeStyle, SceneNode, Stroke};
-use lievisual::text::{TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{FillStrokeStyle, SceneNode, Stroke},
+    text::{TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::{Circle, Point, Shape as KurboShape};
 
-use crate::{
-    pipeline::{
-        builder::{path, text_el},
-        types::{ColorContext, SubplotSpec, TextMeasurer},
-    },
+use crate::pipeline::{
+    builder::{Z_GRID, Z_LABEL, path, text_el},
+    types::{ColorContext, SubplotSpec, TextMeasurer},
 };
-use lievisual::Color;
-use crate::pipeline::builder::{Z_GRID, Z_LABEL};
 
 /// 极坐标轴渲染器
 ///

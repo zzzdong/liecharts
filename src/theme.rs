@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 
+use lievisual::Color;
 use serde::{Deserialize, Serialize};
 
-use crate::error::Result;
-use crate::pipeline::builder::ColorExt;
-use lievisual::Color;
+use crate::{error::Result, pipeline::builder::ColorExt};
 
 /// Design tokens representing a complete chart color and typography palette.
 ///
@@ -189,6 +188,12 @@ pub struct ColorTokens {
     pub error: String,
 }
 
+/// 默认字体栈：优先使用 CJK 字体，再回退到通用 sans-serif。
+///
+/// 用于未显式指定字体时的排版回退，避免 ASCII 数字/标点被过宽字体撑开；
+/// 同时作为 [`TextTokens::font_family`] 的默认值（空或 `sans-serif` 时命中此栈）。
+pub const DEFAULT_FONT_STACK: &str = "Noto Sans CJK SC, sans-serif";
+
 /// 文字令牌
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextTokens {
@@ -369,7 +374,7 @@ impl DesignTokens {
                 subtitle_size: 14.0,
                 body_size: 12.0,
                 caption_size: 10.0,
-                font_family: "sans-serif".to_string(),
+                font_family: DEFAULT_FONT_STACK.to_string(),
                 title_weight: "normal".to_string(),
             },
             spacing: SpacingTokens {

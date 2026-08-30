@@ -1,18 +1,18 @@
 //! PolarScatter Builder: 将 PolarScatterSeries 组装为 lievisual `SceneNode`
 
-use std::collections::HashSet;
-use std::f64::consts::PI;
+use std::{collections::HashSet, f64::consts::PI};
 
-use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, SceneNode},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::Point;
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{
-            SeriesBuilder, Z_SERIES_LABEL, Z_SERIES_POINT, circle, fill_stroke_style,
-        },
+        builder::{SeriesBuilder, Z_SERIES_LABEL, Z_SERIES_POINT, circle, fill_stroke_style},
         typed_series::{PolarScatterSeries, RenderContext},
     },
 };
@@ -66,8 +66,7 @@ impl SeriesBuilder<PolarScatterSeries> for PolarScatterBuilder {
                 let label_x = center_x + label_radius * label_angle.cos();
                 let label_y = center_y + label_radius * label_angle.sin();
 
-                let mut style =
-                    TextStyle::new(crate::visual::Color::rgb(84, 85, 90), 10.0, "sans-serif");
+                let mut style = TextStyle::new(Color::rgb(84, 85, 90), 10.0, "sans-serif");
                 style.align = TextAlign::Center;
                 style.baseline = TextBaseline::Middle;
                 elements.push(

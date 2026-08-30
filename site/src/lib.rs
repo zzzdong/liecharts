@@ -1,4 +1,6 @@
-use liecharts::ChartBuilder;
+use liecharts::{
+    ChartBuilder, FontSource, parse_generic_family, register_font, register_font_generic,
+};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -38,9 +40,19 @@ pub fn get_available_themes() -> String {
 /// `bytes` 为字体文件的原始二进制数据（TTF/OTF）。
 #[wasm_bindgen]
 pub fn register_font_bytes(name: &str, bytes: &[u8]) -> Result<(), String> {
-    liecharts::text::register_font(
-        liecharts::text::FontSource::Memory(bytes.to_vec()),
+    register_font(FontSource::Memory(bytes.to_vec()), Some(name)).map_err(|e| e.to_string())
+}
+
+/// 注册字体到通用 `sans-serif` 家族，使 `font_family: "sans-serif"` 也能命中该字体
+/// （parley 把 `sans-serif` 当作通用关键字，普通按名注册无法命中）。
+#[wasm_bindgen]
+pub fn register_font_sans_serif_bytes(name: &str, bytes: &[u8]) -> Result<(), String> {
+    let generic = parse_generic_family("sans-serif")
+        .ok_or_else(|| "unknown generic family: sans-serif".to_string())?;
+    register_font_generic(
+        FontSource::Memory(bytes.to_vec()),
         Some(name),
+        Some(generic),
     )
     .map_err(|e| e.to_string())
 }

@@ -2,12 +2,7 @@ use super::layer::{
     Bar, Boxplot, Bubble, Candlestick, Gauge, Heatmap, LayerSpec, Line, Pie, PolarBar,
     PolarScatter, Radar, Scatter, SymbolType as LayerSymbol, Table,
 };
-use crate::{
-    error::Result,
-    pipeline::dataframe::DataFrame,
-    theme::Theme,
-    visual::{Color, VisualElement},
-};
+use crate::{Color, SceneNode, error::Result, pipeline::dataframe::DataFrame, theme::Theme};
 
 // ── Macros ──
 
@@ -573,7 +568,7 @@ impl Chart {
     // ── Rendering ──
 
     /// Build the chart and collect visual elements.
-    pub fn build(&self) -> Result<Vec<VisualElement>> {
+    pub fn build(&self) -> Result<Vec<SceneNode>> {
         let spec = self.to_chart_spec();
         let theme = match self.theme_name.as_deref() {
             Some("dark") => Theme::dark(),

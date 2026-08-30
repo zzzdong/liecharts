@@ -5,8 +5,10 @@
 //! - 产生 `Vec<lievisual::SceneNode>`
 //! - 不包含任何坐标映射、颜色解析或字段提取
 
-use lievisual::geometry::Color;
-use lievisual::scene::{Element, Fill, FillStrokeStyle, LinearGradient, SceneNode, Stroke};
+use lievisual::{
+    geometry::Color,
+    scene::{Element, Fill, FillStrokeStyle, LinearGradient, SceneNode, Stroke},
+};
 
 /// 便捷构造函数：矩形节点。
 pub fn rect(rect: vello_cpu::kurbo::Rect, style: FillStrokeStyle, z: i32) -> SceneNode {
@@ -14,12 +16,22 @@ pub fn rect(rect: vello_cpu::kurbo::Rect, style: FillStrokeStyle, z: i32) -> Sce
 }
 
 /// 便捷构造函数：圆节点。
-pub fn circle(center: vello_cpu::kurbo::Point, radius: f64, style: FillStrokeStyle, z: i32) -> SceneNode {
+pub fn circle(
+    center: vello_cpu::kurbo::Point,
+    radius: f64,
+    style: FillStrokeStyle,
+    z: i32,
+) -> SceneNode {
     SceneNode::new(Element::circle(center, radius, style)).with_z(z)
 }
 
 /// 便捷构造函数：线段节点。
-pub fn line(start: vello_cpu::kurbo::Point, end: vello_cpu::kurbo::Point, style: Stroke, z: i32) -> SceneNode {
+pub fn line(
+    start: vello_cpu::kurbo::Point,
+    end: vello_cpu::kurbo::Point,
+    style: Stroke,
+    z: i32,
+) -> SceneNode {
     SceneNode::new(Element::line(start, end, style)).with_z(z)
 }
 
@@ -29,8 +41,18 @@ pub fn poly(points: Vec<vello_cpu::kurbo::Point>, style: Stroke, z: i32) -> Scen
 }
 
 /// 便捷构造函数：路径节点。
-pub fn path(path: vello_cpu::kurbo::BezPath, style: FillStrokeStyle, closed: bool, z: i32) -> SceneNode {
-    SceneNode::new(Element::Path { path, style, closed }).with_z(z)
+pub fn path(
+    path: vello_cpu::kurbo::BezPath,
+    style: FillStrokeStyle,
+    closed: bool,
+    z: i32,
+) -> SceneNode {
+    SceneNode::new(Element::Path {
+        path,
+        style,
+        closed,
+    })
+    .with_z(z)
 }
 
 /// 便捷构造函数：渐变路径节点。
@@ -40,7 +62,12 @@ pub fn gradient_path(
     stroke: Option<Stroke>,
     z: i32,
 ) -> SceneNode {
-    SceneNode::new(Element::GradientPath { path, gradient, stroke }).with_z(z)
+    SceneNode::new(Element::GradientPath {
+        path,
+        gradient,
+        stroke,
+    })
+    .with_z(z)
 }
 
 /// 便捷构造函数：分组节点。
@@ -196,8 +223,10 @@ pub fn render_mark_lines(
     mark_lines: &[crate::pipeline::typed_series::MarkLineRender],
     bounds: vello_cpu::kurbo::Rect,
 ) {
-    use lievisual::geometry::Point;
-    use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+    use lievisual::{
+        geometry::Point,
+        text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+    };
 
     for ml in mark_lines {
         // 标注线：从绘图区左边界到右边界

@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("温度与降水量").subtext("双 Y 轴示例"))
         .legend(Legend::new().data(["温度", "降水量"]))
         .y_axis(Axis::value().name("温度 (°C)"))
@@ -26,9 +28,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .y("value")
                 .name("降水量")
                 .right_axis(),
-        )
-        .render_to_svg("dual_axis.svg")?;
-    println!("双轴图已保存到 dual_axis.svg");
+        );
+    common::save(&chart, "dual_axis.svg")?;
 
     Ok(())
 }

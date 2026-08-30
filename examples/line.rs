@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("折线图示例").subtext("Line Chart"))
         .legend(Legend::new().data(["销售额"]))
         .y_axis(Axis::value().name("销售额(元)"))
@@ -15,9 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .y("revenue")
                 .name("销售额")
                 .smooth(true),
-        )
-        .render_to_svg("line.svg")?;
-    println!("折线图已保存到 line.svg");
+        );
+    common::save(&chart, "line.svg")?;
 
     Ok(())
 }

@@ -1,18 +1,21 @@
 //! 标题渲染
 //!
-//! 使用 layout_text 统一排版主标题和副标题，支持不同样式。
+//! 直接使用 lievisual 排版主标题和副标题，支持不同样式。
 
-use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{FontWeight, RichSpan, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, SceneNode},
+    text::{FontWeight, RichSpan, TextStyle, measure_text},
+};
 use vello_cpu::kurbo::Point;
 
 use crate::{
-    pipeline::types::{ChartSpec, ColorContext},
-    text::create_text_layout,
-    theme::Theme,
+    pipeline::{
+        builder::{ColorExt, Z_TITLE},
+        types::{ChartSpec, ColorContext},
+    },
+    theme::{DEFAULT_FONT_STACK, Theme},
 };
-use lievisual::Color;
-use crate::pipeline::builder::{ColorExt, Z_TITLE};
 
 /// 构建标题元素
 ///
@@ -49,7 +52,17 @@ pub fn render_title(
             );
             main_text_style.font_weight = FontWeight::Normal;
 
-            let layout = create_text_layout(text, &main_text_style, None);
+            let mut lv_style = main_text_style.clone();
+            if lv_style.font_family.trim().is_empty()
+                || lv_style
+                    .font_family
+                    .trim()
+                    .eq_ignore_ascii_case("sans-serif")
+            {
+                lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+            }
+            let layout =
+                (*measure_text(&[RichSpan::new(text.clone(), lv_style)], None).layout).clone();
             let position_x = (width as f64 - layout.width) / 2.0;
             let position_y = y_offset;
 
@@ -75,7 +88,17 @@ pub fn render_title(
             );
             sub_text_style.font_weight = FontWeight::Normal;
 
-            let layout = create_text_layout(subtext, &sub_text_style, None);
+            let mut lv_style = sub_text_style.clone();
+            if lv_style.font_family.trim().is_empty()
+                || lv_style
+                    .font_family
+                    .trim()
+                    .eq_ignore_ascii_case("sans-serif")
+            {
+                lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+            }
+            let layout =
+                (*measure_text(&[RichSpan::new(subtext.clone(), lv_style)], None).layout).clone();
             let position_x = (width as f64 - layout.width) / 2.0;
             let position_y = y_offset + layout.height * 0.1;
             title_height += layout.height * 1.1;

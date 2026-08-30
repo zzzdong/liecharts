@@ -8,10 +8,11 @@ use vello_cpu::kurbo::Rect;
 /// 3. ColorAssigner: 分配颜色
 /// 4. DataProcessor: 数据转换（采样等）
 /// 5. Materializer: 将 SeriesSpec 转换为 TypedSeries
-/// 6. Builder: 将 TypedSeries 组装为 VisualElement
+/// 6. Builder: 将 TypedSeries 组装为 SceneNode
 /// 7. Decorator: 渲染标题、图例、轴名称等装饰元素
 use crate::error::Result;
 use crate::{
+    Fill, FillStrokeStyle, SceneNode, Z_BACKGROUND,
     pipeline::{
         RenderContext,
         axis_binding_resolver::AxisBindingResolver,
@@ -26,11 +27,10 @@ use crate::{
         },
     },
     theme::Theme,
-    visual::{Fill, FillStrokeStyle, VisualElement, Z_BACKGROUND},
 };
 
 /// 从 ChartSpec 构建图表（新 API 入口）
-pub fn build_chart_from_spec(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualElement>> {
+pub fn build_chart_from_spec(spec: &ChartSpec, theme: &Theme) -> Result<Vec<SceneNode>> {
     build_chart_internal(spec, theme)
 }
 
@@ -39,7 +39,7 @@ pub fn build_chart(
     option: &crate::option::ChartOption,
     width: u32,
     height: u32,
-) -> Result<Vec<VisualElement>> {
+) -> Result<Vec<SceneNode>> {
     build_chart_with_theme(option, width, height, &Theme::echarts())
 }
 
@@ -49,14 +49,14 @@ pub fn build_chart_with_theme(
     width: u32,
     height: u32,
     theme: &Theme,
-) -> Result<Vec<VisualElement>> {
+) -> Result<Vec<SceneNode>> {
     // 将 ChartOption 转换为 ChartSpec，然后使用新管线
     let spec = crate::pipeline::compat::chart_option_to_chart_spec(option, width, height);
     build_chart_internal(&spec, theme)
 }
 
 /// 内部的 ChartSpec 管线（统一入口，仅依赖 ChartSpec + Theme）
-fn build_chart_internal(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualElement>> {
+fn build_chart_internal(spec: &ChartSpec, theme: &Theme) -> Result<Vec<SceneNode>> {
     let width = spec.width;
     let height = spec.height;
 
@@ -86,8 +86,8 @@ fn build_chart_internal(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualEle
         ..spec.clone()
     };
 
-    // 5. 收集所有 VisualElement
-    let mut all_elements: Vec<VisualElement> = Vec::new();
+    // 5. 收集所有 SceneNode
+    let mut all_elements: Vec<SceneNode> = Vec::new();
 
     // 添加背景
     all_elements.push(crate::pipeline::builder::rect(
@@ -141,7 +141,7 @@ fn build_chart_internal(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualEle
             &colors,
         )?;
 
-        // Build 阶段：将 TypedSeries 组装为 VisualElement
+        // Build 阶段：将 TypedSeries 组装为 SceneNode
         // 指示器标签在每个 subplot 级别只绘制一次（取第一个雷达系列的 indicators），
         // 避免多系列雷达图时每个系列都重复绘制标签。
         let mut radar_indicators_drawn = false;
@@ -173,6 +173,8 @@ fn build_chart_internal(spec: &ChartSpec, theme: &Theme) -> Result<Vec<VisualEle
 
 #[cfg(test)]
 mod tests {
+    use lievisual::Color;
+
     use super::*;
     use crate::pipeline::dataframe::DataFrame;
 
@@ -235,7 +237,7 @@ mod tests {
                 subcolor: None,
             }),
             legend: None,
-            background: crate::visual::Color::rgb(255, 255, 255),
+            background: Color::rgb(255, 255, 255),
             palette: vec![],
             theme_name: None,
         };

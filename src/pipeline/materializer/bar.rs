@@ -3,13 +3,13 @@
 use vello_cpu::kurbo::Rect;
 
 use crate::{
+    Color,
     error::Result,
     pipeline::{
         materializer::{SeriesMaterializer, map_x_to_pixel, map_y_to_pixel},
         typed_series::{BarRect, BarSeries, TypedSeries},
         types::{AxisType, ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
-    visual::Color,
 };
 
 pub struct BarMaterializer;

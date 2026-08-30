@@ -2,17 +2,20 @@
 //!
 //! 渲染 X/Y 轴的名称标签，支持旋转和位置调整。
 
-use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, SceneNode},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle, measure_text},
+};
 use vello_cpu::kurbo::Point;
 
 use crate::{
-    pipeline::types::{AxisPosition, ChartSpec, ColorContext, SubplotSpec},
-    text::create_text_layout,
-    theme::Theme,
+    pipeline::{
+        builder::{ColorExt, Z_LABEL},
+        types::{AxisPosition, ChartSpec, ColorContext, SubplotSpec},
+    },
+    theme::{DEFAULT_FONT_STACK, Theme},
 };
-use lievisual::Color;
-use crate::pipeline::builder::{ColorExt, Z_LABEL};
 
 /// 构建轴名称元素
 pub fn render_axis_name(
@@ -40,11 +43,24 @@ pub fn render_axis_name(
                     || (y_axis.position != AxisPosition::Right && i > 0);
 
                 let (initial_align, initial_baseline) = (TextAlign::Left, TextBaseline::Top);
-                let mut text_style =
-                    TextStyle::new(label_color, axis_label_style.font_size, axis_label_style.font_family.clone());
+                let mut text_style = TextStyle::new(
+                    label_color,
+                    axis_label_style.font_size,
+                    axis_label_style.font_family.clone(),
+                );
                 text_style.align = initial_align;
                 text_style.baseline = initial_baseline;
-                let text_layout = create_text_layout(name, &text_style, None);
+                let mut lv_style = text_style.clone();
+                if lv_style.font_family.trim().is_empty()
+                    || lv_style
+                        .font_family
+                        .trim()
+                        .eq_ignore_ascii_case("sans-serif")
+                {
+                    lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+                }
+                let text_layout =
+                    (*measure_text(&[RichSpan::new(name.clone(), lv_style)], None).layout).clone();
                 let _text_width = text_layout.width;
                 let text_height = text_layout.height;
 
@@ -80,10 +96,14 @@ pub fn render_axis_name(
                 // 左轴 -90° 向上延伸、右轴 +90° 向下延伸，各偏移半长使名称
                 // 垂直居中于绘图区。
                 let half_len = text_layout.width / 2.0;
-                let y = bounds.y0 + bounds.height() / 2.0 + if is_right { -half_len } else { half_len };
+                let y =
+                    bounds.y0 + bounds.height() / 2.0 + if is_right { -half_len } else { half_len };
 
-                let mut style =
-                    TextStyle::new(label_color, axis_label_style.font_size, axis_label_style.font_family.clone());
+                let mut style = TextStyle::new(
+                    label_color,
+                    axis_label_style.font_size,
+                    axis_label_style.font_family.clone(),
+                );
                 style.align = align;
                 style.baseline = baseline;
                 style.rotation = rotation;
@@ -115,8 +135,11 @@ pub fn render_axis_name(
                     (bounds.y1 + 35.0).min(height as f64 - font_size - 10.0)
                 };
 
-                let mut style =
-                    TextStyle::new(label_color, axis_label_style.font_size, axis_label_style.font_family.clone());
+                let mut style = TextStyle::new(
+                    label_color,
+                    axis_label_style.font_size,
+                    axis_label_style.font_family.clone(),
+                );
                 style.align = TextAlign::Center;
                 style.baseline = TextBaseline::Middle;
                 elements.push(

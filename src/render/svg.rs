@@ -2,11 +2,7 @@
 
 use lievisual::render::Renderer as _;
 
-use crate::{
-    error::Result,
-    render::to_scene,
-    visual::VisualElement,
-};
+use crate::{SceneNode, error::Result, render::to_scene};
 
 /// SVG renderer that produces XML markup for vector output.
 ///
@@ -21,7 +17,7 @@ impl SvgRenderer {
     }
 
     /// 渲染视觉元素序列并输出 SVG 字符串。
-    pub fn render(self, elements: &[VisualElement], width: u32, height: u32) -> Result<String> {
+    pub fn render(self, elements: &[SceneNode], width: u32, height: u32) -> Result<String> {
         let scene = to_scene(elements, width, height);
         let mut renderer = lievisual::render::SvgRenderer::new(width as f64, height as f64);
         renderer.render_scene(&scene);

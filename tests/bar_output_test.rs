@@ -13,7 +13,7 @@ use common::*;
 use vello_cpu::kurbo::Rect;
 
 /// 提取数据柱（Z_SERIES 层的 Rect，排除覆盖整个画布的背景 rect）。
-fn data_bars(nodes: &[liecharts::visual::SceneNode]) -> Vec<Rect> {
+fn data_bars(nodes: &[liecharts::SceneNode]) -> Vec<Rect> {
     let all = rects(nodes);
     all.into_iter()
         .filter_map(|(r, _)| {

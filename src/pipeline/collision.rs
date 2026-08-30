@@ -35,7 +35,10 @@ impl LabelBox {
     /// 旋转 θ 弧度后包围盒的投影尺寸 `(width', height')`。
     pub fn rotated_projection(&self, theta: f64) -> (f64, f64) {
         let (s, c) = theta.sin_cos();
-        (self.w * c.abs() + self.h * s.abs(), self.w * s.abs() + self.h * c.abs())
+        (
+            self.w * c.abs() + self.h * s.abs(),
+            self.w * s.abs() + self.h * c.abs(),
+        )
     }
 
     /// 当前包围盒的投影尺寸（按自身 rotation）。

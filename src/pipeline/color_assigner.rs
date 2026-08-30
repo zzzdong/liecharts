@@ -1,5 +1,9 @@
-use crate::{pipeline::builder::ColorExt, pipeline::types::ColorContext, theme::Theme};
 use lievisual::Color;
+
+use crate::{
+    pipeline::{builder::ColorExt, types::ColorContext},
+    theme::Theme,
+};
 
 /// 颜色分配器
 ///

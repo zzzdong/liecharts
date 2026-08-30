@@ -3,13 +3,13 @@
 use vello_cpu::kurbo::Rect;
 
 use crate::{
+    Color,
     error::Result,
     pipeline::{
         materializer::SeriesMaterializer,
         typed_series::{GaugeSeries, TypedSeries},
         types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
-    visual::Color,
 };
 
 pub struct GaugeMaterializer;

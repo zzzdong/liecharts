@@ -8,11 +8,11 @@
 //! 调度函数 `render_axes` 根据图表类型自动选择渲染器。
 
 use crate::{
+    SceneNode,
     pipeline::types::{
         AxisSpec, ChartType, ColorContext, ResolvedAxisRanges, SeriesSpec, SubplotSpec,
         TextMeasurer,
     },
-    visual::VisualElement,
 };
 
 mod cartesian;
@@ -211,7 +211,7 @@ pub fn render_axes(
     axis_ranges: &ResolvedAxisRanges,
     colors: &ColorContext,
     text_measurer: &mut TextMeasurer,
-) -> Vec<VisualElement> {
+) -> Vec<SceneNode> {
     let bounds = subplot.bounds;
     if bounds.width() <= 0.0 || bounds.height() <= 0.0 {
         return Vec::new();

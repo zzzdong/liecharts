@@ -23,7 +23,7 @@ fn area_has_fill_region_and_outline() {
     let pl = paths(&nodes);
     let filled = pl
         .iter()
-        .filter(|(_, style, _)| matches!(style.fill, Some(liecharts::visual::Fill::Solid(_))))
+        .filter(|(_, style, _)| matches!(style.fill, Some(liecharts::Fill::Solid(_))))
         .count();
     let stroked = pl
         .iter()
@@ -47,14 +47,11 @@ fn area_fill_color_matches_series() {
     let nodes = render("area", 800, 600);
     let mut fill_colors: Vec<String> = Vec::new();
     for (_, style, _) in paths(&nodes) {
-        if let Some(liecharts::visual::Fill::Solid(c)) = &style.fill {
+        if let Some(liecharts::Fill::Solid(c)) = &style.fill {
             fill_colors.push(solid_color(c));
         }
     }
-    assert!(
-        !fill_colors.is_empty(),
-        "面积图应有带填充色的填充路径"
-    );
+    assert!(!fill_colors.is_empty(), "面积图应有带填充色的填充路径");
     // 面积填充色应为 #5070dd（带 alpha 的填充路径归一化后得到纯色）
     assert!(
         fill_colors.contains(&"#5070dd".to_string()),
@@ -68,25 +65,17 @@ fn area_fill_color_matches_series() {
 fn area_point_count_matches_data() {
     let nodes = render("area", 800, 600);
     let pts = circles(&nodes);
-    assert_eq!(
-        pts.len(),
-        6,
-        "面积图应有 6 个数据点，实际 {} 个",
-        pts.len()
-    );
+    assert_eq!(pts.len(), 6, "面积图应有 6 个数据点，实际 {} 个", pts.len());
 }
 
 /// 填充区域与数据点都应在画布内。
 #[test]
 fn area_elements_in_canvas() {
     let nodes = render("area", 800, 600);
-    let mut pts: Vec<(f64, f64)> = circles(&nodes)
-        .iter()
-        .map(|(c, _, _)| (c.x, c.y))
-        .collect();
+    let mut pts: Vec<(f64, f64)> = circles(&nodes).iter().map(|(c, _, _)| (c.x, c.y)).collect();
     // 填充路径边界盒（fill 非空的 path）
     for (p, style, _) in paths(&nodes) {
-        if matches!(style.fill, Some(liecharts::visual::Fill::Solid(_))) {
+        if matches!(style.fill, Some(liecharts::Fill::Solid(_))) {
             let bb = p.bounding_box();
             pts.push((bb.x0, bb.y0));
             pts.push((bb.x1, bb.y1));
@@ -100,7 +89,7 @@ fn area_elements_in_canvas() {
 fn area_fill_reaches_baseline() {
     let nodes = render("area", 800, 600);
     for (p, style, _) in paths(&nodes) {
-        if matches!(style.fill, Some(liecharts::visual::Fill::Solid(_))) {
+        if matches!(style.fill, Some(liecharts::Fill::Solid(_))) {
             let bb = p.bounding_box();
             // 填充区域底部应接近画布底部（Y 轴 0 位置，约 540）
             assert!(

@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("单系列柱状图（纵向）").subtext("2024年"))
         .legend(Legend::new().data(["销售额"]))
         .add_bar(
@@ -13,11 +15,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .x("month")
                 .y("value")
                 .name("销售额"),
-        )
-        .render_to_svg("bar_single_v.svg")?;
-    println!("单系列纵向柱状图 → bar_single_v.svg");
+        );
+    common::save(&chart, "bar_single_v.svg")?;
 
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("单系列柱状图（横向）"))
         .legend(Legend::new().data(["销售额"]))
         .x_axis(Axis::value().name("销售额（万元）"))
@@ -31,9 +32,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .x("product")
                 .y("value")
                 .name("销售额"),
-        )
-        .render_to_svg("bar_single_h.svg")?;
-    println!("单系列横向柱状图 → bar_single_h.svg");
+        );
+    common::save(&chart, "bar_single_h.svg")?;
 
     Ok(())
 }

@@ -2,20 +2,20 @@
 //!
 //! 支持饼图等从 palette 取色的图表类型。
 
-use lievisual::scene::{Element, Fill, SceneNode};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, Fill, SceneNode},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle, measure_text},
+};
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
     pipeline::{
-        builder::rect,
+        builder::{ColorExt, Z_TITLE, rect},
         types::{ChartSpec, ChartType, ColorContext, LegendSpec},
     },
-    text::create_text_layout,
-    theme::Theme,
+    theme::{DEFAULT_FONT_STACK, Theme},
 };
-use lievisual::Color;
-use crate::pipeline::builder::{ColorExt, Z_TITLE};
 
 /// 构建图例元素
 ///
@@ -89,8 +89,22 @@ pub fn render_legend(
     let mut total_content_width = 0.0;
 
     for name in &display_texts {
-        let text_style = TextStyle::new(legend_color, legend_style.font_size, legend_style.font_family.clone());
-        let text_layout = create_text_layout(name, &text_style, None);
+        let text_style = TextStyle::new(
+            legend_color,
+            legend_style.font_size,
+            legend_style.font_family.clone(),
+        );
+        let mut lv_style = text_style.clone();
+        if lv_style.font_family.trim().is_empty()
+            || lv_style
+                .font_family
+                .trim()
+                .eq_ignore_ascii_case("sans-serif")
+        {
+            lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+        }
+        let text_layout =
+            (*measure_text(&[RichSpan::new(name.clone(), lv_style)], None).layout).clone();
         let text_width = text_layout.width;
 
         let item_width = symbol_size + item_gap + text_width + legend_padding * 2.0;
@@ -152,11 +166,24 @@ pub fn render_legend(
         // 而不是依赖 baseline=Middle 的隐式居中（浏览器 SVG 渲染时基线换算
         // 与 parley 度量不一致会产生 1-2px 偏差）。
         let text_x = symbol_x + symbol_size + item_gap;
-        let mut style =
-            TextStyle::new(legend_color, legend_style.font_size, legend_style.font_family.clone());
+        let mut style = TextStyle::new(
+            legend_color,
+            legend_style.font_size,
+            legend_style.font_family.clone(),
+        );
         style.align = TextAlign::Left;
         style.baseline = TextBaseline::Top; // 布局原点语义：ink_bounds 相对此原点
-        let text_layout = create_text_layout(display_text, &style, None);
+        let mut lv_style = style.clone();
+        if lv_style.font_family.trim().is_empty()
+            || lv_style
+                .font_family
+                .trim()
+                .eq_ignore_ascii_case("sans-serif")
+        {
+            lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+        }
+        let text_layout =
+            (*measure_text(&[RichSpan::new(display_text.clone(), lv_style)], None).layout).clone();
         let ink = text_layout.ink_bounds();
         let ink_center_y = ink.min_y() + (ink.max_y() - ink.min_y()).max(0.0) / 2.0;
         elements.push(
@@ -185,12 +212,10 @@ fn should_auto_legend(spec: &ChartSpec) -> bool {
     use crate::pipeline::types::SeriesConfig;
 
     // 饼图 / 环形图 / 极坐标柱状图：按数据点着色，必须有图例
-    let has_palette_series = spec.series.iter().any(|s| {
-        matches!(
-            s.config,
-            SeriesConfig::Pie(_) | SeriesConfig::PolarBar(_)
-        )
-    });
+    let has_palette_series = spec
+        .series
+        .iter()
+        .any(|s| matches!(s.config, SeriesConfig::Pie(_) | SeriesConfig::PolarBar(_)));
     if has_palette_series {
         return true;
     }

@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("堆叠面积图").subtext("Stacked Area Chart"))
         .legend(Legend::new().data(["产品A", "产品B", "产品C"]))
         .add_line(
@@ -39,9 +41,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .name("产品C")
                 .stack("总量")
                 .area(true),
-        )
-        .render_to_svg("stacked_area.svg")?;
-    println!("堆叠面积图已保存到 stacked_area.svg");
+        );
+    common::save(&chart, "stacked_area.svg")?;
 
     Ok(())
 }

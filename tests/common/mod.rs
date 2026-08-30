@@ -11,8 +11,7 @@
 
 #![allow(dead_code)]
 
-use liecharts::option::ChartOption;
-use liecharts::visual::{Color, SceneNode};
+use liecharts::{Color, SceneNode, option::ChartOption};
 use lievisual::scene::Element;
 use vello_cpu::kurbo::{Point, Rect, Shape};
 
@@ -21,14 +20,16 @@ pub fn option_from_example(name: &str) -> ChartOption {
     let path = format!("site/examples/{}.json", name);
     let json = std::fs::read_to_string(&path)
         .unwrap_or_else(|e| panic!("无法读取示例 JSON {}: {}", path, e));
-    serde_json::from_str(&json)
-        .unwrap_or_else(|e| panic!("无法解析示例 JSON {}: {}", name, e))
+    serde_json::from_str(&json).unwrap_or_else(|e| panic!("无法解析示例 JSON {}: {}", name, e))
 }
 
 /// 用默认 echarts 主题渲染 option，得到结构化场景 IR。
 pub fn render(name: &str, width: u32, height: u32) -> Vec<SceneNode> {
     let option = option_from_example(name);
-    let chart = liecharts::chart::Chart::new(option, liecharts::theme::Theme::echarts(), width, height);
+    let chart = liecharts::ChartBuilder::from_option(option)
+        .with_theme(liecharts::theme::Theme::echarts())
+        .build(width, height)
+        .unwrap();
     chart
         .collect_visual_elements()
         .unwrap_or_else(|e| panic!("渲染 {} 失败: {:?}", name, e))
@@ -56,7 +57,7 @@ pub fn elements_of(nodes: &[SceneNode], f: impl Fn(&Element) -> bool) -> Vec<(&E
 }
 
 /// 提取所有 Rect 元素（含 Group 内）。返回 (rect, style)。
-pub fn rects(nodes: &[SceneNode]) -> Vec<(Rect, &liecharts::visual::FillStrokeStyle)> {
+pub fn rects(nodes: &[SceneNode]) -> Vec<(Rect, &liecharts::FillStrokeStyle)> {
     elements_of(nodes, |e| matches!(e, Element::Rect { .. }))
         .into_iter()
         .map(|(e, _)| match e {
@@ -67,7 +68,7 @@ pub fn rects(nodes: &[SceneNode]) -> Vec<(Rect, &liecharts::visual::FillStrokeSt
 }
 
 /// 提取所有 Circle 元素。返回 (center, radius, style)。
-pub fn circles(nodes: &[SceneNode]) -> Vec<(Point, f64, &liecharts::visual::FillStrokeStyle)> {
+pub fn circles(nodes: &[SceneNode]) -> Vec<(Point, f64, &liecharts::FillStrokeStyle)> {
     elements_of(nodes, |e| matches!(e, Element::Circle { .. }))
         .into_iter()
         .map(|(e, _)| match e {
@@ -86,13 +87,17 @@ pub fn paths(
     nodes: &[SceneNode],
 ) -> Vec<(
     &vello_cpu::kurbo::BezPath,
-    &liecharts::visual::FillStrokeStyle,
+    &liecharts::FillStrokeStyle,
     bool,
 )> {
     elements_of(nodes, |e| matches!(e, Element::Path { .. }))
         .into_iter()
         .map(|(e, _)| match e {
-            Element::Path { path, style, closed } => (path, style, *closed),
+            Element::Path {
+                path,
+                style,
+                closed,
+            } => (path, style, *closed),
             _ => unreachable!(),
         })
         .collect()
@@ -101,7 +106,7 @@ pub fn paths(
 /// 提取所有"填充色为实心色"的 Path（用于饼图扇区等实心区域）。
 /// 返回 (边界框, 填充色)。
 pub fn solid_filled_paths(nodes: &[SceneNode]) -> Vec<(Rect, String)> {
-    use liecharts::visual::Fill;
+    use liecharts::Fill;
     paths(nodes)
         .into_iter()
         .filter_map(|(path, style, _)| {

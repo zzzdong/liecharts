@@ -1,7 +1,10 @@
 //! Bar Builder: 将 BarSeries 组装为 lievisual `SceneNode`
 
-use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, SceneNode},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::Point;
 
 use crate::{
@@ -60,7 +63,7 @@ impl SeriesBuilder<BarSeries> for BarBuilder {
                     (
                         bar.rect.x0 + bar.rect.width() / 2.0,
                         y,
-                        crate::visual::Color::rgb(255, 255, 255),
+                        Color::rgb(255, 255, 255),
                         va,
                     )
                 } else {

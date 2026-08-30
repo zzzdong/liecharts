@@ -3,13 +3,13 @@
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
+    Color,
     error::Result,
     pipeline::{
         materializer::{SeriesMaterializer, map_x_to_pixel, map_y_to_pixel},
         typed_series::{ScatterSeries, TypedSeries},
         types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
-    visual::Color,
 };
 
 pub struct ScatterMaterializer;

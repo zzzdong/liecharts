@@ -2,16 +2,17 @@
 
 use std::f64::consts::PI;
 
-use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, SceneNode},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{
-            SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style, line, path,
-        },
+        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style, line, path},
         typed_series::{PolarBarSeries, RenderContext},
     },
 };
@@ -67,7 +68,7 @@ impl SeriesBuilder<PolarBarSeries> for PolarBarBuilder {
             elements.push(line(
                 Point::new(outer_x, outer_y),
                 Point::new(label_x, label_y),
-                lievisual::scene::Stroke::new(crate::visual::Color::rgb(200, 200, 200), 1.0),
+                lievisual::scene::Stroke::new(Color::rgb(200, 200, 200), 1.0),
                 Z_SERIES_LABEL,
             ));
 
@@ -77,7 +78,7 @@ impl SeriesBuilder<PolarBarSeries> for PolarBarBuilder {
             } else {
                 bar.name.clone()
             };
-            let mut style = TextStyle::new(crate::visual::Color::rgb(60, 60, 65), 11.0, "sans-serif");
+            let mut style = TextStyle::new(Color::rgb(60, 60, 65), 11.0, "sans-serif");
             style.align = TextAlign::Center;
             style.baseline = TextBaseline::Middle;
             elements.push(

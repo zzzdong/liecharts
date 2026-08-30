@@ -8,7 +8,7 @@
 
 mod common;
 use common::*;
-use liecharts::visual::Fill;
+use liecharts::Fill;
 
 const W: f64 = 800.0;
 const H: f64 = 600.0;
@@ -69,10 +69,7 @@ fn scatter_radius_uniform() {
 #[test]
 fn scatter_points_in_canvas() {
     let nodes = render("scatter", 800, 600);
-    let pts: Vec<(f64, f64)> = circles(&nodes)
-        .iter()
-        .map(|(c, _, _)| (c.x, c.y))
-        .collect();
+    let pts: Vec<(f64, f64)> = circles(&nodes).iter().map(|(c, _, _)| (c.x, c.y)).collect();
     assert_all_points_in_canvas(&pts, W, H, 2.0);
 }
 
@@ -83,10 +80,6 @@ fn scatter_points_span_value_axis() {
     let pts = circles(&nodes);
     // X 值范围应在绘图区内（约 60~720）
     for (c, _, _) in &pts {
-        assert!(
-            c.x > 50.0 && c.x < 740.0,
-            "散点 X={} 应在数值轴范围内",
-            c.x
-        );
+        assert!(c.x > 50.0 && c.x < 740.0, "散点 X={} 应在数值轴范围内", c.x);
     }
 }

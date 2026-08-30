@@ -3,11 +3,7 @@
 
 use vello_cpu::Pixmap;
 
-use crate::{
-    error::Result,
-    render::to_scene,
-    visual::VisualElement,
-};
+use crate::{SceneNode, error::Result, render::to_scene};
 
 /// Bitmap renderer backed by lievisual / vello_cpu.
 ///
@@ -28,7 +24,7 @@ impl PixmapRenderer {
     ///
     /// Converts the legacy element list into a `lievisual::Scene` and hands it
     /// to lievisual's `VelloPixmapRenderer`.
-    pub fn render(self, elements: &[VisualElement]) -> Result<Pixmap> {
+    pub fn render(self, elements: &[SceneNode]) -> Result<Pixmap> {
         let scene = to_scene(elements, self.width, self.height);
         let mut renderer = lievisual::render::VelloPixmapRenderer::new(self.width, self.height);
         Ok(renderer.render_scene_to_pixmap(&scene))

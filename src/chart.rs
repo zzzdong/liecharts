@@ -1,12 +1,12 @@
 pub use vello_cpu::Pixmap;
 
 use crate::{
+    SceneNode,
     error::Result,
     option::ChartOption,
     pipeline::chart_pipeline::build_chart_with_theme,
     render::{PixmapRenderer, SvgRenderer},
     theme::Theme,
-    visual::VisualElement,
 };
 
 /// 已完成配置的图表，可直接渲染为图片或 SVG。
@@ -21,25 +21,13 @@ pub struct Chart {
 }
 
 impl Chart {
-    pub fn new(option: ChartOption, theme: Theme, width: u32, height: u32) -> Self {
+    pub(crate) fn new(option: ChartOption, theme: Theme, width: u32, height: u32) -> Self {
         Self {
             option: Box::new(option),
             theme,
             width,
             height,
         }
-    }
-
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-
-    pub fn height(&self) -> u32 {
-        self.height
-    }
-
-    pub fn option(&self) -> &ChartOption {
-        &self.option
     }
 
     pub fn render_to_image(&self, path: &str) -> Result<()> {
@@ -64,12 +52,12 @@ impl Chart {
         Ok(svg_string(&elements, self.width, self.height))
     }
 
-    pub fn collect_visual_elements(&self) -> Result<Vec<VisualElement>> {
+    pub fn collect_visual_elements(&self) -> Result<Vec<SceneNode>> {
         build_chart_with_theme(&self.option, self.width, self.height, &self.theme)
     }
 }
 
-fn write_pixmap(elements: &[VisualElement], width: u32, height: u32, path: &str) -> Result<()> {
+fn write_pixmap(elements: &[SceneNode], width: u32, height: u32, path: &str) -> Result<()> {
     let renderer = PixmapRenderer::new(width, height);
     let pixmap = renderer.render(elements)?;
     let pw = pixmap.width() as u32;
@@ -86,12 +74,12 @@ fn write_pixmap(elements: &[VisualElement], width: u32, height: u32, path: &str)
     Ok(())
 }
 
-fn svg_string(elements: &[VisualElement], width: u32, height: u32) -> String {
+fn svg_string(elements: &[SceneNode], width: u32, height: u32) -> String {
     let renderer = SvgRenderer::new();
     renderer.render(elements, width, height).unwrap_or_default()
 }
 
-fn png_bytes(elements: &[VisualElement], width: u32, height: u32) -> Result<Vec<u8>> {
+fn png_bytes(elements: &[SceneNode], width: u32, height: u32) -> Result<Vec<u8>> {
     let renderer = PixmapRenderer::new(width, height);
     let pixmap = renderer.render(elements)?;
     let data: Vec<u8> = pixmap

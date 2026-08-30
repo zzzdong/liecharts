@@ -52,9 +52,7 @@ fn legend_count_matches_series() {
     let all_texts: Vec<String> = texts(&nodes).iter().map(|(t, _, _)| t.clone()).collect();
     let legend_items = all_texts
         .iter()
-        .filter(|t| {
-            ["直接访问", "邮件营销", "联盟广告"].contains(&t.as_str())
-        })
+        .filter(|t| ["直接访问", "邮件营销", "联盟广告"].contains(&t.as_str()))
         .count();
     assert_eq!(legend_items, 3, "图例应有 3 项，实际 {} 项", legend_items);
 }
@@ -80,11 +78,7 @@ fn legend_above_plot_area() {
     assert!(legend_y.is_some(), "应找到图例'直接访问'");
     let y = legend_y.unwrap();
     // 标题在上方，图例在标题下方但仍在绘图区上方（绘图区顶部约 y=119）
-    assert!(
-        y > 0.0 && y < 300.0,
-        "图例 y={} 应在绘图区上方附近",
-        y
-    );
+    assert!(y > 0.0 && y < 300.0, "图例 y={} 应在绘图区上方附近", y);
 }
 
 /// 所有数据柱、网格线都应在画布内（覆盖 stack bar 整体布局）。

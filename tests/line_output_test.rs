@@ -43,11 +43,7 @@ fn line_series_colors_distinct_and_consistent() {
         colors
     );
     for (color, count) in &colors {
-        assert_eq!(
-            *count, 6,
-            "颜色 {} 应有 6 个点，实际 {} 个",
-            color, count
-        );
+        assert_eq!(*count, 6, "颜色 {} 应有 6 个点，实际 {} 个", color, count);
     }
 }
 
@@ -107,9 +103,6 @@ fn line_polyline_count_matches_series() {
 #[test]
 fn line_elements_in_canvas() {
     let nodes = render("line", 800, 600);
-    let pts: Vec<(f64, f64)> = circles(&nodes)
-        .iter()
-        .map(|(c, _, _)| (c.x, c.y))
-        .collect();
+    let pts: Vec<(f64, f64)> = circles(&nodes).iter().map(|(c, _, _)| (c.x, c.y)).collect();
     assert_all_points_in_canvas(&pts, 800.0, 600.0, 2.0);
 }

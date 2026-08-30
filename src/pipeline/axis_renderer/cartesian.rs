@@ -3,23 +3,22 @@
 //! 处理 X/Y 轴线和网格线的生成。内部根据轴类型（Value / Category）分支
 //! 处理不同的刻度计算和标签生成策略。
 
-use lievisual::scene::{SceneNode, Stroke};
-use lievisual::text::{TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{SceneNode, Stroke},
+    text::{TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::{Point, Rect};
 
 use super::axis_ticks;
-use crate::{
-    pipeline::{
-        axis_label::{auto_rotate, label_step, rotated_bounds},
-        builder::{text_el, Z_GRID},
-        types::{
-            AxisPosition, AxisSpec, AxisType, ColorContext, ResolvedAxisRanges, SubplotSpec,
-            TextMeasurer,
-        },
+use crate::pipeline::{
+    axis_label::{auto_rotate, label_step, rotated_bounds},
+    builder::{Z_AXIS, Z_GRID, Z_LABEL, text_el},
+    types::{
+        AxisPosition, AxisSpec, AxisType, ColorContext, ResolvedAxisRanges, SubplotSpec,
+        TextMeasurer,
     },
 };
-use lievisual::Color;
-use crate::pipeline::builder::{Z_AXIS, Z_LABEL};
 
 /// 应用 formatter 格式化标签文本
 ///
@@ -159,14 +158,7 @@ impl CartesianAxisRenderer {
                 );
 
                 // X 轴刻度短线（ECharts 默认 axisTick.show = true）
-                Self::draw_x_ticks(
-                    &mut elements,
-                    bounds,
-                    axis_cfg,
-                    x_min,
-                    x_max,
-                    colors,
-                );
+                Self::draw_x_ticks(&mut elements, bounds, axis_cfg, x_min, x_max, colors);
 
                 // X 轴网格线 (垂直方向)
                 Self::draw_x_grid_lines(&mut elements, bounds, axis_cfg, x_min, x_max, colors);
@@ -203,7 +195,15 @@ impl CartesianAxisRenderer {
                 );
 
                 // Y 轴刻度短线（ECharts 默认 axisTick.show = true）
-                Self::draw_y_ticks(&mut elements, bounds, axis_cfg, y_min, y_max, colors, is_right);
+                Self::draw_y_ticks(
+                    &mut elements,
+                    bounds,
+                    axis_cfg,
+                    y_min,
+                    y_max,
+                    colors,
+                    is_right,
+                );
 
                 if !is_right {
                     Self::draw_y_grid_lines(&mut elements, bounds, axis_cfg, y_min, y_max, colors);
@@ -546,9 +546,9 @@ impl CartesianAxisRenderer {
         // 使标签不与轴名称重叠（名称带由 GridPlanner 同步预留左侧空间）。
         let has_axis_name = axis_cfg.name.is_some();
         let mut adjust_left_anchor = |labels: &[String],
-                                  rotation: f64,
-                                  text_measurer: &mut TextMeasurer,
-                                  colors: &ColorContext| {
+                                      rotation: f64,
+                                      text_measurer: &mut TextMeasurer,
+                                      colors: &ColorContext| {
             if is_right {
                 return;
             }

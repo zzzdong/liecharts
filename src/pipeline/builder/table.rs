@@ -1,18 +1,18 @@
 //! Table Builder: 将 TableSeries 组装为 lievisual `SceneNode`
 
-use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{
-    FontWeight as VisualFontWeight, RichSpan, TextAlign, TextBaseline, TextStyle,
+use lievisual::{
+    scene::{Element, SceneNode},
+    text::{FontWeight as VisualFontWeight, RichSpan, TextAlign, TextBaseline, TextStyle},
 };
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
     error::Result,
+    option::{FontWeight, FontWeightNamed},
     pipeline::{
         builder::{SeriesBuilder, Z_SERIES_FILL, fill_style, line, rect, stroke_style},
         typed_series::{RenderContext, TableSeries},
     },
-    option::{FontWeight, FontWeightNamed},
 };
 
 /// 将 liecharts 的字重配置转换为 lievisual 的 `FontWeight`。
@@ -53,7 +53,11 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
             start_x + cell_width * col_count as f64,
             start_y + cell_height,
         );
-        elements.push(rect(header_rect, fill_style(series.header_bg), Z_SERIES_FILL));
+        elements.push(rect(
+            header_rect,
+            fill_style(series.header_bg),
+            Z_SERIES_FILL,
+        ));
 
         // 2. 绘制表头文本（居中对齐）
         for (col_idx, header) in series.headers.iter().enumerate() {

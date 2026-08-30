@@ -7,15 +7,15 @@
 
 mod common;
 use common::*;
+use liecharts::{Z_AXIS, Z_GRID};
 use lievisual::scene::Element;
-use liecharts::visual::{Z_AXIS, Z_GRID};
 
 const W: f64 = 800.0;
 const H: f64 = 600.0;
 
 /// 提取所有"网格线 + 轴线"的端点（z 在 GRID 与 AXIS 之间），断言它们都在画布内。
 /// 这是捕获"value 轴刻度/网格线飞出画布"回归的关键断言。
-fn assert_grid_and_axis_in_canvas(nodes: &[liecharts::visual::SceneNode]) {
+fn assert_grid_and_axis_in_canvas(nodes: &[liecharts::SceneNode]) {
     let mut pts: Vec<(f64, f64)> = Vec::new();
     let mut all = Vec::new();
     common::flatten(nodes, &mut all);
@@ -33,17 +33,18 @@ fn assert_grid_and_axis_in_canvas(nodes: &[liecharts::visual::SceneNode]) {
 }
 
 /// 提取所有轴刻度标签文本（z == LABEL 层，且位于绘图区外缘的数值）。
-fn axis_label_texts(nodes: &[liecharts::visual::SceneNode]) -> Vec<(String, f64, f64)> {
+fn axis_label_texts(nodes: &[liecharts::SceneNode]) -> Vec<(String, f64, f64)> {
     texts(nodes)
         .into_iter()
         .filter(|(t, _, _)| {
-            t.chars().all(|c| c.is_ascii_digit() || c == '.' || c == '-')
+            t.chars()
+                .all(|c| c.is_ascii_digit() || c == '.' || c == '-')
         })
         .collect()
 }
 
 /// 所有数值轴刻度标签坐标必须在画布内（捕获刻度位置飞出画布 bug）。
-fn assert_axis_labels_in_canvas(nodes: &[liecharts::visual::SceneNode]) {
+fn assert_axis_labels_in_canvas(nodes: &[liecharts::SceneNode]) {
     let labels = axis_label_texts(nodes);
     assert!(!labels.is_empty(), "应存在数值轴刻度标签");
     let pts: Vec<(f64, f64)> = labels.iter().map(|(_, x, y)| (*x, *y)).collect();

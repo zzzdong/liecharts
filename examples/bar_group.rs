@@ -1,5 +1,7 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     vertical_grouped()?;
     vertical_stacked()?;
@@ -9,7 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn vertical_grouped() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("分组柱状图（纵向并列）"))
         .legend(Legend::new().data(["产品A", "产品B", "产品C"]))
         .add_bar(
@@ -41,14 +43,13 @@ fn vertical_grouped() -> Result<(), Box<dyn std::error::Error>> {
                 .x("quarter")
                 .y("value")
                 .name("产品C"),
-        )
-        .render_to_svg("bar_group_v_side.svg")?;
-    println!("纵向并列分组 → bar_group_v_side.svg");
+        );
+    common::save(&chart, "bar_group_v_side.svg")?;
     Ok(())
 }
 
 fn vertical_stacked() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("分组柱状图（纵向堆叠）"))
         .legend(Legend::new().data(["直接销售", "代理销售", "线上销售"]))
         .add_bar(
@@ -83,14 +84,13 @@ fn vertical_stacked() -> Result<(), Box<dyn std::error::Error>> {
                 .y("value")
                 .name("线上销售")
                 .stack("总量"),
-        )
-        .render_to_svg("bar_group_v_stack.svg")?;
-    println!("纵向堆叠分组 → bar_group_v_stack.svg");
+        );
+    common::save(&chart, "bar_group_v_stack.svg")?;
     Ok(())
 }
 
 fn horizontal_grouped() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("分组柱状图（横向并列）"))
         .legend(Legend::new().data(["直接渠道", "代理渠道"]))
         .x_axis(Axis::value().name("销售额（万元）"))
@@ -114,14 +114,13 @@ fn horizontal_grouped() -> Result<(), Box<dyn std::error::Error>> {
                 .x("region")
                 .y("value")
                 .name("代理渠道"),
-        )
-        .render_to_svg("bar_group_h_side.svg")?;
-    println!("横向并列分组 → bar_group_h_side.svg");
+        );
+    common::save(&chart, "bar_group_h_side.svg")?;
     Ok(())
 }
 
 fn horizontal_stacked() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("分组柱状图（横向堆叠）"))
         .legend(Legend::new().data(["线上", "线下"]))
         .x_axis(Axis::value().name("销售额（万元）"))
@@ -147,8 +146,7 @@ fn horizontal_stacked() -> Result<(), Box<dyn std::error::Error>> {
                 .y("value")
                 .name("线下")
                 .stack("ch"),
-        )
-        .render_to_svg("bar_group_h_stack.svg")?;
-    println!("横向堆叠分组 → bar_group_h_stack.svg");
+        );
+    common::save(&chart, "bar_group_h_stack.svg")?;
     Ok(())
 }

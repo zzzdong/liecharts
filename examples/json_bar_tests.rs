@@ -1,5 +1,7 @@
 use liecharts::prelude::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 测试 1: 基础柱状图
     let json_basic_bar = r##"
@@ -23,8 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_basic_bar)?.build(800, 600)?;
-    chart.render_to_svg("json_bar_basic.svg")?;
-    println!("✓ 基础柱状图已保存到 json_bar_basic.svg");
+    common::save(&chart, "json_bar_basic.svg")?;
 
     // 测试 2: 分组柱状图
     let json_grouped_bar = r##"
@@ -57,8 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_grouped_bar)?.build(800, 600)?;
-    chart.render_to_svg("json_bar_grouped.svg")?;
-    println!("✓ 分组柱状图已保存到 json_bar_grouped.svg");
+    common::save(&chart, "json_bar_grouped.svg")?;
 
     // 测试 3: 堆叠柱状图
     let json_stacked_bar = r##"
@@ -105,8 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_stacked_bar)?.build(800, 600)?;
-    chart.render_to_svg("json_bar_stacked.svg")?;
-    println!("✓ 堆叠柱状图已保存到 json_bar_stacked.svg");
+    common::save(&chart, "json_bar_stacked.svg")?;
 
     // 测试 4: 水平柱状图
     let json_horizontal_bar = r##"
@@ -130,8 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_horizontal_bar)?.build(800, 600)?;
-    chart.render_to_svg("json_bar_horizontal.svg")?;
-    println!("✓ 水平柱状图已保存到 json_bar_horizontal.svg");
+    common::save(&chart, "json_bar_horizontal.svg")?;
 
     // 测试 5: 带背景色的柱状图
     let json_bar_with_bg = r##"
@@ -159,8 +157,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_bar_with_bg)?.build(800, 600)?;
-    chart.render_to_svg("json_bar_with_bg.svg")?;
-    println!("✓ 带背景色的柱状图已保存到 json_bar_with_bg.svg");
+    common::save(&chart, "json_bar_with_bg.svg")?;
 
     println!("\n所有 Bar 图表测试完成！");
     Ok(())

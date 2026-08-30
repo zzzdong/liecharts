@@ -104,10 +104,7 @@ mod tests {
             "告警 | 高危: 85 (13.7%)"
         );
         // `{d}` 本身是纯数字（不含 %），模板自行决定是否追加 "%"
-        assert_eq!(
-            render_template(Some("{d}"), &ctx, ""),
-            "13.7"
-        );
+        assert_eq!(render_template(Some("{d}"), &ctx, ""), "13.7");
     }
 
     #[test]

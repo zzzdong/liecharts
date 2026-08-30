@@ -1,9 +1,7 @@
+use lievisual::text::{RichSpan, measure_text};
 use vello_cpu::kurbo::Rect;
 
-use crate::{
-    text::create_text_layout,
-    visual::{Color, TextStyle, VisualElement},
-};
+use crate::{Color, SceneNode, TextStyle, theme::DEFAULT_FONT_STACK};
 
 // ═══════════════════════════════════════════════════════════════════
 // NEW: ChartSpec — pipeline 的统一输入类型
@@ -837,9 +835,9 @@ impl ColorContext {
 /// DataProcessor 的输出
 #[derive(Debug, Clone)]
 pub struct SubplotVisualData {
-    pub series_elements: Vec<VisualElement>,
-    pub axis_elements: Vec<VisualElement>,
-    pub grid_lines: Vec<VisualElement>,
+    pub series_elements: Vec<SceneNode>,
+    pub axis_elements: Vec<SceneNode>,
+    pub grid_lines: Vec<SceneNode>,
 }
 
 /// 文本测量工具
@@ -858,7 +856,17 @@ impl TextMeasurer {
     ///
     /// 使用 parley 进行真实的文本排版，而非简单估算。
     pub fn measure(&mut self, text: &str, style: &TextStyle) -> (f64, f64) {
-        let layout = create_text_layout(text, style, None);
+        let mut lv_style = style.clone();
+        if lv_style.font_family.trim().is_empty()
+            || lv_style
+                .font_family
+                .trim()
+                .eq_ignore_ascii_case("sans-serif")
+        {
+            lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+        }
+        let layout =
+            (*measure_text(&[RichSpan::new(text.to_string(), lv_style)], None).layout).clone();
         (layout.width, layout.height)
     }
 
@@ -871,7 +879,21 @@ impl TextMeasurer {
         style: &TextStyle,
         max_width: f64,
     ) -> (f64, f64) {
-        let layout = create_text_layout(text, style, Some(max_width));
+        let mut lv_style = style.clone();
+        if lv_style.font_family.trim().is_empty()
+            || lv_style
+                .font_family
+                .trim()
+                .eq_ignore_ascii_case("sans-serif")
+        {
+            lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+        }
+        let layout = (*measure_text(
+            &[RichSpan::new(text.to_string(), lv_style)],
+            Some(max_width),
+        )
+        .layout)
+            .clone();
         (layout.width, layout.height)
     }
 }

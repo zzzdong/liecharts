@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("某站点用户访问来源").subtext("Pie Chart"))
         .legend(Legend::new().data(["直接访问", "邮件营销", "联盟广告", "视频广告", "搜索引擎"]))
         .add_pie(
@@ -15,9 +17,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .value("value")
                 .radius(Size::pct(0.0), Size::pct(75.0))
                 .label(true),
-        )
-        .render_to_svg("pie.svg")?;
-    println!("饼图已保存到 pie.svg");
+        );
+    common::save(&chart, "pie.svg")?;
 
     Ok(())
 }

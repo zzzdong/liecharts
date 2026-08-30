@@ -1,15 +1,18 @@
 //! Line Builder: 将 LineSeries 组装为 lievisual `SceneNode`
 
-use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, SceneNode},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,
     pipeline::{
         builder::{
-            SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, Z_SERIES_LINE, Z_SERIES_POINT,
-            circle, fill_stroke_style, path, rect, render_mark_lines,
+            SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, Z_SERIES_LINE, Z_SERIES_POINT, circle,
+            fill_stroke_style, path, rect, render_mark_lines,
         },
         typed_series::{LineSeries, RenderContext, SeriesLabelPosition, StepType, SymbolType},
     },
@@ -61,7 +64,10 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
                 p,
                 lievisual::scene::FillStrokeStyle {
                     fill: None,
-                    stroke: Some(lievisual::scene::Stroke::new(series.color, series.line_width)),
+                    stroke: Some(lievisual::scene::Stroke::new(
+                        series.color,
+                        series.line_width,
+                    )),
                 },
                 false,
                 Z_SERIES_LINE,
@@ -304,7 +310,7 @@ fn build_symbol(
     center: &Point,
     symbol_type: SymbolType,
     size: f64,
-    color: crate::visual::Color,
+    color: Color,
 ) -> Vec<SceneNode> {
     let mut elements = Vec::new();
 
@@ -336,7 +342,11 @@ fn build_symbol(
                 center.x + size,
                 center.y + size,
             );
-            elements.push(rect(r, fill_stroke_style(color, color, 1.0), Z_SERIES_POINT));
+            elements.push(rect(
+                r,
+                fill_stroke_style(color, color, 1.0),
+                Z_SERIES_POINT,
+            ));
         }
         _ => {
             // 默认使用圆形
@@ -362,7 +372,7 @@ mod tests {
     fn single_point_series() -> LineSeries {
         LineSeries {
             name: "test".into(),
-            color: crate::visual::Color::rgb(80, 112, 221),
+            color: Color::rgb(80, 112, 221),
             line_width: 2.0,
             smooth: true,
             step: None,

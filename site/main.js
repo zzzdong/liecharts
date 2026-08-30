@@ -9,7 +9,12 @@ const FONTS_TO_LOAD = [
         url: 'https://cdn.jsdelivr.net/gh/JetBrains/JetBrainsMono@v2.304/fonts/ttf/JetBrainsMono-Regular.ttf',
     },
     {
-        name: 'Noto Sans SC',
+        // The family name MUST match liecharts' DEFAULT_FONT_STACK ("Noto Sans CJK SC,
+        // sans-serif", see src/text.rs). parley resolves font-family lists by exact family
+        // name; if it does not match, Chinese glyphs fall back to the (CJK-less) system
+        // sans-serif and render as tofu boxes in the generated SVG/PNG.
+        name: 'Noto Sans CJK SC',
+        aliases: ['Noto Sans SC'],
         url: 'https://fonts.gstatic.com/s/notosanssc/v26/k3kXo84MPvpLmixcA63oeALhL4iP-Q8.otf',
     },
 ];
@@ -198,13 +203,21 @@ async function loadFonts() {
 
             lastFontBytes = { arrayBuffer: arrayBuffer, bytes: bytes };
 
-            wasmModule.register_font_bytes(font.name, bytes);
+            // Register under the primary family name and any aliases so that text styles
+            // referencing either name (e.g. the Rust DEFAULT_FONT_STACK or an explicit
+            // "Noto Sans SC") resolve to this font in the WASM renderer.
+            const familyNames = [font.name].concat(font.aliases || []);
+            for (const fam of familyNames) {
+                wasmModule.register_font_bytes(fam, bytes);
+            }
 
             try {
-                const fontFace = new FontFace(font.name, arrayBuffer);
-                const loadedFont = await fontFace.load();
-                document.fonts.add(loadedFont);
-                console.log('Font loaded:', font.name);
+                for (const fam of familyNames) {
+                    const fontFace = new FontFace(fam, arrayBuffer);
+                    const loadedFont = await fontFace.load();
+                    document.fonts.add(loadedFont);
+                }
+                console.log('Font loaded:', font.name, (font.aliases || []).length ? '(+' + font.aliases.length + ' alias)' : '');
             } catch (browserErr) {
                 console.warn('Browser font load failed:', font.name, browserErr);
             }
@@ -215,7 +228,12 @@ async function loadFonts() {
 
     if (lastFontBytes) {
         try {
-            wasmModule.register_font_bytes('sans-serif', lastFontBytes.bytes);
+            // Bind the CJK font to the generic `sans-serif` family so that an explicit
+            // `font_family: "sans-serif"` also resolves to it in the WASM/parley renderer
+            // (a literal family-name registration would NOT match the generic keyword).
+            wasmModule.register_font_sans_serif_bytes('Noto Sans CJK SC', lastFontBytes.bytes);
+            // For the in-browser SVG display, overriding the browser's generic `sans-serif`
+            // via an @font-face is the correct mechanism.
             const fontFaceSs = new FontFace('sans-serif', lastFontBytes.arrayBuffer);
             const loadedSsFont = await fontFaceSs.load();
             document.fonts.add(loadedSsFont);

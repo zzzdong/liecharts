@@ -1,5 +1,7 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let df = dataframe!(
         "day" => ["周一", "周二", "周三", "周四", "周五"],
@@ -8,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "C" => [150.0, 232.0, 201.0, 154.0, 190.0],
     );
 
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .data(df)
         .title(Title::new("深色主题示例").subtext("Dark Theme Demo"))
         .legend(Legend::new().data(["产品A", "产品B", "产品C"]))
@@ -17,9 +19,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .theme("dark")
         .add_bar(Bar::new().x("day").y("A").name("产品A"))
         .add_bar(Bar::new().x("day").y("B").name("产品B"))
-        .add_bar(Bar::new().x("day").y("C").name("产品C"))
-        .render_to_svg("dark_theme.svg")?;
-    println!("深色主题图表已保存到 dark_theme.svg");
+        .add_bar(Bar::new().x("day").y("C").name("产品C"));
+    common::save(&chart, "dark_theme.svg")?;
 
     Ok(())
 }

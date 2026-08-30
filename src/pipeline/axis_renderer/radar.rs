@@ -5,19 +5,20 @@
 
 use std::f64::consts::PI;
 
-use lievisual::scene::{FillStrokeStyle, SceneNode, Stroke};
-use lievisual::text::{TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{FillStrokeStyle, SceneNode, Stroke},
+    text::{TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
     option::RadarIndicatorOption,
     pipeline::{
-        builder::{line, path, text_el},
+        builder::{Z_GRID, Z_LABEL, line, path, text_el},
         types::{ColorContext, SubplotSpec},
     },
 };
-use lievisual::Color;
-use crate::pipeline::builder::{Z_GRID, Z_LABEL};
 
 /// 雷达图坐标轴渲染器
 ///

@@ -2,8 +2,11 @@
 
 use std::f64::consts::PI;
 
-use lievisual::scene::{Element, FillStrokeStyle, SceneNode, Stroke};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, FillStrokeStyle, SceneNode, Stroke},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::{BezPath, Point};
 
 use crate::{
@@ -62,7 +65,8 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
             let mid_angle = start_angle + sweep_angle * 0.5;
 
             // 绘制扇形
-            let arc_path = build_arc_path(center, inner_radius, outer_radius, start_angle, end_angle);
+            let arc_path =
+                build_arc_path(center, inner_radius, outer_radius, start_angle, end_angle);
 
             elements.push(path(arc_path, fill_style(slice.color), true, Z_SERIES_FILL));
 
@@ -82,12 +86,9 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
                     }
                     LabelPosition::Outside => {
                         let text = format_label_text(slice, series.label_formatter.as_deref());
-                        if let Some(geo) = compute_label_geometry(
-                            center,
-                            outer_radius,
-                            mid_angle,
-                            &text,
-                        ) {
+                        if let Some(geo) =
+                            compute_label_geometry(center, outer_radius, mid_angle, &text)
+                        {
                             outside_labels.push(geo);
                         }
                     }
@@ -252,7 +253,9 @@ fn distribute_vertical(
     let natural_gap = label_h + 4.0;
 
     // 先判断是否存在重叠：相邻标签的 y 间距小于所需间距
-    let has_overlap = group.windows(2).any(|w| w[1].text_y - w[0].text_y < natural_gap);
+    let has_overlap = group
+        .windows(2)
+        .any(|w| w[1].text_y - w[0].text_y < natural_gap);
     if !has_overlap {
         // 无重叠，保持贴合扇区的自然位置
         return group;
@@ -364,10 +367,7 @@ fn compute_label_geometry(
     let (c, s) = dir;
 
     // 扇形边缘（引导线第 2 段起点）
-    let line_start = Point::new(
-        center.x + outer_radius * c,
-        center.y + outer_radius * s,
-    );
+    let line_start = Point::new(center.x + outer_radius * c, center.y + outer_radius * s);
 
     // 判断区域：仅角度非常接近正上/正下（|cos| 很小）才归顶部/底部，
     // 其余按左右分侧（避免多个标签横向堆积在顶部导致超界/重叠）。
@@ -484,7 +484,7 @@ fn build_inside_label(
     let label_x = center.x + label_radius * angle.cos();
     let label_y = center.y + label_radius * angle.sin();
 
-    let mut style = TextStyle::new(crate::visual::Color::rgb(255, 255, 255), 12.0, "sans-serif");
+    let mut style = TextStyle::new(Color::rgb(255, 255, 255), 12.0, "sans-serif");
     style.align = TextAlign::Center;
     style.baseline = TextBaseline::Middle;
     elements.push(
@@ -636,8 +636,9 @@ fn add_arc_eliptical(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use vello_cpu::kurbo::Point;
+
+    use super::*;
 
     fn mk_label(text_x: f64, text_y: f64) -> PieLabelGeometry {
         PieLabelGeometry {
@@ -682,9 +683,7 @@ mod tests {
     #[test]
     fn test_vertical_crowded_compresses_to_stay_in_canvas() {
         // 标签过多放不下时压缩间距，保证全部落在画布内
-        let group = (0..10)
-            .map(|_| mk_label(10.0, 150.0))
-            .collect::<Vec<_>>();
+        let group = (0..10).map(|_| mk_label(10.0, 150.0)).collect::<Vec<_>>();
         let resolved = distribute_vertical(group, 12.0, 150.0, 200.0);
         assert!(resolved[0].text_y >= 8.0);
         assert!(resolved[9].text_y <= 200.0 - 8.0 - 12.0 * 1.2);

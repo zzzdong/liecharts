@@ -1,7 +1,10 @@
 //! GroupedBar Builder: 将 GroupedBarSeries 组装为 lievisual `SceneNode`
 
-use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, SceneNode},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::Point;
 
 use crate::{
@@ -19,11 +22,7 @@ impl SeriesBuilder<GroupedBarSeries> for GroupedBarBuilder {
         let mut elements = Vec::with_capacity(series.rows.len());
 
         for row in &series.rows {
-            elements.push(rect(
-                row.bar_rect,
-                fill_style(row.color),
-                Z_SERIES_FILL,
-            ));
+            elements.push(rect(row.bar_rect, fill_style(row.color), Z_SERIES_FILL));
 
             // 值标签
             if let Some(ref label_cfg) = series.label
@@ -66,7 +65,7 @@ impl SeriesBuilder<GroupedBarSeries> for GroupedBarBuilder {
                     (
                         bar_rect.x0 + bar_rect.width() / 2.0,
                         y,
-                        crate::visual::Color::rgb(255, 255, 255),
+                        Color::rgb(255, 255, 255),
                         va,
                     )
                 } else {

@@ -1,16 +1,25 @@
 //! 诊断 ECharts JSON 兼容性问题
 //!
 //! 测试常见的 LLM 输出场景，找出解析失败的点。
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use liecharts::option::ChartOption;
+
+/// 汇总解析失败的用例数（在 `#[test]` 内顺序累加）。
+static FAILED: AtomicUsize = AtomicUsize::new(0);
 
 fn check(name: &str, json: &str) {
     match serde_json::from_str::<ChartOption>(json) {
         Ok(_) => println!("[OK]   {}", name),
-        Err(e) => println!("[FAIL] {}  --  {}", name, e),
+        Err(e) => {
+            println!("[FAIL] {}  --  {}", name, e);
+            FAILED.fetch_add(1, Ordering::SeqCst);
+        }
     }
 }
 
-fn main() {
+#[test]
+fn echarts_compat() {
     // ── 1. 未知 series 类型（LLM 经常输出）──
     check(
         "heatmap",
@@ -2445,5 +2454,6 @@ fn main() {
         }"##,
     );
 
-    println!("\nDone.");
+    let failed = FAILED.load(Ordering::SeqCst);
+    assert_eq!(failed, 0, "{} 个 ECharts JSON 用例解析失败", failed);
 }

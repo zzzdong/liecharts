@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(1000, 800)
+    let chart = Chart::new(1000, 800)
         .title(Title::new("多子图展示").subtext("Multi Grid Example"))
         .grid(
             Grid::new()
@@ -74,9 +76,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .y("val")
                 .name("子图3")
                 .grid_index(2),
-        )
-        .render_to_svg("multi_grid.svg")?;
-    println!("多子图已保存到 multi_grid.svg");
+        );
+    common::save(&chart, "multi_grid.svg")?;
 
     Ok(())
 }

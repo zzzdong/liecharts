@@ -1,5 +1,7 @@
 use liecharts::prelude::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 测试 1: 基础折线图
     let json_basic_line = r##"
@@ -23,8 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_basic_line)?.build(800, 600)?;
-    chart.render_to_svg("json_line_basic.svg")?;
-    println!("✓ 基础折线图已保存到 json_line_basic.svg");
+    common::save(&chart, "json_line_basic.svg")?;
 
     // 测试 2: 平滑曲线 + 面积图
     let json_smooth_area = r##"
@@ -51,8 +52,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_smooth_area)?.build(800, 600)?;
-    chart.render_to_svg("json_line_smooth_area.svg")?;
-    println!("✓ 平滑面积图已保存到 json_line_smooth_area.svg");
+    common::save(&chart, "json_line_smooth_area.svg")?;
 
     // 测试 3: 多条折线
     let json_multi_line = r##"
@@ -90,8 +90,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_multi_line)?.build(800, 600)?;
-    chart.render_to_svg("json_line_multi.svg")?;
-    println!("✓ 多条折线图已保存到 json_line_multi.svg");
+    common::save(&chart, "json_line_multi.svg")?;
 
     // 测试 4: 数值轴折线图（散点数据）
     let json_value_axis = r##"
@@ -114,8 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_value_axis)?.build(800, 600)?;
-    chart.render_to_svg("json_line_value_axis.svg")?;
-    println!("✓ 数值轴折线图已保存到 json_line_value_axis.svg");
+    common::save(&chart, "json_line_value_axis.svg")?;
 
     // 测试 5: 带标记点和标记线
     let json_markers = r##"
@@ -140,8 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }"##;
 
     let chart = ChartBuilder::from_option_json(json_markers)?.build(800, 600)?;
-    chart.render_to_svg("json_line_markers.svg")?;
-    println!("✓ 带标记的折线图已保存到 json_line_markers.svg");
+    common::save(&chart, "json_line_markers.svg")?;
 
     println!("\n所有 Line 图表测试完成！");
     Ok(())

@@ -3,13 +3,13 @@
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
+    Color,
     error::Result,
     pipeline::{
         materializer::{SeriesMaterializer, map_y_to_pixel},
         typed_series::{CandleRect, CandlestickSeries, TypedSeries},
         types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
-    visual::Color,
 };
 
 pub struct CandlestickMaterializer;

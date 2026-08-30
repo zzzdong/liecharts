@@ -1,7 +1,7 @@
 use crate::{
+    Color,
     api::Size,
     pipeline::{dataframe::DataFrame, types::LabelPosition},
-    visual::Color,
 };
 
 // ── StepType ──

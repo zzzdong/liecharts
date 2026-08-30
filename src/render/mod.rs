@@ -1,7 +1,7 @@
 //! Multiple rendering backends (bitmap, SVG, etc.).
 //!
 //! Both backends delegate the actual drawing to the `lievisual` crate: they
-//! convert the legacy liecharts IR (`Vec<VisualElement>`) into a
+//! convert the legacy liecharts IR (`Vec<SceneNode>`) into a
 //! `lievisual::Scene` and hand it off to lievisual's `SvgRenderer` /
 //! `VelloPixmapRenderer`.
 

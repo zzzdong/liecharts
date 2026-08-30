@@ -11,7 +11,10 @@ use crate::{
 pub struct ScatterBuilder;
 
 impl SeriesBuilder<ScatterSeries> for ScatterBuilder {
-    fn build(series: &ScatterSeries, _ctx: &RenderContext) -> Result<Vec<lievisual::scene::SceneNode>> {
+    fn build(
+        series: &ScatterSeries,
+        _ctx: &RenderContext,
+    ) -> Result<Vec<lievisual::scene::SceneNode>> {
         let mut elements = Vec::with_capacity(series.points.len());
 
         for point in &series.points {

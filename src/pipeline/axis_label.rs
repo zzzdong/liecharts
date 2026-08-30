@@ -6,9 +6,7 @@
 //! `auto_rotate` / `label_step` 等），本模块在此基础之上 re-export，
 //! 供坐标轴渲染层复用，并保留无字体引擎时的文本尺寸估计。
 
-pub use super::collision::{
-    ROT_45, ROT_90, auto_rotate, label_step, rotated_bounds,
-};
+pub use super::collision::{ROT_45, ROT_90, auto_rotate, label_step, rotated_bounds};
 
 /// 粗略估计文本渲染尺寸（像素），不依赖字体引擎。
 ///

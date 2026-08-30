@@ -2,14 +2,17 @@
 
 use std::f64::consts::PI;
 
-use lievisual::scene::{Element, FillStrokeStyle, SceneNode, Stroke};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::{
+    Color,
+    scene::{Element, FillStrokeStyle, SceneNode, Stroke},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+};
 use vello_cpu::kurbo::{BezPath, Point, Rect};
 
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_LINE, Z_SERIES_POINT, Z_SERIES_FILL},
+        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LINE, Z_SERIES_POINT},
         typed_series::{RadarSeries, RenderContext},
     },
 };
@@ -149,7 +152,7 @@ pub fn build_radar_indicators(series: &RadarSeries, bounds: Rect) -> Vec<SceneNo
             (TextAlign::Center, TextBaseline::Middle)
         };
 
-        let mut style = TextStyle::new(crate::visual::Color::rgb(84, 85, 90), 12.0, "sans-serif");
+        let mut style = TextStyle::new(Color::rgb(84, 85, 90), 12.0, "sans-serif");
         style.align = align;
         style.baseline = va;
         elements.push(

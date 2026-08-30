@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("编程语言生态分析").subtext("气泡大小表示就业岗位相对数量"))
         .x_axis(Axis::value().name("诞生年份"))
         .y_axis(Axis::value().name("TIOBE 流行度指数"))
@@ -17,8 +19,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .size_col("size")
                 .name_col("name"),
         )
-        .render_to_svg("scatter.svg")?;
-    println!("散点图已保存到 scatter.svg");
+    ;
+    common::save(&chart, "scatter.svg")?;
 
     Ok(())
 }

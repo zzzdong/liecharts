@@ -1,6 +1,9 @@
 //! Boxplot Builder: 将 BoxplotSeries 组装为 lievisual `SceneNode`
 
-use lievisual::scene::{FillStrokeStyle, SceneNode, Stroke};
+use lievisual::{
+    Color,
+    scene::{FillStrokeStyle, SceneNode, Stroke},
+};
 
 use crate::{
     error::Result,
@@ -15,7 +18,7 @@ pub struct BoxplotBuilder;
 impl SeriesBuilder<BoxplotSeries> for BoxplotBuilder {
     fn build(series: &BoxplotSeries, _ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::with_capacity(series.boxes.len() * 6); // 每个箱线图 6 个视觉元素
-        let median_color = crate::visual::Color::rgb(255, 255, 255);
+        let median_color = Color::rgb(255, 255, 255);
 
         for b in &series.boxes {
             let color = series.color;

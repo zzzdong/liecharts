@@ -1,7 +1,9 @@
 use liecharts::api::*;
 
+#[path = "common/mod.rs"]
+mod common;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Chart::new(800, 600)
+    let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("任务完成率").subtext("Gauge Chart"))
         .add_gauge(
             Gauge::new()
@@ -14,9 +16,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .range(0.0, 100.0)
                 .center(Size::pct(50.0), Size::pct(55.0))
                 .radius(Size::pct(75.0)),
-        )
-        .render_to_svg("gauge.svg")?;
-    println!("仪表盘已保存到 gauge.svg");
+        );
+    common::save(&chart, "gauge.svg")?;
 
     Ok(())
 }
