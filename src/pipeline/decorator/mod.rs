@@ -15,7 +15,7 @@ pub use title::render_title;
 
 use crate::{
     pipeline::types::{ChartSpec, ColorContext, SubplotSpec},
-    text::{compute_text_offset, create_text_layout},
+    text::create_text_layout,
     theme::Theme,
     visual::VisualElement,
 };
@@ -23,25 +23,31 @@ use crate::{
 /// 计算文本布局（为所有未计算布局的 Text 执行真实文本排布）
 ///
 /// 遍历所有 SceneNode，对 `layout: None` 的 `Element::Text` 调用 create_text_layout，
-/// 并根据对齐/基线方式计算锚点偏移，同时把文本块的纯文本写入 span。
+/// 并把文本块的纯文本写入 span。
+///
+/// 注意：`position` 保持「锚点」语义（canvas `fillText` 语义），水平对齐由
+/// `style.align`、垂直对齐由 `style.baseline` 在渲染后端决定，这里**不做偏移烘焙**。
+/// 若在此处把对齐偏移累加进 position，渲染后端会再次应用同样的偏移，导致
+/// 右对齐/居中文本被平移两次（历史 bug：Y 轴标签左移一个文本宽、仪表盘
+/// 中心数值偏离圆心）。
 pub fn compute_text_layouts(elements: &mut [lievisual::scene::SceneNode]) {
     use lievisual::scene::Element;
     for node in elements.iter_mut() {
         if let Element::Text {
             spans,
-            position,
             style,
             layout,
+            ..
         } = &mut node.element
             && layout.is_none()
         {
             // 拼接纯文本（单 span 最常见）
             let text: String = spans.iter().map(|s| s.text.clone()).collect();
-            let text_layout = create_text_layout(&text, style, style.max_width);
-            let (x_off, y_off) = compute_text_offset(&text_layout, style.align, style.baseline);
-            position.x += x_off;
-            position.y += y_off;
-            *layout = Some(std::sync::Arc::new(text_layout));
+            *layout = Some(std::sync::Arc::new(create_text_layout(
+                &text,
+                style,
+                style.max_width,
+            )));
         }
     }
 }

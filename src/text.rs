@@ -29,8 +29,7 @@ pub fn register_font(
     source: FontSource,
     family_name_override: Option<&str>,
 ) -> crate::error::Result<()> {
-    lievisual::text::register_font(source, family_name_override)
-        .map_err(|e| ChartError::FontLoadError(e))
+    lievisual::text::register_font(source, family_name_override).map_err(ChartError::FontLoadError)
 }
 
 /// 解析用户配置的 `font_family`：空或 `sans-serif` 时回退到 [`DEFAULT_FONT_STACK`]。

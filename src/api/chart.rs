@@ -979,6 +979,7 @@ impl Chart {
                     LayerSpec::PolarBar(l) => SeriesConfig::PolarBar(PolarBarConfig {
                         angle_col: l.angle.clone(),
                         radius_col: l.radius.clone(),
+                        category_col: None,
                         pad_angle: l.pad_angle,
                         start_angle: l.start_angle,
                     }),

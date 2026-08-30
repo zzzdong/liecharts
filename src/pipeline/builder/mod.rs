@@ -62,17 +62,17 @@ impl ColorExt for Color {
         let n = u32::from_str_radix(s, 16).ok()?;
         Some(if s.len() == 8 {
             Color {
-                r: ((n >> 24) & 0xff) as f64 / 255.0,
-                g: ((n >> 16) & 0xff) as f64 / 255.0,
-                b: ((n >> 8) & 0xff) as f64 / 255.0,
-                a: (n & 0xff) as f64 / 255.0,
+                r: ((n >> 24) & 0xff) as u8,
+                g: ((n >> 16) & 0xff) as u8,
+                b: ((n >> 8) & 0xff) as u8,
+                a: (n & 0xff) as u8,
             }
         } else {
             Color {
-                r: ((n >> 16) & 0xff) as f64 / 255.0,
-                g: ((n >> 8) & 0xff) as f64 / 255.0,
-                b: (n & 0xff) as f64 / 255.0,
-                a: 1.0,
+                r: ((n >> 16) & 0xff) as u8,
+                g: ((n >> 8) & 0xff) as u8,
+                b: (n & 0xff) as u8,
+                a: 255,
             }
         })
     }

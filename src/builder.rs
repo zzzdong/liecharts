@@ -35,7 +35,8 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct ChartBuilder {
     theme_registry: ThemeRegistry,
-    option: ChartOption,
+    /// 装箱保存：`ChartOption` 体积较大，装箱后链式构造（`mut self`）只搬运指针。
+    option: Box<ChartOption>,
 }
 
 impl Default for ChartBuilder {
@@ -48,21 +49,21 @@ impl ChartBuilder {
     pub fn new() -> Self {
         Self {
             theme_registry: ThemeRegistry::new(),
-            option: ChartOption::default(),
+            option: Box::new(ChartOption::default()),
         }
     }
 
     pub fn from_option(option: ChartOption) -> Self {
         Self {
             theme_registry: ThemeRegistry::new(),
-            option,
+            option: Box::new(option),
         }
     }
 
     pub fn from_option_json(option: &str) -> Result<Self> {
         Ok(Self {
             theme_registry: ThemeRegistry::new(),
-            option: serde_json::from_str(option)?,
+            option: Box::new(serde_json::from_str(option)?),
         })
     }
 
@@ -200,7 +201,7 @@ impl ChartBuilder {
                 })?,
                 None => Theme::echarts(),
             };
-        Ok(Chart::new(self.option, theme, width, height))
+        Ok(Chart::new(*self.option, theme, width, height))
     }
 
     pub fn render_to_image(self, width: u32, height: u32, path: &str) -> Result<()> {

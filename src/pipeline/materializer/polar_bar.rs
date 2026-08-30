@@ -42,6 +42,17 @@ impl SeriesMaterializer for PolarBarMaterializer {
             .get_column(&cfg.radius_col)
             .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.radius_col.clone()))?;
 
+        // 类目名（数据项名称）列：显式配置优先，否则探测常见列名
+        let category_vals = cfg
+            .category_col
+            .as_ref()
+            .and_then(|c| spec.data.get_column(c))
+            .or_else(|| {
+                ["label", "category", "name"]
+                    .iter()
+                    .find_map(|c| spec.data.get_column(c))
+            });
+
         // 计算极坐标中心点和最大半径
         let _center_x = bounds.x0 + bounds.width() / 2.0;
         let _center_y = bounds.y0 + bounds.height() / 2.0;
@@ -77,7 +88,9 @@ impl SeriesMaterializer for PolarBarMaterializer {
                 angle: angle + cfg.start_angle,
                 radius,
                 value: radius_val,
-                name: format!("Item {}", i),
+                name: category_vals
+                    .and_then(|s| s.as_string(i))
+                    .unwrap_or_else(|| format!("Item {}", i)),
                 color: bar_color,
             });
         }

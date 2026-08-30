@@ -9,7 +9,7 @@ fn main() {
     let chart = Chart::new(option, Theme::echarts(), 800, 600);
     let elements = chart.collect_visual_elements().unwrap();
     // 打印绘图区边界（z=Z_BACKGROUND..Z_GRID 之间的 rect 或轴线 line）
-    use liecharts::visual::{Z_GRID, Z_AXIS, SceneNode};
+    use liecharts::visual::SceneNode;
     fn walk(nodes: &[SceneNode], depth: usize) {
         for n in nodes {
             if let lievisual::scene::Element::Rect { rect, .. } = &n.element {

@@ -27,9 +27,7 @@ fn area_has_fill_region_and_outline() {
         .count();
     let stroked = pl
         .iter()
-        .filter(|(_, style, _)| {
-            style.stroke.is_some() && matches!(style.fill, None)
-        })
+        .filter(|(_, style, _)| style.stroke.is_some() && style.fill.is_none())
         .count();
     assert!(
         filled >= 1,

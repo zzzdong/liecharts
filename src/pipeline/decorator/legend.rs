@@ -2,13 +2,13 @@
 //!
 //! 支持饼图等从 palette 取色的图表类型。
 
-use lievisual::scene::{Fill, SceneNode};
-use lievisual::text::{TextAlign, TextBaseline, TextStyle};
+use lievisual::scene::{Element, Fill, SceneNode};
+use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
     pipeline::{
-        builder::{rect, text_el},
+        builder::rect,
         types::{ChartSpec, ChartType, ColorContext, LegendSpec},
     },
     text::create_text_layout,
@@ -147,17 +147,27 @@ pub fn render_legend(
             Z_TITLE,
         ));
 
-        // 图例文字 - 使用 Left 对齐，位置在 symbol 右侧
+        // 图例文字 - 使用 Left 对齐，位置在 symbol 右侧。
+        // 垂直对齐：显式计算文本 ink_bounds 的视觉中心，将其对齐到 symbol 矩形中心，
+        // 而不是依赖 baseline=Middle 的隐式居中（浏览器 SVG 渲染时基线换算
+        // 与 parley 度量不一致会产生 1-2px 偏差）。
         let text_x = symbol_x + symbol_size + item_gap;
-        let mut style = TextStyle::new(legend_color, legend_style.font_size, legend_style.font_family.clone());
+        let mut style =
+            TextStyle::new(legend_color, legend_style.font_size, legend_style.font_family.clone());
         style.align = TextAlign::Left;
-        style.baseline = TextBaseline::Middle;
-        elements.push(text_el(
-            display_text.clone(),
-            Point::new(text_x, y),
-            style,
-            Z_TITLE,
-        ));
+        style.baseline = TextBaseline::Top; // 布局原点语义：ink_bounds 相对此原点
+        let text_layout = create_text_layout(display_text, &style, None);
+        let ink = text_layout.ink_bounds();
+        let ink_center_y = ink.min_y() + (ink.max_y() - ink.min_y()).max(0.0) / 2.0;
+        elements.push(
+            SceneNode::new(Element::Text {
+                spans: vec![RichSpan::new(display_text.clone(), style.clone())],
+                position: Point::new(text_x, y - ink_center_y),
+                style,
+                layout: Some(std::sync::Arc::new(text_layout)),
+            })
+            .with_z(Z_TITLE),
+        );
 
         current_x += item_width;
     }

@@ -63,9 +63,31 @@ impl SeriesMaterializer for BubbleMaterializer {
             .and_then(|col| spec.data.get_column(col));
 
         // 将数据点映射到像素空间
-        let mut bubbles = Vec::with_capacity(spec.data.row_count());
+        let row_count = spec.data.row_count();
+        let mut bubbles = Vec::with_capacity(row_count);
 
-        for i in 0..spec.data.row_count() {
+        // 第一遍：收集 sqrt(size)，用于归一化到合理的半径区间。
+        // 直接把 size 映射为半径会让最大值与最小值的视觉差异过于悬殊
+        // （size=400 → r=20，size=10 → r=3，再乘 scale 后小气泡几乎不可见）。
+        let sqrt_sizes: Vec<Option<f64>> = (0..row_count)
+            .map(|i| size_vals.and_then(|s| s.as_f64(i)).map(|v| v.sqrt()))
+            .collect();
+        let s_min = sqrt_sizes
+            .iter()
+            .filter_map(|s| *s)
+            .fold(f64::INFINITY, f64::min);
+        let s_max = sqrt_sizes
+            .iter()
+            .filter_map(|s| *s)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let has_size_range = s_max > s_min && s_min.is_finite();
+        // 半径区间：随绘图区尺寸缩放，并受 symbol_size_scale 整体调节
+        const MIN_RADIUS: f64 = 4.0;
+        const MAX_RADIUS: f64 = 18.0;
+        let r_min = MIN_RADIUS * cfg.symbol_size_scale;
+        let r_max = MAX_RADIUS * cfg.symbol_size_scale;
+
+        for (i, sqrt_size) in sqrt_sizes.iter().enumerate() {
             let x = x_vals.as_f64(i);
             let y = y_vals.as_f64(i);
 
@@ -73,11 +95,14 @@ impl SeriesMaterializer for BubbleMaterializer {
                 let px = map_x_to_pixel(x, x_range, bounds);
                 let py = map_y_to_pixel(y, y_range, bounds);
 
-                // 计算气泡大小：使用 sqrt 使面积代表数值，而非半径
-                let radius = if let Some(size_series) = size_vals {
-                    size_series.as_f64(i).unwrap_or(10.0).sqrt() * cfg.symbol_size_scale
-                } else {
-                    10.0 * cfg.symbol_size_scale
+                // 计算气泡大小：sqrt(size) 线性归一化到 [r_min, r_max]，
+                // 面积随数值单调变化且小气泡仍可见
+                let radius = match *sqrt_size {
+                    Some(v) if has_size_range => {
+                        r_min + (v - s_min) / (s_max - s_min) * (r_max - r_min)
+                    }
+                    Some(_) => (r_min + r_max) / 2.0,
+                    None => 10.0 * cfg.symbol_size_scale,
                 };
 
                 // 获取名称

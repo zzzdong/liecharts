@@ -3,7 +3,7 @@
 //! 使用 layout_text 统一排版主标题和副标题，支持不同样式。
 
 use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{RichSpan, TextStyle};
+use lievisual::text::{FontWeight, RichSpan, TextStyle};
 use vello_cpu::kurbo::Point;
 
 use crate::{
@@ -47,7 +47,7 @@ pub fn render_title(
                 title.font_size.unwrap_or(title_style.font_size),
                 title_style.font_family.clone(),
             );
-            main_text_style.font_weight = 400.0;
+            main_text_style.font_weight = FontWeight::Normal;
 
             let layout = create_text_layout(text, &main_text_style, None);
             let position_x = (width as f64 - layout.width) / 2.0;
@@ -73,7 +73,7 @@ pub fn render_title(
                 title.subfont_size.unwrap_or(subtitle_style.font_size),
                 subtitle_style.font_family.clone(),
             );
-            sub_text_style.font_weight = 400.0;
+            sub_text_style.font_weight = FontWeight::Normal;
 
             let layout = create_text_layout(subtext, &sub_text_style, None);
             let position_x = (width as f64 - layout.width) / 2.0;

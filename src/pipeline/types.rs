@@ -445,6 +445,9 @@ impl Default for RadarConfig {
 pub struct PolarBarConfig {
     pub angle_col: String,
     pub radius_col: String,
+    /// 类目名（数据项名称）列。`None` 时 materializer 自动探测
+    /// `label` / `category` / `name` 列，找不到则回退 `Item {i}`。
+    pub category_col: Option<String>,
     pub pad_angle: f64,
     pub start_angle: f64,
 }
@@ -454,6 +457,7 @@ impl Default for PolarBarConfig {
         Self {
             angle_col: "angle".into(),
             radius_col: "radius".into(),
+            category_col: None,
             pad_angle: 2.0,
             start_angle: 0.0,
         }

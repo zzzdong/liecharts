@@ -25,9 +25,9 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
         if series.points.len() >= 2
             && let Some(area_color) = &series.area_color
         {
-            let alpha = (255.0 * series.area_opacity).clamp(0.0, 255.0) as u8;
+            let alpha = (255.0 * series.area_opacity).clamp(0.0, 255.0).round() as u8;
             let mut fill = *area_color;
-            fill.a = f64::from(alpha) / 255.0;
+            fill.a = alpha;
             let area_path = if let Some(ref baseline_points) = series.baseline_points {
                 // 堆叠面积：使用上一系列的轮廓作为底部边界
                 build_stacked_area_path(&series.points, baseline_points, series.smooth, series.step)

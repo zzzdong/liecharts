@@ -337,7 +337,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .and_then(|c| {
                                 let v = c.as_vec();
                                 v.first().map(|first| {
-                                    crate::visual::Color::rgb(first.r as u8, first.g as u8, first.b as u8)
+                                    crate::visual::Color::rgb(first.r, first.g, first.b)
                                 })
                             }),
                         area_opacity: ls
@@ -400,6 +400,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         let config = crate::pipeline::types::PolarBarConfig {
                             angle_col: "angle".into(),
                             radius_col: "radius".into(),
+                            category_col: None,
                             pad_angle: 2.0,
                             start_angle: 0.0,
                         };
@@ -707,12 +708,12 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         color: bs.item_style.as_ref().and_then(|is| {
                             is.color
                                 .as_ref()
-                                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8))
+                                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b))
                         }),
                         border_color: bs.item_style.as_ref().and_then(|is| {
                             is.border_color
                                 .as_ref()
-                                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8))
+                                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b))
                         }),
                         border_width: bs
                             .item_style
@@ -756,7 +757,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         border_color: hs.item_style.as_ref().and_then(|is| {
                             is.border_color
                                 .as_ref()
-                                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8))
+                                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b))
                         }),
                         border_width: hs
                             .item_style
@@ -837,6 +838,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     let config = crate::pipeline::types::PolarBarConfig {
                         angle_col: "angle".into(),
                         radius_col: "radius".into(),
+                        category_col: None,
                         pad_angle: 2.0,
                         start_angle: 0.0,
                     };
@@ -952,12 +954,12 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 .text_style
                 .as_ref()
                 .and_then(|s| s.color.as_ref())
-                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8)),
+                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b)),
             subcolor: t
                 .subtext_style
                 .as_ref()
                 .and_then(|s| s.color.as_ref())
-                .map(|c| crate::visual::Color::rgb(c.r as u8, c.g as u8, c.b as u8)),
+                .map(|c| crate::visual::Color::rgb(c.r, c.g, c.b)),
         }),
         legend: option.legend.as_ref().map(|l| LegendSpec {
             show: l.show.unwrap_or(true),
@@ -1197,7 +1199,7 @@ fn resolve_visual_map(
         .filter(|c| !c.is_empty())
         .map(|c| {
             c.iter()
-                .map(|co| crate::visual::Color::rgb(co.r as u8, co.g as u8, co.b as u8))
+                .map(|co| crate::visual::Color::rgb(co.r, co.g, co.b))
                 .collect()
         })
         .unwrap_or(default_colors);

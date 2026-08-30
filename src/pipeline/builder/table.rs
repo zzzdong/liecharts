@@ -1,7 +1,9 @@
 //! Table Builder: 将 TableSeries 组装为 lievisual `SceneNode`
 
 use lievisual::scene::{Element, SceneNode};
-use lievisual::text::{RichSpan, TextAlign, TextBaseline, TextStyle};
+use lievisual::text::{
+    FontWeight as VisualFontWeight, RichSpan, TextAlign, TextBaseline, TextStyle,
+};
 use vello_cpu::kurbo::{Point, Rect};
 
 use crate::{
@@ -13,8 +15,9 @@ use crate::{
     option::{FontWeight, FontWeightNamed},
 };
 
-fn weight_to_f32(w: &FontWeight) -> f32 {
-    match w {
+/// 将 liecharts 的字重配置转换为 lievisual 的 `FontWeight`。
+fn weight_to_visual(w: &FontWeight) -> VisualFontWeight {
+    let value = match w {
         FontWeight::Named(n) => match n {
             FontWeightNamed::Bold => 700.0,
             FontWeightNamed::Bolder => 700.0,
@@ -22,7 +25,8 @@ fn weight_to_f32(w: &FontWeight) -> f32 {
             FontWeightNamed::Normal => 400.0,
         },
         FontWeight::Numeric(n) => *n as f32,
-    }
+    };
+    VisualFontWeight::from_value(value)
 }
 
 pub struct TableBuilder;
@@ -57,7 +61,7 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
             let y = start_y + cell_height / 2.0;
 
             let mut style = TextStyle::new(ctx.colors.text_color, 12.0, "Arial");
-            style.font_weight = weight_to_f32(&FontWeight::Named(FontWeightNamed::Bold));
+            style.font_weight = weight_to_visual(&FontWeight::Named(FontWeightNamed::Bold));
             style.align = TextAlign::Center;
             style.baseline = TextBaseline::Middle;
             style.max_width = Some(cell_width - 10.0);
@@ -126,7 +130,7 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
                 let text_y = y + cell_height / 2.0;
 
                 let mut style = TextStyle::new(ctx.colors.text_color, 11.0, "Arial");
-                style.font_weight = weight_to_f32(&FontWeight::Named(FontWeightNamed::Normal));
+                style.font_weight = weight_to_visual(&FontWeight::Named(FontWeightNamed::Normal));
                 style.align = TextAlign::Center;
                 style.baseline = TextBaseline::Middle;
                 style.max_width = Some(cell_width - 10.0);

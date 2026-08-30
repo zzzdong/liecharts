@@ -16,7 +16,7 @@ impl SeriesBuilder<BubbleSeries> for BubbleBuilder {
 
         for bubble in &series.bubbles {
             let mut fill = series.color;
-            fill.a = 128.0 / 255.0; // 半透明填充
+            fill.a = 128; // 半透明填充
             elements.push(circle(
                 bubble.center,
                 bubble.radius,

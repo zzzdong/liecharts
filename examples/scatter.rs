@@ -15,8 +15,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ))
                 .name("编程语言")
                 .size_col("size")
-                .name_col("name")
-                .symbol_size_scale(0.3),
+                .name_col("name"),
         )
         .render_to_svg("scatter.svg")?;
     println!("散点图已保存到 scatter.svg");

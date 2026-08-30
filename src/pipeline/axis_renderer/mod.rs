@@ -88,10 +88,35 @@ pub fn axis_ticks(
         _ => {
             let ticks = compute_nice_ticks(min, max, 5);
             let positions = normalize_ticks(&ticks, min, max);
-            let labels: Vec<String> = ticks.iter().map(|&v| format!("{:.0}", v)).collect();
+            let labels: Vec<String> = format_value_ticks(&ticks);
             (positions, labels)
         }
     }
+}
+
+/// 格式化数值刻度标签：按刻度步长决定小数位数。
+///
+/// 刻度步长小于 1 时必须保留小数，否则 `0.5` 会被格式化为 `"0"`、
+/// `-0.5` 变成 `"-0"`（浮点数 `{:.0}` 四舍五入到偶数）。
+fn format_value_ticks(ticks: &[f64]) -> Vec<String> {
+    let step = if ticks.len() > 1 {
+        (ticks[1] - ticks[0]).abs()
+    } else {
+        1.0
+    };
+    let decimals = if step >= 1.0 {
+        0
+    } else {
+        ((-step.log10()).ceil() as i32).clamp(0, 6) as usize
+    };
+    ticks
+        .iter()
+        .map(|&v| {
+            // 规避 "-0"：浮点四舍五入可能产生负零
+            let v = if v.abs() < 1e-12 { 0.0 } else { v };
+            format!("{v:.decimals$}")
+        })
+        .collect()
 }
 
 /// 将原始刻度值归一化为 `[0,1]` 区间内的位置，供坐标轴网格线/标签定位使用。

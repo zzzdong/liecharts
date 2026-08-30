@@ -43,12 +43,14 @@ impl SeriesBuilder<PolarBarSeries> for PolarBarBuilder {
         let label_radius = max_radius * 1.15; // 标签放在柱子外侧
 
         for bar in &series.bars {
-            // radius 已经是像素空间值（来自 materializer）
+            // radius 已经是像素空间值（来自 materializer）。
+            // angle 为罗盘角（0°=正上方，顺时针增加），转换为屏幕角：
+            // 屏幕 0°=正右，顺时针增加 → screen = compass - 90°。
             let r = bar.radius;
-            let angle_rad = bar.angle * PI / 180.0;
+            let angle_rad = (bar.angle - 90.0) * PI / 180.0;
 
-            // 生成从中心到边缘的扇形路径
-            let p = build_polar_bar_path(center_x, center_y, bar.angle, r, sweep_deg);
+            // 生成从中心到边缘的扇形路径（内部使用屏幕角）
+            let p = build_polar_bar_path(center_x, center_y, bar.angle - 90.0, r, sweep_deg);
 
             // 使用柱子自己的颜色
             elements.push(path(p, fill_style(bar.color), true, Z_SERIES_FILL));
@@ -69,8 +71,12 @@ impl SeriesBuilder<PolarBarSeries> for PolarBarBuilder {
                 Z_SERIES_LABEL,
             ));
 
-            // 添加数值标签
-            let label_text = format!("{:.0}", bar.value);
+            // 添加类目名标签（无类目名时回退数值）
+            let label_text = if bar.name.is_empty() {
+                format!("{:.0}", bar.value)
+            } else {
+                bar.name.clone()
+            };
             let mut style = TextStyle::new(crate::visual::Color::rgb(60, 60, 65), 11.0, "sans-serif");
             style.align = TextAlign::Center;
             style.baseline = TextBaseline::Middle;

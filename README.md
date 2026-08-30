@@ -6,6 +6,10 @@
 
 A Rust charting library, inspired by ECharts.
 
+## Requirements
+
+Minimum supported Rust version: **1.92**.
+
 ## Features
 
 - **Chart Types**: Line, Bar, Pie, Area, Scatter, Radar, Gauge, Candlestick, Boxplot, Heatmap, Polar Bar, Polar Scatter, Table.
@@ -54,16 +58,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```rust
 use liecharts::ChartBuilder;
 
-let json = r#"{
-    "title": { "text": "Monthly Trend" },
-    "xAxis": [{ "type": "category", "data": ["Jan", "Feb", "Mar"] }],
-    "yAxis": [{ "type": "value" }],
-    "series": [{ "type": "bar", "name": "Revenue", "data": [120, 200, 150] }]
-}"#;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let json = r#"{
+        "title": { "text": "Monthly Trend" },
+        "xAxis": [{ "type": "category", "data": ["Jan", "Feb", "Mar"] }],
+        "yAxis": [{ "type": "value" }],
+        "series": [{ "type": "bar", "name": "Revenue", "data": [120, 200, 150] }]
+    }"#;
 
-ChartBuilder::from_option_json(json)?
-    .build(800, 600)?
-    .render_to_image("chart.png")?;
+    ChartBuilder::from_option_json(json)?
+        .build(800, 600)?
+        .render_to_image("chart.png")?;
+    Ok(())
+}
 ```
 
 ## Examples

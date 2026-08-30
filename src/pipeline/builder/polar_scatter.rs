@@ -39,8 +39,10 @@ impl SeriesBuilder<PolarScatterSeries> for PolarScatterBuilder {
         let mut shown_directions = HashSet::new();
 
         for point in &series.points {
-            // radius 已经是像素空间值（来自 materializer），直接使用
-            let angle_rad = point.angle * PI / 180.0;
+            // radius 已经是像素空间值（来自 materializer），直接使用。
+            // angle 为罗盘角（0°=正北 N，顺时针增加），转换为屏幕角：
+            // 屏幕 0°=正右，顺时针增加 → screen = compass - 90°。
+            let angle_rad = (point.angle - 90.0) * PI / 180.0;
             let x = center_x + point.radius * angle_rad.cos();
             let y = center_y + point.radius * angle_rad.sin();
 
@@ -58,8 +60,9 @@ impl SeriesBuilder<PolarScatterSeries> for PolarScatterBuilder {
             let wind_direction = angle_to_wind_direction(point.angle);
             if shown_directions.insert(wind_direction.clone()) {
                 // 用该风向扇区的中心角度定位标签，保证相邻风向标签均匀分布
+                // （扇区中心角同为罗盘角，同样转换为屏幕角）
                 let sector_center = direction_center_angle(point.angle);
-                let label_angle = sector_center * PI / 180.0;
+                let label_angle = (sector_center - 90.0) * PI / 180.0;
                 let label_x = center_x + label_radius * label_angle.cos();
                 let label_y = center_y + label_radius * label_angle.sin();
 
@@ -84,6 +87,8 @@ impl SeriesBuilder<PolarScatterSeries> for PolarScatterBuilder {
 }
 
 /// 将角度转换为风向名称
+///
+/// `angle` 为罗盘角（0°=N、90°=E、180°=S、270°=W，顺时针）。
 fn angle_to_wind_direction(angle: f64) -> String {
     // 标准化角度到 0-360
     let normalized = ((angle % 360.0) + 360.0) % 360.0;

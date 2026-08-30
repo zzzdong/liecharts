@@ -49,14 +49,14 @@ pub fn flatten<'a>(nodes: &'a [SceneNode], out: &mut Vec<(&'a Element, i32)>) {
 }
 
 /// 提取所有特定类型的元素。
-pub fn elements_of<'a>(nodes: &'a [SceneNode], f: impl Fn(&Element) -> bool) -> Vec<(&'a Element, i32)> {
+pub fn elements_of(nodes: &[SceneNode], f: impl Fn(&Element) -> bool) -> Vec<(&Element, i32)> {
     let mut all = Vec::new();
     flatten(nodes, &mut all);
     all.into_iter().filter(|(e, _)| f(e)).collect()
 }
 
 /// 提取所有 Rect 元素（含 Group 内）。返回 (rect, style)。
-pub fn rects<'a>(nodes: &'a [SceneNode]) -> Vec<(Rect, &'a liecharts::visual::FillStrokeStyle)> {
+pub fn rects(nodes: &[SceneNode]) -> Vec<(Rect, &liecharts::visual::FillStrokeStyle)> {
     elements_of(nodes, |e| matches!(e, Element::Rect { .. }))
         .into_iter()
         .map(|(e, _)| match e {
@@ -67,9 +67,7 @@ pub fn rects<'a>(nodes: &'a [SceneNode]) -> Vec<(Rect, &'a liecharts::visual::Fi
 }
 
 /// 提取所有 Circle 元素。返回 (center, radius, style)。
-pub fn circles<'a>(
-    nodes: &'a [SceneNode],
-) -> Vec<(Point, f64, &'a liecharts::visual::FillStrokeStyle)> {
+pub fn circles(nodes: &[SceneNode]) -> Vec<(Point, f64, &liecharts::visual::FillStrokeStyle)> {
     elements_of(nodes, |e| matches!(e, Element::Circle { .. }))
         .into_iter()
         .map(|(e, _)| match e {
@@ -84,9 +82,13 @@ pub fn circles<'a>(
 }
 
 /// 提取所有 Path 元素。返回 (path, style, closed)。
-pub fn paths<'a>(
-    nodes: &'a [SceneNode],
-) -> Vec<(&'a vello_cpu::kurbo::BezPath, &'a liecharts::visual::FillStrokeStyle, bool)> {
+pub fn paths(
+    nodes: &[SceneNode],
+) -> Vec<(
+    &vello_cpu::kurbo::BezPath,
+    &liecharts::visual::FillStrokeStyle,
+    bool,
+)> {
     elements_of(nodes, |e| matches!(e, Element::Path { .. }))
         .into_iter()
         .map(|(e, _)| match e {
@@ -98,9 +100,7 @@ pub fn paths<'a>(
 
 /// 提取所有"填充色为实心色"的 Path（用于饼图扇区等实心区域）。
 /// 返回 (边界框, 填充色)。
-pub fn solid_filled_paths<'a>(
-    nodes: &'a [SceneNode],
-) -> Vec<(Rect, String)> {
+pub fn solid_filled_paths(nodes: &[SceneNode]) -> Vec<(Rect, String)> {
     use liecharts::visual::Fill;
     paths(nodes)
         .into_iter()
@@ -116,7 +116,7 @@ pub fn solid_filled_paths<'a>(
 }
 
 /// 提取所有文本及其位置。返回 (text, x, y)。
-pub fn texts<'a>(nodes: &'a [SceneNode]) -> Vec<(String, f64, f64)> {
+pub fn texts(nodes: &[SceneNode]) -> Vec<(String, f64, f64)> {
     elements_of(nodes, |e| matches!(e, Element::Text { .. }))
         .into_iter()
         .map(|(e, _)| match e {
@@ -162,10 +162,5 @@ pub fn assert_all_points_in_canvas(points: &[(f64, f64)], w: f64, h: f64, tol: f
 
 /// 将 Color 归一化为 `#rrggbb`（忽略 alpha，便于与主题色对比）。
 pub fn solid_color(c: &Color) -> String {
-    Color::rgb(
-        (c.r.clamp(0.0, 1.0) * 255.0).round() as u8,
-        (c.g.clamp(0.0, 1.0) * 255.0).round() as u8,
-        (c.b.clamp(0.0, 1.0) * 255.0).round() as u8,
-    )
-    .to_hex()
+    Color::rgb(c.r, c.g, c.b).to_hex()
 }

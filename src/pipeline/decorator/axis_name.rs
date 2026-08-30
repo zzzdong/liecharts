@@ -52,10 +52,13 @@ pub fn render_axis_name(
                 let label_margin = 8.0;
                 let max_label_width = 35.0;
                 let (x, rotation, align, baseline) = if is_right {
+                    // 右轴：名称在刻度标签外侧（标签占 x1+8 起约 35px），旋转 +90°
+                    // 后文本厚度朝左（占 [x-h, x]），锚点即名称右边缘。
+                    // 仅在即将越出画布右缘时收紧（名称右边缘距画布 4px）。
                     let min_anchor_x = bounds.x1 + 8.0 + max_label_width + label_margin;
                     let anchor_x = min_anchor_x
                         .max(bounds.x1 + label_margin)
-                        .min(width as f64 - margin - text_height);
+                        .min(width as f64 - 4.0);
                     (
                         anchor_x,
                         std::f64::consts::FRAC_PI_2,
@@ -73,7 +76,11 @@ pub fn render_axis_name(
                         TextBaseline::Top,
                     )
                 };
-                let y = bounds.y0 + bounds.height() / 2.0;
+                // 旋转后文本沿行进方向从锚点延伸 layout.width：
+                // 左轴 -90° 向上延伸、右轴 +90° 向下延伸，各偏移半长使名称
+                // 垂直居中于绘图区。
+                let half_len = text_layout.width / 2.0;
+                let y = bounds.y0 + bounds.height() / 2.0 + if is_right { -half_len } else { half_len };
 
                 let mut style =
                     TextStyle::new(label_color, axis_label_style.font_size, axis_label_style.font_family.clone());

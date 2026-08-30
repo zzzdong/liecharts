@@ -67,7 +67,7 @@ impl SeriesBuilder<RadarSeries> for RadarBuilder {
 
         // 填充区域（半透明）
         let mut fill_color = series.color;
-        fill_color.a = 64.0 / 255.0; // 半透明
+        fill_color.a = 64; // 半透明
 
         elements.push(crate::pipeline::builder::path(
             path.clone(),

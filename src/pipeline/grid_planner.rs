@@ -196,7 +196,12 @@ impl<'a> GridPlanner<'a> {
                 // Y 轴不自动旋转，仅尊重用户配置
                 let rotation = axis.label_rotate.map(|deg| deg.to_radians()).unwrap_or(0.0);
                 let (rotated_w, _) = rotated_bounds(max_w, max_h, rotation);
-                let needed = Y_LABEL_GAP + rotated_w + LABEL_PAD;
+                // 预留 Y 轴名称空间：名称（旋转后厚度 ≈ 15px）+ 与刻度标签 8px 间隙
+                // + 名称锚点定位余量（AxisRenderer 侧标签锚点同步右移 30px，
+                // 见 `CartesianAxisRenderer::draw_y_tick_labels_side`），
+                // 避免轴名称与标签重叠。
+                let name_extra: f64 = if axis.name.is_some() { 34.0 } else { 0.0 };
+                let needed = Y_LABEL_GAP + rotated_w + LABEL_PAD + name_extra;
                 let is_right = axis.position == AxisPosition::Right;
                 if is_right {
                     let current = total_w - spec.bounds.x1;

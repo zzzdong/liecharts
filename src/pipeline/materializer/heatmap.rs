@@ -213,11 +213,15 @@ fn value_to_color(value: f64, min: f64, max: f64, colors: &[Color]) -> Color {
 
 fn lerp_color(a: Color, b: Color, t: f64) -> Color {
     let t = t.clamp(0.0, 1.0);
+    let lerp = |x: u8, y: u8| {
+        let v = f64::from(x) + (f64::from(y) - f64::from(x)) * t;
+        v.round().clamp(0.0, 255.0) as u8
+    };
     Color {
-        r: a.r + (b.r - a.r) * t,
-        g: a.g + (b.g - a.g) * t,
-        b: a.b + (b.b - a.b) * t,
-        a: a.a + (b.a - a.a) * t,
+        r: lerp(a.r, b.r),
+        g: lerp(a.g, b.g),
+        b: lerp(a.b, b.b),
+        a: lerp(a.a, b.a),
     }
 }
 
@@ -231,14 +235,7 @@ mod tests {
         assert_eq!(value_to_color(0.0, 0.0, 10.0, &colors), colors[0]);
         assert_eq!(value_to_color(10.0, 0.0, 10.0, &colors), colors[1]);
         let mid = value_to_color(5.0, 0.0, 10.0, &colors);
-        assert_eq!(
-            (
-                (mid.r * 255.0).round() as u8,
-                (mid.g * 255.0).round() as u8,
-                (mid.b * 255.0).round() as u8
-            ),
-            (128, 128, 128)
-        );
+        assert_eq!((mid.r, mid.g, mid.b), (128, 128, 128));
     }
 
     #[test]

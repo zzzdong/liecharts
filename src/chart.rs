@@ -9,8 +9,12 @@ use crate::{
     visual::VisualElement,
 };
 
+/// 已完成配置的图表，可直接渲染为图片或 SVG。
+///
+/// `option` 装箱保存：`ChartOption` 体积较大（十余 KB），放在堆上可显著降低
+/// 调用方栈占用（同一作用域内持有多个 `Chart` 时尤为重要）。
 pub struct Chart {
-    option: ChartOption,
+    option: Box<ChartOption>,
     theme: Theme,
     width: u32,
     height: u32,
@@ -19,7 +23,7 @@ pub struct Chart {
 impl Chart {
     pub fn new(option: ChartOption, theme: Theme, width: u32, height: u32) -> Self {
         Self {
-            option,
+            option: Box::new(option),
             theme,
             width,
             height,

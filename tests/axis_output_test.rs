@@ -20,15 +20,12 @@ fn assert_grid_and_axis_in_canvas(nodes: &[liecharts::visual::SceneNode]) {
     let mut all = Vec::new();
     common::flatten(nodes, &mut all);
     for (e, z) in all {
-        if z < Z_GRID || z > Z_AXIS {
+        if !(Z_GRID..=Z_AXIS).contains(&z) {
             continue;
         }
-        match e {
-            Element::Line { start, end, .. } => {
-                pts.push((start.x, start.y));
-                pts.push((end.x, end.y));
-            }
-            _ => {}
+        if let Element::Line { start, end, .. } = e {
+            pts.push((start.x, start.y));
+            pts.push((end.x, end.y));
         }
     }
     assert!(!pts.is_empty(), "应存在网格线/轴线元素");

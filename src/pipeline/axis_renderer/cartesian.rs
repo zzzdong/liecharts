@@ -158,6 +158,16 @@ impl CartesianAxisRenderer {
                     colors.axis_line_color,
                 );
 
+                // X 轴刻度短线（ECharts 默认 axisTick.show = true）
+                Self::draw_x_ticks(
+                    &mut elements,
+                    bounds,
+                    axis_cfg,
+                    x_min,
+                    x_max,
+                    colors,
+                );
+
                 // X 轴网格线 (垂直方向)
                 Self::draw_x_grid_lines(&mut elements, bounds, axis_cfg, x_min, x_max, colors);
 
@@ -192,6 +202,9 @@ impl CartesianAxisRenderer {
                     colors.axis_line_color,
                 );
 
+                // Y 轴刻度短线（ECharts 默认 axisTick.show = true）
+                Self::draw_y_ticks(&mut elements, bounds, axis_cfg, y_min, y_max, colors, is_right);
+
                 if !is_right {
                     Self::draw_y_grid_lines(&mut elements, bounds, axis_cfg, y_min, y_max, colors);
                 }
@@ -219,6 +232,89 @@ impl CartesianAxisRenderer {
             Stroke::new(color, 1.0),
             Z_AXIS,
         ));
+    }
+
+    /// 绘制 X 轴刻度短线：从轴线向外延伸 5px，与刻度标签位置对齐。
+    fn draw_x_ticks(
+        elements: &mut Vec<SceneNode>,
+        bounds: Rect,
+        axis_cfg: &AxisSpec,
+        x_min: f64,
+        x_max: f64,
+        colors: &ColorContext,
+    ) {
+        const TICK_LEN: f64 = 5.0;
+        let axis_y = if axis_cfg.position == AxisPosition::Top {
+            bounds.y0
+        } else {
+            bounds.y1
+        };
+        // 朝轴线外侧延伸：底部轴向下、顶部轴向上
+        let (y1, y2) = if axis_cfg.position == AxisPosition::Top {
+            (axis_y - TICK_LEN, axis_y)
+        } else {
+            (axis_y, axis_y + TICK_LEN)
+        };
+        let xs: Vec<f64> = if axis_cfg.axis_type == AxisType::Category {
+            let n = axis_cfg.categories.len();
+            (0..n)
+                .map(|i| bounds.x0 + (i as f64 + 0.5) / n as f64 * bounds.width())
+                .collect()
+        } else {
+            let (positions, _) = axis_ticks(axis_cfg.axis_type, x_min, x_max);
+            positions
+                .iter()
+                .map(|&t| bounds.x0 + t * bounds.width())
+                .collect()
+        };
+        for x in xs {
+            elements.push(crate::pipeline::builder::line(
+                Point::new(x, y1),
+                Point::new(x, y2),
+                Stroke::new(colors.axis_line_color, 1.0),
+                Z_AXIS,
+            ));
+        }
+    }
+
+    /// 绘制 Y 轴刻度短线：从轴线向外延伸 5px，与刻度标签位置对齐。
+    fn draw_y_ticks(
+        elements: &mut Vec<SceneNode>,
+        bounds: Rect,
+        axis_cfg: &AxisSpec,
+        y_min: f64,
+        y_max: f64,
+        colors: &ColorContext,
+        is_right: bool,
+    ) {
+        const TICK_LEN: f64 = 5.0;
+        let axis_x = if is_right { bounds.x1 } else { bounds.x0 };
+        // 朝轴线外侧延伸：左轴向左、右轴向右
+        let (x1, x2) = if is_right {
+            (axis_x, axis_x + TICK_LEN)
+        } else {
+            (axis_x - TICK_LEN, axis_x)
+        };
+        let ys: Vec<f64> = if axis_cfg.axis_type == AxisType::Category {
+            let n = axis_cfg.categories.len();
+            (0..n)
+                .map(|i| bounds.y1 - (i as f64 + 0.5) / n as f64 * bounds.height())
+                .collect()
+        } else {
+            let (positions, _) = axis_ticks(axis_cfg.axis_type, y_min, y_max);
+            positions
+                .iter()
+                .map(|&t| bounds.y0 + (1.0 - t) * bounds.height())
+                .collect()
+        };
+        for y in ys {
+            elements.push(crate::pipeline::builder::line(
+                Point::new(x1, y),
+                Point::new(x2, y),
+                Stroke::new(colors.axis_line_color, 1.0),
+                Z_AXIS,
+            ));
+        }
     }
 
     fn draw_x_grid_lines(
@@ -445,7 +541,10 @@ impl CartesianAxisRenderer {
         };
 
         // 先排版得到刻度标签的实际尺寸，再据此校准锚点，避免左轴标签超出画布左边界。
-        // 对左轴（右对齐）锚点至少为 `max_label_w + 8`，确保标签左边缘距画布边界 ≥ 8px。
+        // 对左轴（右对齐）锚点至少为 `max_label_w + 8`，确保标签左边缘距画布边界 ≥ 8px；
+        // 若轴带名称，再预留名称带（旋转后厚度约 15px + 8px 间隙 + 名称锚点余量），
+        // 使标签不与轴名称重叠（名称带由 GridPlanner 同步预留左侧空间）。
+        let has_axis_name = axis_cfg.name.is_some();
         let mut adjust_left_anchor = |labels: &[String],
                                   rotation: f64,
                                   text_measurer: &mut TextMeasurer,
@@ -460,10 +559,9 @@ impl CartesianAxisRenderer {
                 let (proj_w, _) = rotated_bounds(w, h, rotation);
                 max_proj_w = max_proj_w.max(proj_w);
             }
-            eprintln!("[adjust] is_right={} max_proj_w={:.1} x={} labels={:?}", is_right, max_proj_w, x, labels);
-            let min_anchor = max_proj_w + 8.0;
+            let name_band: f64 = if has_axis_name { 30.0 } else { 0.0 };
+            let min_anchor = max_proj_w + 8.0 + name_band;
             if x < min_anchor {
-                eprintln!("[adjust] -> {}", min_anchor);
                 x = min_anchor;
             }
         };
