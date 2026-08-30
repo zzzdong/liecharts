@@ -1,6 +1,6 @@
 [package]
 name = "liecharts"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["zzzdong <kuwater@163.com>"]
 edition = "2024"
 rust-version = "1.92"
