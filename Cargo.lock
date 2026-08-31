@@ -514,7 +514,7 @@ dependencies = [
 
 [[package]]
 name = "liecharts"
-version = "0.1.4"
+version = "0.2.0-beta.1"
 dependencies = [
  "anyhow",
  "clap",
