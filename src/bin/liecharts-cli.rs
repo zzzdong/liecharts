@@ -25,7 +25,7 @@ fn infer_format_from_ext(path: &Path) -> Option<Format> {
 
 /// Render ECharts JSON configuration files to PNG or SVG images
 #[derive(Parser, Debug)]
-#[command(name = "liecharts")]
+#[command(name = "liecharts-cli")]
 #[command(about = "Render ECharts JSON config to PNG/SVG images")]
 struct Args {
     /// Input ECharts JSON configuration file path (.json)

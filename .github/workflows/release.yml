@@ -19,7 +19,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  BINARY_NAME: liecharts
+  BINARY_NAME: liecharts-cli
 
 jobs:
   build-x86_64-linux:

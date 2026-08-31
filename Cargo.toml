@@ -24,11 +24,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 thiserror = "2.0"
-lievisual = { version = "0.1" }
+lievisual = "=0.2.0-beta.2"
 
 [[bin]]
-name = "liecharts"
-path = "src/bin/liecharts.rs"
+name = "liecharts-cli"
+path = "src/bin/liecharts-cli.rs"
 
 [profile.release]
 lto = "fat"
