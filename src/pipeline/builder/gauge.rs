@@ -37,9 +37,9 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
         let center_y = bounds.y0 + height * 0.55;
         let center = Point::new(center_x, center_y);
 
-        // 半径取宽高的较小值的一半，再乘以百分比
-        let min_dim = width.min(height);
-        let radius = min_dim * 0.5 * (series.radius / 100.0);
+        // P2a：radius 已在 api/compat 层折算为**绝对像素**（基准 = 画布 min/2），
+        // 不再相对绘图区折算（见 docs/布局自适应改造计划.md P2a）。
+        let radius = series.radius;
 
         // 转换角度为弧度
         let start_angle = series.start_angle * PI / 180.0;

@@ -31,6 +31,13 @@ fn weight_to_visual(w: &FontWeight) -> VisualFontWeight {
 
 pub struct TableBuilder;
 
+/// 表格单行（含表头）的最小高度（像素）。
+///
+/// `FitMode::Hug` 下行数 × 此值超出可用高度时，布局层会把画布加高
+/// （见 `chart_pipeline::apply_table_demands`），而不是把行压扁导致
+/// 文字重叠；`FitMode::Fixed` 下不生效（保持历史压扁行为）。
+pub const TABLE_MIN_ROW_H: f64 = 28.0;
+
 impl SeriesBuilder<TableSeries> for TableBuilder {
     fn build(series: &TableSeries, ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::new();

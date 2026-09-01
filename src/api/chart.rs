@@ -2,6 +2,7 @@ use super::layer::{
     Bar, Boxplot, Bubble, Candlestick, Gauge, Heatmap, LayerSpec, Line, Pie, PolarBar,
     PolarScatter, Radar, Scatter, SymbolType as LayerSymbol, Table,
 };
+use crate::pipeline::types::{FitMode, GridEdge};
 use crate::{Color, SceneNode, error::Result, pipeline::dataframe::DataFrame, theme::Theme};
 
 // ── Macros ──
@@ -115,18 +116,6 @@ impl Position {
     }
     pub fn pct(v: f64) -> Self {
         Position::Percent(v)
-    }
-
-    /// 将 Position 转换为像素值（对 Percent 根据容器尺寸换算）
-    pub(crate) fn to_pixels(self, container_size: f64) -> f64 {
-        match self {
-            Position::Pixel(v) => v,
-            Position::Percent(v) => container_size * v / 100.0,
-            Position::Auto | Position::Center => container_size / 2.0,
-            Position::Left | Position::Top => 0.0,
-            Position::Right => container_size,
-            Position::Bottom => container_size,
-        }
     }
 }
 
@@ -429,6 +418,7 @@ pub struct Chart {
     data: Option<DataFrame>,
     background_color: Option<Color>,
     theme_name: Option<String>,
+    fit_mode: FitMode,
 }
 
 impl Chart {
@@ -446,7 +436,22 @@ impl Chart {
             data: None,
             background_color: None,
             theme_name: None,
+            fit_mode: FitMode::Fixed,
         }
+    }
+
+    /// 设置画布尺寸语义（默认 [`FitMode::Fixed`]）。
+    ///
+    /// - [`FitMode::Fixed`]：`width`/`height` 是刚性画布（历史行为）。
+    /// - [`FitMode::Hug`]：`width`/`height` 是期望尺寸。轴标签、图例、表格
+    ///   等内容的空间需求会把画布**按需长大**（字号线宽恒定，不缩放）。
+    ///   渲染输出使用长大后的实际尺寸。
+    /// - [`FitMode::HugMax`]：同 [`FitMode::Hug`]，但 `width`/`height` 是
+    ///   **上限**：长大超过上限时整体等比缩放回上限内（贴合内容，字号
+    ///   与线宽随缩放缩小）。
+    pub fn fit(mut self, mode: FitMode) -> Self {
+        self.fit_mode = mode;
+        self
     }
 
     // ── Configuration ──
@@ -568,27 +573,35 @@ impl Chart {
     // ── Rendering ──
 
     /// Build the chart and collect visual elements.
+    ///
+    /// 注意：[`FitMode::Hug`] 下画布可能长大，本方法丢弃最终尺寸；
+    /// 需要尺寸的渲染路径走 [`Self::build_laid_out`]。
     pub fn build(&self) -> Result<Vec<SceneNode>> {
+        Ok(self.build_laid_out()?.elements)
+    }
+
+    /// 布局求解（含 Hug 迭代）并返回元素与最终画布尺寸
+    fn build_laid_out(&self) -> Result<crate::pipeline::chart_pipeline::LaidOutChart> {
         let spec = self.to_chart_spec();
         let theme = match self.theme_name.as_deref() {
             Some("dark") => Theme::dark(),
             _ => Theme::echarts(),
         };
-        crate::pipeline::chart_pipeline::build_chart_from_spec(&spec, &theme)
+        crate::pipeline::chart_pipeline::build_chart_with_layout(&spec, &theme)
     }
 
     /// Render to SVG string.
     pub fn render_svg(&self) -> Result<String> {
-        let elements = self.build()?;
+        let laid = self.build_laid_out()?;
         let renderer = crate::render::SvgRenderer::new();
-        renderer.render(&elements, self.width, self.height)
+        renderer.render(&laid.elements, laid.width, laid.height, laid.fit_max)
     }
 
     /// Render to PNG bytes.
     pub fn render_png(&self) -> Result<Vec<u8>> {
-        let elements = self.build()?;
-        let renderer = crate::render::PixmapRenderer::new(self.width, self.height);
-        let pixmap = renderer.render(&elements)?;
+        let laid = self.build_laid_out()?;
+        let renderer = crate::render::PixmapRenderer::new(laid.width, laid.height);
+        let pixmap = renderer.render(&laid.elements, laid.fit_max)?;
         let data: Vec<u8> = pixmap
             .data()
             .iter()
@@ -606,9 +619,9 @@ impl Chart {
 
     /// Render to an image file.
     pub fn render_to_image(&self, path: &str) -> Result<()> {
-        let elements = self.build()?;
-        let renderer = crate::render::PixmapRenderer::new(self.width, self.height);
-        let pixmap = renderer.render(&elements)?;
+        let laid = self.build_laid_out()?;
+        let renderer = crate::render::PixmapRenderer::new(laid.width, laid.height);
+        let pixmap = renderer.render(&laid.elements, laid.fit_max)?;
         let data: Vec<u8> = pixmap
             .data()
             .iter()
@@ -635,8 +648,8 @@ impl Chart {
     pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
         use crate::pipeline::types::{
             AxisSpec, BarConfig, BoxplotConfig, BubbleConfig, CandlestickConfig, ChartSpec,
-            GaugeConfig, GridSpec, HeatmapConfig, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
-            PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
+            GaugeConfig, GridSpec, HeatmapConfig, ItemStyleSpec, LegendSpec, LineConfig,
+            PieConfig, PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
             SeriesSpec, SymbolType, TableConfig, TitleSpec,
         };
 
@@ -653,10 +666,12 @@ impl Chart {
             self.grids
                 .iter()
                 .map(|g| GridSpec {
-                    left: Some(g.left.to_pixels(self.width as f64)),
-                    right: Some(g.right.to_pixels(self.width as f64)),
-                    top: Some(g.top.to_pixels(self.height as f64)),
-                    bottom: Some(g.bottom.to_pixels(self.height as f64)),
+                    // P2b：保留原始语义（Percent 不提前固化），由 GridPlanner 在
+                    // 布局阶段解析，画布长大（Hug）时百分比边距随比例缩放
+                    left: Some(position_to_grid_edge(g.left, self.width as f64)),
+                    right: Some(position_to_grid_edge(g.right, self.width as f64)),
+                    top: Some(position_to_grid_edge(g.top, self.height as f64)),
+                    bottom: Some(position_to_grid_edge(g.bottom, self.height as f64)),
                     contain_label: g.contain_label,
                 })
                 .collect()
@@ -949,7 +964,10 @@ impl Chart {
                         label_font_size: l.label_font_size,
                     }),
                     LayerSpec::Pie(l) => {
-                        let min_dim = self.width.min(self.height) as f64 * 0.5;
+                        // P2a：radius 统一以「画布 min 的一半」为百分比基准，
+                        // 在 api 层折算为**绝对像素**；builder 直接使用，
+                        // 消除 api 层（画布）与 builder 层（绘图区）基准不一致。
+                        let radius_benchmark = self.width.min(self.height) as f64 * 0.5;
                         SeriesConfig::Pie(PieConfig {
                             category_col: l.category.clone(),
                             value_col: l.value.clone(),
@@ -958,8 +976,8 @@ impl Chart {
                                 l.center.1.to_percent(self.height as f64),
                             ),
                             radius: (
-                                l.radius.0.to_percent(min_dim),
-                                l.radius.1.to_percent(min_dim),
+                                size_to_abs_px(l.radius.0, radius_benchmark),
+                                size_to_abs_px(l.radius.1, radius_benchmark),
                             ),
                             label_show: l.label_show,
                             label_position: l.label_position,
@@ -984,7 +1002,7 @@ impl Chart {
                         symbol_size: l.symbol_size.unwrap_or(8.0),
                     }),
                     LayerSpec::Gauge(l) => {
-                        let min_dim = self.width.min(self.height) as f64 * 0.5;
+                        let radius_benchmark = self.width.min(self.height) as f64 * 0.5;
                         SeriesConfig::Gauge(GaugeConfig {
                             value_col: l.value.clone(),
                             min: l.min,
@@ -993,7 +1011,8 @@ impl Chart {
                                 l.center.0.to_percent(self.width as f64),
                                 l.center.1.to_percent(self.height as f64),
                             ),
-                            radius: l.radius.to_percent(min_dim),
+                            // P2a：同 Pie，radius 折算为绝对像素（画布 min/2 基准）
+                            radius: size_to_abs_px(l.radius, radius_benchmark),
                             start_angle: l.start_angle,
                             end_angle: l.end_angle,
                             split_number: l.split_number,
@@ -1191,6 +1210,7 @@ impl Chart {
             background: self.background_color.unwrap_or(Color::rgb(255, 255, 255)),
             palette: vec![],
             theme_name: self.theme_name.clone(),
+            fit_mode: self.fit_mode,
         }
     }
 }
@@ -1210,6 +1230,31 @@ impl_from_layer!(PolarBar, PolarBar);
 impl_from_layer!(PolarScatter, PolarScatter);
 impl_from_layer!(Gauge, Gauge);
 impl_from_layer!(Table, Table);
+
+/// 把 [`Size`] 折算为绝对像素：`Percent` 相对 `benchmark`，`Pixel` 原样。
+///
+/// P2a：pie/gauge 的 radius 在 api 层统一折算，pipeline 直接消费绝对像素，
+/// 消除 api 层（画布）与 builder 层（绘图区）的基准不一致。
+fn size_to_abs_px(s: Size, benchmark: f64) -> f64 {
+    match s {
+        Size::Percent(p) => benchmark * p / 100.0,
+        Size::Pixel(v) => v,
+    }
+}
+
+/// 把 [`Position`] 转换为可延迟解析的 [`GridEdge`]（P2b）。
+///
+/// 与旧的 `Position::to_pixels` 结果语义一致，但 `Percent` 不再提前固化；
+/// `Auto`/`Center` 表达为 50% 使画布变化时保持居中。
+fn position_to_grid_edge(p: Position, total: f64) -> GridEdge {
+    match p {
+        Position::Pixel(v) => GridEdge::Px(v),
+        Position::Percent(v) => GridEdge::Pct(v),
+        Position::Auto | Position::Center => GridEdge::Pct(50.0),
+        Position::Left | Position::Top => GridEdge::Px(0.0),
+        Position::Right | Position::Bottom => GridEdge::Px(total),
+    }
+}
 
 // ── Into<Title> for &str ──
 

@@ -9,6 +9,7 @@ mod convert;
 mod pixmap;
 mod svg;
 
+pub use convert::to_fit_scene;
 pub use convert::to_scene;
 pub use pixmap::PixmapRenderer;
 pub use svg::SvgRenderer;

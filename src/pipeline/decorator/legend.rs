@@ -86,7 +86,6 @@ pub fn render_legend(
 
     // 第一步：计算每个 item 的实际宽度（symbol + gap + 文本宽度）
     let mut item_widths = Vec::new();
-    let mut total_content_width = 0.0;
 
     for name in &display_texts {
         let text_style = TextStyle::new(
@@ -109,20 +108,24 @@ pub fn render_legend(
 
         let item_width = symbol_size + item_gap + text_width + legend_padding * 2.0;
         item_widths.push(item_width);
-        total_content_width += item_width;
     }
 
-    // 第二步：计算整体起始位置（整体居中）
-    let start_x = (width as f64 - total_content_width) / 2.0;
-    let y = 24.0 + title_height + 16.0;
+    // 第二步：按可用宽度分行（超宽溢出裁剪 → 换行，信息零丢失）
+    let rows = wrap_legend_rows(&item_widths, width);
 
-    // 第三步：布局每个 item
-    let mut current_x = start_x;
+    // 第三步：逐行整体居中并布局 item
+    let row_height = legend_style.font_size * 1.4 + 16.0;
+    let y0 = 24.0 + title_height + 16.0;
 
-    for i in 0..data.len() {
-        let item_width = item_widths[i];
-        let content_start_x = current_x + legend_padding;
-        let display_text = &display_texts[i];
+    for (row_idx, row) in rows.iter().enumerate() {
+        let row_total: f64 = row.iter().map(|&i| item_widths[i]).sum();
+        let y = y0 + row_idx as f64 * (row_height + LEGEND_ROW_GAP);
+        let mut current_x = (width as f64 - row_total) / 2.0;
+
+        for &i in row {
+            let item_width = item_widths[i];
+            let content_start_x = current_x + legend_padding;
+            let display_text = &display_texts[i];
 
         let color = if spec
             .series
@@ -196,10 +199,110 @@ pub fn render_legend(
             .with_z(Z_TITLE),
         );
 
-        current_x += item_width;
+            current_x += item_width;
+        }
     }
 
     elements
+}
+
+/// 图例布局常量（`measure_legend_layout` 与 `render_legend` 共用）
+///
+/// 行高 = `font_size * 1.4 + 16`（与旧单行估算一致）；行间距 6px；
+/// 两侧各留 8px 安全边距。单行且放得下时行为与旧版逐字节一致。
+const LEGEND_ROW_GAP: f64 = 6.0;
+const LEGEND_EDGE_MARGIN: f64 = 8.0;
+
+/// 按可用宽度把图例项分行（贪心装填：放不下即换行）
+///
+/// 返回每行包含的 item 下标。空输入返回单个空行。
+fn wrap_legend_rows(item_widths: &[f64], width: u32) -> Vec<Vec<usize>> {
+    let avail = (width as f64 - 2.0 * LEGEND_EDGE_MARGIN).max(0.0);
+    let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
+    let mut row_w = 0.0;
+
+    for (i, w) in item_widths.iter().enumerate() {
+        let cur = rows.last_mut().expect("rows 非空");
+        if !cur.is_empty() && row_w + *w > avail {
+            rows.push(vec![i]);
+            row_w = *w;
+        } else {
+            cur.push(i);
+            row_w += *w;
+        }
+    }
+    rows
+}
+
+/// 图例布局度量：行数与总占用高度（供 `estimate_header_height` 预留顶部空间）
+pub struct LegendLayout {
+    pub rows: usize,
+    pub row_height: f64,
+    /// rows × row_height + (rows-1) × 行距
+    pub total_height: f64,
+}
+
+/// 度量图例换行后的实际占用（不产生元素）
+///
+/// 图例来源与 `render_legend` 一致：显式配置（`show` 决定显隐）或按需自动生成。
+pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Option<LegendLayout> {
+    let auto;
+    let legend = match &spec.legend {
+        Some(l) => {
+            if !l.show {
+                return None;
+            }
+            l
+        }
+        None if should_auto_legend(spec) => {
+            auto = LegendSpec {
+                show: true,
+                data: crate::pipeline::compat::collect_legend_names(&spec.series),
+                symbol_size: 10.0,
+                item_gap: 10.0,
+                formatter: None,
+            };
+            &auto
+        }
+        None => return None,
+    };
+
+    let legend_style = theme.get_legend_text_style();
+    let symbol_size = legend.symbol_size;
+    let item_gap = 8.0;
+    let legend_padding = 16.0;
+    let legend_color = Color::from_hex(&legend_style.color).unwrap_or(Color::rgb(50, 50, 50));
+
+    let mut item_widths = Vec::with_capacity(legend.data.len());
+    for name in &legend.data {
+        let mut lv_style = TextStyle::new(
+            legend_color,
+            legend_style.font_size,
+            legend_style.font_family.clone(),
+        );
+        if lv_style.font_family.trim().is_empty()
+            || lv_style
+                .font_family
+                .trim()
+                .eq_ignore_ascii_case("sans-serif")
+        {
+            lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+        }
+        let layout = (*measure_text(&[RichSpan::new(name.clone(), lv_style)], None).layout).clone();
+        let w = symbol_size + item_gap + layout.width + legend_padding * 2.0;
+        item_widths.push(w);
+    }
+    if item_widths.is_empty() {
+        return None;
+    }
+
+    let row_height = legend_style.font_size * 1.4 + 16.0;
+    let rows = wrap_legend_rows(&item_widths, width).len();
+    Some(LegendLayout {
+        rows,
+        row_height,
+        total_height: rows as f64 * row_height + (rows.saturating_sub(1)) as f64 * LEGEND_ROW_GAP,
+    })
 }
 
 /// 判断是否应为图表自动绘制图例（当用户未显式配置 legend 时）。

@@ -69,6 +69,7 @@ mod layer;
 pub use chart::{
     Axis, AxisPosition, AxisType, Chart, Grid, GridBuilder, Legend, Orient, Position, Size, Title,
 };
+pub use crate::pipeline::types::FitMode;
 pub use layer::*;
 
 pub use crate::pipeline::dataframe::DataFrame;

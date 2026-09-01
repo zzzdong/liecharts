@@ -59,7 +59,7 @@ impl Chart {
 
 fn write_pixmap(elements: &[SceneNode], width: u32, height: u32, path: &str) -> Result<()> {
     let renderer = PixmapRenderer::new(width, height);
-    let pixmap = renderer.render(elements)?;
+    let pixmap = renderer.render(elements, None)?;
     let pw = pixmap.width() as u32;
     let ph = pixmap.height() as u32;
     let data: Vec<u8> = pixmap
@@ -76,12 +76,14 @@ fn write_pixmap(elements: &[SceneNode], width: u32, height: u32, path: &str) -> 
 
 fn svg_string(elements: &[SceneNode], width: u32, height: u32) -> String {
     let renderer = SvgRenderer::new();
-    renderer.render(elements, width, height).unwrap_or_default()
+    renderer
+        .render(elements, width, height, None)
+        .unwrap_or_default()
 }
 
 fn png_bytes(elements: &[SceneNode], width: u32, height: u32) -> Result<Vec<u8>> {
     let renderer = PixmapRenderer::new(width, height);
-    let pixmap = renderer.render(elements)?;
+    let pixmap = renderer.render(elements, None)?;
     let data: Vec<u8> = pixmap
         .data()
         .iter()

@@ -8,6 +8,24 @@ use crate::{Color, SceneNode, TextStyle, theme::DEFAULT_FONT_STACK};
 // ═══════════════════════════════════════════════════════════════════
 
 /// Pipeline 的统一输入规格。可从新 API (Chart) 或旧 option (ChartOption) 转换而来。
+/// 画布尺寸语义（P1/P4 引入，见 docs/布局自适应改造计划.md §五）
+///
+/// - [`FitMode::Fixed`]（默认）：`width`/`height` 是刚性画布，空间不足时
+///   按既有策略向内收缩/旋转/抽稀/压缩（历史行为，逐字节兼容）。
+/// - [`FitMode::Hug`]：`width`/`height` 是**期望尺寸**。布局组件上报的
+///   空间需求（轴标签、图例换行、表格最小行高）会通过迭代求解把画布
+///   **按需长大**（信息零损失优先），字号与线宽恒定、不做整体缩放。
+/// - [`FitMode::HugMax`]：同 [`FitMode::Hug`]，但 `width`/`height` 同时是
+///   **上限**：内容长大超过上限时，渲染阶段整体等比缩放回上限内
+///   （`lievisual::fit::fit_scene`，对齐 liemermaid 的 `fit_options` 语义）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FitMode {
+    #[default]
+    Fixed,
+    Hug,
+    HugMax,
+}
+
 #[derive(Debug, Clone)]
 pub struct ChartSpec {
     pub width: u32,
@@ -21,14 +39,35 @@ pub struct ChartSpec {
     pub background: Color,
     pub palette: Vec<Color>,
     pub theme_name: Option<String>,
+    /// 画布尺寸语义，默认 [`FitMode::Fixed`]
+    pub fit_mode: FitMode,
 }
 
+/// grid 边距的原始语义（P2b 引入，见 docs/布局自适应改造计划.md P2b）
+///
+/// 延迟到像素布局阶段解析：`Pct` 相对画布对应维度，画布变化（Hug）时
+/// 随比例缩放，不再被 api/compat 层提前固化成像素。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GridEdge {
+    /// 绝对像素
+    Px(f64),
+    /// 相对画布宽/高的百分比
+    Pct(f64),
+}
+
+impl From<f64> for GridEdge {
+    fn from(v: f64) -> Self {
+        GridEdge::Px(v)
+    }
+}
+
+/// P2b 起边距保留原始语义（百分比 / 像素），由 `GridPlanner` 在布局阶段解析
 #[derive(Debug, Clone)]
 pub struct GridSpec {
-    pub left: Option<f64>, // pixels, None = auto
-    pub right: Option<f64>,
-    pub top: Option<f64>,
-    pub bottom: Option<f64>,
+    pub left: Option<GridEdge>, // None = auto（按 contain_label 选默认）
+    pub right: Option<GridEdge>,
+    pub top: Option<GridEdge>,
+    pub bottom: Option<GridEdge>,
     pub contain_label: bool,
 }
 
@@ -258,6 +297,8 @@ pub struct PieConfig {
     pub category_col: String,
     pub value_col: String,
     pub center: (f64, f64),
+    /// 内外半径，**绝对像素**（P2a 起由 api/compat 层以「画布 min/2」为基准折算，
+    /// 见 docs/布局自适应改造计划.md P2a；默认值按基准 100px 折算）
     pub radius: (f64, f64),
     pub label_show: bool,
     pub label_position: LabelPosition,
@@ -489,6 +530,7 @@ pub struct GaugeConfig {
     pub min: f64,
     pub max: f64,
     pub center: (f64, f64),
+    /// 外半径，**绝对像素**（P2a 起由 api/compat 层以「画布 min/2」为基准折算）
     pub radius: f64,
     pub start_angle: f64,
     pub end_angle: f64,

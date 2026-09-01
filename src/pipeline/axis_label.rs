@@ -8,6 +8,130 @@
 
 pub use super::collision::{ROT_45, ROT_90, auto_rotate, label_step, rotated_bounds};
 
+use lievisual::text::{TextAlign, TextBaseline, TextStyle};
+
+use crate::pipeline::{
+    axis_renderer::axis_ticks,
+    types::{AxisSpec, AxisType, ColorContext, ResolvedAxisRanges, TextMeasurer},
+};
+
+/// 应用 formatter 格式化标签文本
+///
+/// 支持 ECharts 风格的 formatter:
+/// - "{value}" - 替换为数值
+/// - "{value} 万人" - 带后缀的模板
+///
+/// 布局阶段（GridPlanner）与渲染阶段（CartesianAxisRenderer）必须使用同一实现，
+/// 否则两侧算出的标签宽度不同，边距预留会与实绘结果错位。
+pub fn format_label(value: &str, formatter: &Option<String>) -> String {
+    let Some(fmt) = formatter else {
+        return value.to_string();
+    };
+    fmt.replace("{value}", value)
+}
+
+/// 轴标签基准样式（渲染时位置已预计算为文本块左上角，故统一使用 Left/Top 对齐）
+///
+/// 同样为布局与渲染两侧共用，保证测量口径一致。
+pub fn label_style(colors: &ColorContext) -> TextStyle {
+    let mut s = TextStyle::new(colors.axis_label_color, 11.0, "sans-serif");
+    s.align = TextAlign::Left;
+    s.baseline = TextBaseline::Top;
+    s
+}
+
+/// 实测一组标签的最大宽/高
+pub fn measure_labels(
+    labels: &[String],
+    measurer: &mut TextMeasurer,
+    colors: &ColorContext,
+) -> (f64, f64) {
+    let style = label_style(colors);
+    let mut max_w: f64 = 0.0;
+    let mut max_h: f64 = 0.0;
+    for label in labels {
+        let (w, h): (f64, f64) = measurer.measure(label, &style);
+        max_w = max_w.max(w);
+        max_h = max_h.max(h);
+    }
+    (max_w, max_h)
+}
+
+/// 布局阶段使用的轴标签文本集合（按轴在 `x_axes` / `y_axes` 中的下标索引）
+///
+/// 由 [`collect_axis_labels`] 在像素布局之前生成，使 `GridPlanner` 能用**真实**
+/// 标签文本测量边距，而不是 `"1234.5"` 之类的占位估算。
+#[derive(Debug, Clone, Default)]
+pub struct AxisLabelSet {
+    pub x: Vec<Vec<String>>,
+    pub y: Vec<Vec<String>>,
+}
+
+impl AxisLabelSet {
+    pub fn x_labels(&self, axis_idx: usize) -> &[String] {
+        self.x.get(axis_idx).map(Vec::as_slice).unwrap_or(&[])
+    }
+
+    pub fn y_labels(&self, axis_idx: usize) -> &[String] {
+        self.y.get(axis_idx).map(Vec::as_slice).unwrap_or(&[])
+    }
+}
+
+/// 在像素布局之前收集每个轴将要显示的标签文本。
+///
+/// 生成规则与 `CartesianAxisRenderer` 完全一致：
+/// - Category 轴：直接取 `axis.categories`
+/// - Value / Time / Log 轴：取 [`axis_ticks`] 的格式化结果
+///
+/// 均经过 [`format_label`] 处理，确保与实绘文本逐字相同。
+pub fn collect_axis_labels(
+    x_axes: &[AxisSpec],
+    y_axes: &[AxisSpec],
+    ranges: &ResolvedAxisRanges,
+) -> AxisLabelSet {
+    let x = x_axes
+        .iter()
+        .enumerate()
+        .map(|(idx, axis)| {
+            let (min, max) = ranges
+                .get_x_range(idx)
+                .map(|r| (r.min, r.max))
+                .unwrap_or((0.0, 1.0));
+            axis_label_texts(axis, min, max)
+        })
+        .collect();
+
+    let y = y_axes
+        .iter()
+        .enumerate()
+        .map(|(idx, axis)| {
+            let (min, max) = ranges
+                .get_y_range(idx)
+                .map(|r| (r.min, r.max))
+                .unwrap_or((0.0, 100.0));
+            axis_label_texts(axis, min, max)
+        })
+        .collect();
+
+    AxisLabelSet { x, y }
+}
+
+/// 单个轴的标签文本（未测量的纯文本阶段产物）
+fn axis_label_texts(axis: &AxisSpec, min: f64, max: f64) -> Vec<String> {
+    if axis.axis_type == AxisType::Category {
+        axis.categories
+            .iter()
+            .map(|l| format_label(l, &axis.label_formatter))
+            .collect()
+    } else {
+        let (_, tick_labels) = axis_ticks(axis.axis_type, min, max);
+        tick_labels
+            .iter()
+            .map(|l| format_label(l, &axis.label_formatter))
+            .collect()
+    }
+}
+
 /// 粗略估计文本渲染尺寸（像素），不依赖字体引擎。
 ///
 /// 全角字符（CJK 等）按 1.0em、半角字符按 0.55em 估算宽度，

@@ -49,10 +49,10 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
         let center_y = bounds.y0 + height * 0.55;
         let center = Point::new(center_x, center_y);
 
-        // 半径取宽高的较小值的一半，再乘以百分比
-        let min_dim = width.min(height);
-        let inner_radius = min_dim * 0.5 * series.radius_inner / 100.0;
-        let outer_radius = min_dim * 0.5 * series.radius_outer / 100.0;
+        // P2a：radius 已在 api/compat 层折算为**绝对像素**（基准 = 画布 min/2），
+        // 不再相对绘图区折算，消除基准不一致（见 docs/布局自适应改造计划.md P2a）。
+        let inner_radius = series.radius_inner;
+        let outer_radius = series.radius_outer;
 
         let mut start_angle = 0.0; // 从 12 点钟方向开始
 

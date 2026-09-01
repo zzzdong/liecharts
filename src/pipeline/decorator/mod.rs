@@ -9,7 +9,9 @@ mod axis_name;
 mod legend;
 mod title;
 
+use legend::LegendLayout;
 pub use axis_name::render_axis_name;
+pub use legend::measure_legend_layout;
 pub use legend::render_legend;
 use lievisual::text::measure_text;
 pub use title::render_title;
@@ -89,8 +91,13 @@ pub fn render_all_decorators(
 /// 估计标题和图例占用的顶部空间高度（像素）
 ///
 /// 在 GridPlanner 之前调用，确保 subplot 的 top margin 足够容纳
-/// 标题和图例，避免重叠。使用 theme 中的字体大小估算，不依赖文本测量。
-pub fn estimate_header_height(spec: &ChartSpec, theme: &Theme) -> f64 {
+/// 标题和图例，避免重叠。
+///
+/// P1 起图例高度按**真实换行行数**计算（与 `render_legend` 共用
+/// `wrap_legend_rows` 分行逻辑与常量）：图例项总宽超出画布时换行，
+/// 行数计入顶部预留，避免图例与绘图区重叠。宽度过小无法度量时
+/// 按单行兜底。
+pub fn estimate_header_height(spec: &ChartSpec, theme: &Theme, width: f64) -> f64 {
     let mut height = 0.0;
 
     // 标题占用
@@ -113,17 +120,34 @@ pub fn estimate_header_height(spec: &ChartSpec, theme: &Theme) -> f64 {
     }
 
     // 图例占用（在标题下方，有 16px 间距）
-    if let Some(legend) = &spec.legend
-        && legend.show
-    {
+    let legend_layout = legend::measure_legend_layout(spec, width as u32, theme)
+        .unwrap_or_else(|| {
+            // 无图例或 auto 单行兜底：保持旧行高估算
+            let legend_style = theme.get_legend_text_style();
+            let has_legend = spec
+                .legend
+                .as_ref()
+                .is_some_and(|l| l.show && !l.data.is_empty());
+            if has_legend {
+                LegendLayout {
+                    rows: 1,
+                    row_height: legend_style.font_size * 1.4 + 16.0,
+                    total_height: legend_style.font_size * 1.4 + 16.0,
+                }
+            } else {
+                LegendLayout {
+                    rows: 0,
+                    row_height: 0.0,
+                    total_height: 0.0,
+                }
+            }
+        });
+
+    if legend_layout.rows > 0 {
         if height > 0.0 {
             height += 16.0; // 标题和图例之间的间距
         }
-
-        let legend_style = theme.get_legend_text_style();
-        // 图例行高：symbol_size + 上下内边距
-        let legend_height = legend_style.font_size * 1.4 + 16.0; // font + vertical padding
-        height += legend_height;
+        height += legend_layout.total_height;
     }
 
     // 最小值为 0，空标题/图例时返回 0

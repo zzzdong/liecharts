@@ -1,5 +1,8 @@
-use crate::pipeline::types::{
-    AxisSpec, AxisType, ChartType, ResolvedAxisRange, ResolvedAxisRanges, SeriesSpec, SubplotSpec,
+use crate::pipeline::{
+    grid_planner::SubplotBinding,
+    types::{
+        AxisSpec, AxisType, ChartType, ResolvedAxisRange, ResolvedAxisRanges, SeriesSpec,
+    },
 };
 
 /// 轴绑定解析器
@@ -23,7 +26,10 @@ impl<'a> AxisBindingResolver<'a> {
     }
 
     /// 解析所有 subplot 的轴绑定关系，输出协调后的轴范围
-    pub fn resolve(&self, specs: &[SubplotSpec]) -> ResolvedAxisRanges {
+    ///
+    /// 只依赖绑定关系（哪个系列/轴属于哪个 subplot），**不依赖 subplot 的像素
+    /// 边界**，因此可在像素布局之前调用（见 docs/布局自适应改造计划.md P0）。
+    pub fn resolve(&self, specs: &[SubplotBinding]) -> ResolvedAxisRanges {
         let mut ranges = Vec::new();
 
         // 处理 x 轴
@@ -129,7 +135,7 @@ impl<'a> AxisBindingResolver<'a> {
     }
 
     /// 收集 X 轴关联的所有 series 数据值
-    fn collect_x_axis_range(&self, axis_idx: usize, specs: &[SubplotSpec]) -> (f64, f64) {
+    fn collect_x_axis_range(&self, axis_idx: usize, specs: &[SubplotBinding]) -> (f64, f64) {
         let grids_with_axis: Vec<usize> = specs
             .iter()
             .filter(|s| s.x_axis_indices.contains(&axis_idx))
@@ -255,7 +261,7 @@ impl<'a> AxisBindingResolver<'a> {
         &self,
         axis_idx: usize,
         series: &SeriesSpec,
-        specs: &[SubplotSpec],
+        specs: &[SubplotBinding],
     ) -> bool {
         let Some(subplot) = specs.iter().find(|s| s.id == series.grid_index) else {
             return false;
@@ -275,7 +281,7 @@ impl<'a> AxisBindingResolver<'a> {
         &self,
         axis_idx: usize,
         series: &SeriesSpec,
-        specs: &[SubplotSpec],
+        specs: &[SubplotBinding],
         axis_subplot_id: Option<usize>,
     ) -> bool {
         if series.y_axis_index == axis_idx {
@@ -298,7 +304,7 @@ impl<'a> AxisBindingResolver<'a> {
     ///
     /// 对于堆叠柱状图，还会计算每个 stack 组内各行的总值，
     /// 确保轴范围足以容纳堆叠后的总高度。
-    fn collect_y_axis_range(&self, axis_idx: usize, specs: &[SubplotSpec]) -> (f64, f64) {
+    fn collect_y_axis_range(&self, axis_idx: usize, specs: &[SubplotBinding]) -> (f64, f64) {
         let mut all_values: Vec<f64> = Vec::new();
 
         // 收集绑定到该轴的所有 series
@@ -639,9 +645,8 @@ mod tests {
         let x_axes = vec![make_axis_spec(AxisType::Value, AxisPosition::Bottom, 0)];
         let y_axes = vec![make_axis_spec(AxisType::Value, AxisPosition::Left, 0)];
 
-        let specs = vec![SubplotSpec {
+        let specs = vec![SubplotBinding {
             id: 0,
-            bounds: Default::default(),
             series_indices: vec![0],
             x_axis_indices: vec![0],
             y_axis_indices: vec![0],
@@ -755,9 +760,8 @@ mod tests {
             make_value_series("销量", 0, 0, vec![120.0, 200.0, 150.0, 80.0, 70.0]),
             make_value_series("增长率", 0, 1, vec![10.0, 20.0, 15.0, 8.0, 7.0]),
         ];
-        let specs = vec![SubplotSpec {
+        let specs = vec![SubplotBinding {
             id: 0,
-            bounds: Default::default(),
             series_indices: vec![0, 1],
             x_axis_indices: vec![0],
             y_axis_indices: vec![0, 1],

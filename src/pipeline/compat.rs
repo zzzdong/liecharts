@@ -32,16 +32,16 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         .grid
         .iter()
         .map(|g| {
-            let left = g.left.as_ref().map(|p| resolve_position_option(p, total_w));
+            let left = g.left.as_ref().map(|p| position_option_to_edge(p, total_w));
             let right = g
                 .right
                 .as_ref()
-                .map(|p| resolve_position_option(p, total_w));
-            let top = g.top.as_ref().map(|p| resolve_position_option(p, total_h));
+                .map(|p| position_option_to_edge(p, total_w));
+            let top = g.top.as_ref().map(|p| position_option_to_edge(p, total_h));
             let bottom = g
                 .bottom
                 .as_ref()
-                .map(|p| resolve_position_option(p, total_h));
+                .map(|p| position_option_to_edge(p, total_h));
             GridSpec {
                 left,
                 right,
@@ -65,10 +65,10 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
     });
     let grids = if grids.is_empty() && has_cartesian_series {
         vec![GridSpec {
-            left: Some(60.0),
-            right: Some(60.0),
-            top: Some(60.0),
-            bottom: Some(60.0),
+            left: Some(crate::pipeline::types::GridEdge::Px(60.0)),
+            right: Some(crate::pipeline::types::GridEdge::Px(60.0)),
+            top: Some(crate::pipeline::types::GridEdge::Px(60.0)),
+            bottom: Some(crate::pipeline::types::GridEdge::Px(60.0)),
             contain_label: false,
         }]
     } else {
@@ -502,7 +502,12 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             }
                         })
                         .unwrap_or((50.0, 50.0));
+                    // P2a：radius 百分比折算为绝对像素（基准 = 画布 min/2）
                     let radius = parse_pie_radius(ps.radius.as_ref()).unwrap_or((0.0, 75.0));
+                    let radius = (
+                        radius_percent_to_abs_px(radius.0, width, height),
+                        radius_percent_to_abs_px(radius.1, width, height),
+                    );
                     let config = PieConfig {
                         category_col: "name".into(),
                         value_col: "value".into(),
@@ -883,7 +888,12 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 SeriesOption::Gauge(gs) => {
                     let data = gauge_datapoints_to_dataframe(&gs.data, "value");
                     let (center_x, center_y) = parse_gauge_center(gs.center.as_deref());
-                    let radius = parse_gauge_radius(gs.radius.as_ref()).unwrap_or(75.0);
+                    // P2a：radius 百分比折算为绝对像素（基准 = 画布 min/2）
+                    let radius = radius_percent_to_abs_px(
+                        parse_gauge_radius(gs.radius.as_ref()).unwrap_or(75.0),
+                        width,
+                        height,
+                    );
                     let config = crate::pipeline::types::GaugeConfig {
                         value_col: "value".into(),
                         min: gs.min.unwrap_or(0.0),
@@ -983,6 +993,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         background: Color::rgb(255, 255, 255),
         palette: vec![],
         theme_name: None,
+        fit_mode: crate::pipeline::types::FitMode::Fixed,
     }
 }
 
@@ -1046,6 +1057,13 @@ fn parse_gauge_center(center: Option<&[option::LenientNumber]>) -> (f64, f64) {
     let x = radius_num_to_percent(&c[0]).unwrap_or(50.0);
     let y = radius_num_to_percent(&c[1]).unwrap_or(50.0);
     (x, y)
+}
+
+/// P2a：把百分比半径折算为绝对像素（基准 = 画布 min/2）。
+///
+/// 与 `api::Chart` 的 `size_to_abs_px` 语义一致：pipeline 只消费绝对像素。
+fn radius_percent_to_abs_px(v: f64, width: u32, height: u32) -> f64 {
+    (width.min(height) as f64 * 0.5) * v / 100.0
 }
 
 /// 解析 gauge `radius` 配置（单值或数组），返回百分比外半径，默认 75。
@@ -1195,17 +1213,26 @@ fn resolve_visual_map(
     (min, max, colors)
 }
 
-/// 将 PositionOption 解析为像素值
-fn resolve_position_option(pos: &PositionOption, total: f64) -> f64 {
+/// 将 PositionOption 转换为可延迟解析的 [`GridEdge`]（P2b）。
+///
+/// 与旧的 [`resolve_position_option`] 结果语义一致，但 `Percent` 保留比例
+/// 由 `GridPlanner` 在布局阶段解析（画布变化时随比例缩放）。
+fn position_option_to_edge(pos: &PositionOption, total: f64) -> crate::pipeline::types::GridEdge {
     match pos {
-        PositionOption::Pixel(v) => *v,
-        PositionOption::Percent(p) => total * p / 100.0,
-        PositionOption::Preset(PositionPreset::Auto) => total * 0.1,
-        PositionOption::Preset(PositionPreset::Center) => total / 2.0,
+        PositionOption::Pixel(v) => crate::pipeline::types::GridEdge::Px(*v),
+        PositionOption::Percent(p) => crate::pipeline::types::GridEdge::Pct(*p),
+        PositionOption::Preset(PositionPreset::Auto) => {
+            crate::pipeline::types::GridEdge::Pct(10.0) // 旧行为 = total*0.1
+        }
+        PositionOption::Preset(PositionPreset::Center) => {
+            crate::pipeline::types::GridEdge::Pct(50.0)
+        }
         PositionOption::Preset(PositionPreset::Left)
-        | PositionOption::Preset(PositionPreset::Top) => 0.0,
+        | PositionOption::Preset(PositionPreset::Top) => {
+            crate::pipeline::types::GridEdge::Px(0.0)
+        }
         PositionOption::Preset(PositionPreset::Right)
-        | PositionOption::Preset(PositionPreset::Bottom) => total,
+        | PositionOption::Preset(PositionPreset::Bottom) => crate::pipeline::types::GridEdge::Px(total),
     }
 }
 

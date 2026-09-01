@@ -12,33 +12,15 @@ use vello_cpu::kurbo::{Point, Rect};
 
 use super::axis_ticks;
 use crate::pipeline::{
-    axis_label::{auto_rotate, label_step, rotated_bounds},
+    axis_label::{
+        auto_rotate, format_label, label_step, label_style, measure_labels, rotated_bounds,
+    },
     builder::{Z_AXIS, Z_GRID, Z_LABEL, text_el},
     types::{
         AxisPosition, AxisSpec, AxisType, ColorContext, ResolvedAxisRanges, SubplotSpec,
         TextMeasurer,
     },
 };
-
-/// 应用 formatter 格式化标签文本
-///
-/// 支持 ECharts 风格的 formatter:
-/// - "{value}" - 替换为数值
-/// - "{value} 万人" - 带后缀的模板
-fn format_label(value: &str, formatter: &Option<String>) -> String {
-    let Some(fmt) = formatter else {
-        return value.to_string();
-    };
-    fmt.replace("{value}", value)
-}
-
-/// 轴标签基准样式（渲染时位置已预计算为文本块左上角，故统一使用 Left/Top 对齐）
-fn label_style(colors: &ColorContext) -> TextStyle {
-    let mut s = TextStyle::new(colors.axis_label_color, 11.0, "sans-serif");
-    s.align = TextAlign::Left;
-    s.baseline = TextBaseline::Top;
-    s
-}
 
 /// 计算 X/Y 轴标签的旋转角度（弧度）与抽稀步长。
 ///
@@ -73,23 +55,6 @@ fn choose_y_label_layout(
     let rotation = user_rotate_deg.map(|deg| deg.to_radians()).unwrap_or(0.0);
     let (_, projected_h) = rotated_bounds(max_w, max_h, rotation);
     (rotation, label_step(projected_h, slot_h))
-}
-
-/// 实测所有标签的最大宽/高
-fn measure_labels(
-    labels: &[String],
-    measurer: &mut TextMeasurer,
-    colors: &ColorContext,
-) -> (f64, f64) {
-    let style = label_style(colors);
-    let mut max_w: f64 = 0.0;
-    let mut max_h: f64 = 0.0;
-    for label in labels {
-        let (w, h): (f64, f64) = measurer.measure(label, &style);
-        max_w = max_w.max(w);
-        max_h = max_h.max(h);
-    }
-    (max_w, max_h)
 }
 
 /// 生成单个 X 轴标签。
