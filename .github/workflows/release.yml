@@ -26,7 +26,7 @@ jobs:
     name: Build x86_64 Linux (gnu)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -58,7 +58,7 @@ jobs:
           readelf -W --version-info "$BIN" | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1
           nm -D --undefined-only "$BIN" 2>/dev/null | grep -E 'Fc[A-Z].*@FONTCCONFIG_2\.(1[1-9]|[2-9][0-9])' && exit 1 || echo "fontconfig symbols OK"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ github.event.inputs.upload_artifacts != 'false' }}
         with:
           name: ${{ env.BINARY_NAME }}-x86_64-linux-gnu
@@ -69,7 +69,7 @@ jobs:
     name: Build aarch64 Linux (gnu)
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -101,7 +101,7 @@ jobs:
           readelf -W --version-info "$BIN" | grep -o 'GLIBC_[0-9.]*' | sort -Vu | tail -1
           nm -D --undefined-only "$BIN" 2>/dev/null | grep -E 'Fc[A-Z].*@FONTCCONFIG_2\.(1[1-9]|[2-9][0-9])' && exit 1 || echo "fontconfig symbols OK"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ github.event.inputs.upload_artifacts != 'false' }}
         with:
           name: ${{ env.BINARY_NAME }}-aarch64-linux-gnu
@@ -112,7 +112,7 @@ jobs:
     name: Build x86_64 Windows (MSVC)
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -142,7 +142,7 @@ jobs:
             exit 1
           }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ github.event.inputs.upload_artifacts != 'false' }}
         with:
           name: ${{ env.BINARY_NAME }}-x86_64-windows-msvc
@@ -162,10 +162,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -194,7 +194,7 @@ jobs:
           cat sha256.txt
 
       - name: Publish GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/*.tar.gz
