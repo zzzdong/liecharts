@@ -1,10 +1,9 @@
 [package]
 name = "liecharts"
-version = "0.2.0-beta.1"
+version = "0.2.0"
 authors = ["zzzdong <kuwater@163.com>"]
 edition = "2024"
 rust-version = "1.92"
-
 description = "A Rust charting library with PNG and SVG rendering support"
 documentation = "https://docs.rs/liecharts"
 readme = "README.md"
@@ -18,13 +17,13 @@ exclude = ["site/", "examples/", "svg_output/", ".github/", "*.png", "*.svg"]
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
-vello_cpu = "0.2"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+lievisual = "0.2"
 parley = "0.11.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 thiserror = "2.0"
-lievisual = "=0.2.0-beta.2"
+vello_cpu = "0.2"
 
 [[bin]]
 name = "liecharts-cli"
