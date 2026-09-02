@@ -15,6 +15,11 @@ use crate::{
     },
 };
 
+/// 柱外标签与柱体值端的间距（px）
+const LABEL_OUTSIDE_GAP: f64 = 5.0;
+/// 柱内标签与柱体值端的内边距（px）
+const LABEL_INSIDE_PADDING: f64 = 5.0;
+
 pub struct BarBuilder;
 
 impl SeriesBuilder<BarSeries> for BarBuilder {
@@ -42,39 +47,30 @@ impl SeriesBuilder<BarSeries> for BarBuilder {
                     },
                     &format_value(bar.value),
                 );
-                let bar_height = bar.rect.height();
-                // 高柱子（>25px）：内部顶部，白色文字
-                // 矮柱子（≤25px）：外部上方，柱子同色文字
-                let (x, y, label_color, va) = if bar_height > 25.0 {
-                    let y = if label_cfg.position == SeriesLabelPosition::Top
-                        && (bar.value >= 0.0 || (bar.value < 0.0 && bar_height > 25.0))
-                    {
-                        // Inside top: 4px from top of bar
-                        bar.rect.y0 + 14.0
-                    } else {
-                        // Inside middle
-                        bar.rect.y0 + bar.rect.height() / 2.0
-                    };
-                    let va = if label_cfg.position == SeriesLabelPosition::Top {
-                        TextBaseline::Top
-                    } else {
-                        TextBaseline::Middle
-                    };
-                    (
-                        bar.rect.x0 + bar.rect.width() / 2.0,
-                        y,
-                        Color::rgb(255, 255, 255),
-                        va,
-                    )
-                } else {
-                    // 外部上方，柱子同色文字
-                    (
-                        bar.rect.x0 + bar.rect.width() / 2.0,
-                        bar.rect.y0 - 4.0,
-                        series.color,
-                        TextBaseline::Bottom,
-                    )
+                let x = bar.rect.x0 + bar.rect.width() / 2.0;
+                // 负值柱的“值端”在下方（rect.y1），正值柱在上方（rect.y0）
+                let negative = bar.value < 0.0;
+
+                // Top/Bottom = 值端外侧（柱外），Inside = 值端内侧（柱内）
+                // 柱内放不下时（高度不足）自动回退到外侧，避免文字溢出柱体
+                let inside = label_cfg.position == SeriesLabelPosition::Inside
+                    && bar.rect.height() >= label_cfg.font_size + LABEL_INSIDE_PADDING * 2.0;
+
+                let (y, va) = match (inside, negative) {
+                    // 柱内：贴值端内侧
+                    (true, false) => (bar.rect.y0 + LABEL_INSIDE_PADDING, TextBaseline::Top),
+                    (true, true) => (bar.rect.y1 - LABEL_INSIDE_PADDING, TextBaseline::Bottom),
+                    // 柱外：贴值端外侧
+                    (false, false) => (bar.rect.y0 - LABEL_OUTSIDE_GAP, TextBaseline::Bottom),
+                    (false, true) => (bar.rect.y1 + LABEL_OUTSIDE_GAP, TextBaseline::Top),
                 };
+
+                // 颜色优先取用户配置；否则柱内用白字、柱外跟随系列色（对齐 ECharts 默认观感）
+                let label_color = label_cfg.color.unwrap_or(if inside {
+                    Color::rgb(255, 255, 255)
+                } else {
+                    series.color
+                });
 
                 let mut style = TextStyle::new(label_color, label_cfg.font_size, "sans-serif");
                 style.align = TextAlign::Center;

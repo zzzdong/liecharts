@@ -55,12 +55,6 @@ pub enum GridEdge {
     Pct(f64),
 }
 
-impl From<f64> for GridEdge {
-    fn from(v: f64) -> Self {
-        GridEdge::Px(v)
-    }
-}
-
 /// P2b 起边距保留原始语义（百分比 / 像素），由 `GridPlanner` 在布局阶段解析
 #[derive(Debug, Clone)]
 pub struct GridSpec {
@@ -235,8 +229,24 @@ pub struct LineConfig {
     pub label_font_size: f64,
     /// 值标签模板（支持 `{a}`/`{b}`/`{c}`/`{value}`）
     pub label_formatter: Option<String>,
+    /// 值标签位置（None = Top，ECharts 默认）
+    pub label_position: Option<ValueLabelPos>,
+    /// 值标签颜色（None = 跟随系列色，ECharts 默认）
+    pub label_color: Option<Color>,
     /// 标注线配置
     pub mark_line: Vec<MarkLineSpec>,
+}
+
+/// 笛卡尔系列（line/bar）的值标签位置（ECharts label.position 子集）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ValueLabelPos {
+    /// 数据点/柱顶外侧（默认）
+    #[default]
+    Top,
+    /// 数据点下方（折线）
+    Bottom,
+    /// 柱内（柱状图：内顶部白字；折线图回退 Top）
+    Inside,
 }
 
 impl Default for LineConfig {
@@ -255,6 +265,8 @@ impl Default for LineConfig {
             label_show: false,
             label_font_size: 12.0,
             label_formatter: None,
+            label_position: None,
+            label_color: None,
             mark_line: Vec::new(),
         }
     }
@@ -272,6 +284,10 @@ pub struct BarConfig {
     pub label_font_size: f64,
     /// 值标签模板（支持 `{a}`/`{b}`/`{c}`/`{value}`）
     pub label_formatter: Option<String>,
+    /// 值标签位置（None = Top，ECharts 默认；柱状图 Top = 值端外侧）
+    pub label_position: Option<ValueLabelPos>,
+    /// 值标签颜色（None = Top 跟随系列色 / Inside 白字，ECharts 默认）
+    pub label_color: Option<Color>,
     /// 标注线配置
     pub mark_line: Vec<MarkLineSpec>,
 }
@@ -285,6 +301,8 @@ impl Default for BarConfig {
             label_show: false,
             label_font_size: 12.0,
             label_formatter: None,
+            label_position: None,
+            label_color: None,
             mark_line: Vec::new(),
         }
     }
@@ -298,7 +316,11 @@ pub struct PieConfig {
     pub value_col: String,
     pub center: (f64, f64),
     /// 内外半径，**绝对像素**（P2a 起由 api/compat 层以「画布 min/2」为基准折算，
-    /// 见 docs/布局自适应改造计划.md P2a；默认值按基准 100px 折算）
+    /// 见 docs/布局自适应改造计划.md P2a）。
+    ///
+    /// 渲染前会经 `builder::resolve_radius` 收口：`> 0` 时再 clamp 到绘图区内接
+    /// 半径（防止多 subplot / 紧边距越界）；`<= 0` 表示**未指定**，按内接半径
+    /// 自适应（内径 0、外径 75%，见 docs 同篇 P5）。
     pub radius: (f64, f64),
     pub label_show: bool,
     pub label_position: LabelPosition,
@@ -319,7 +341,9 @@ impl Default for PieConfig {
             category_col: "category".into(),
             value_col: "value".into(),
             center: (50.0, 50.0),
-            radius: (0.0, 75.0),
+            // <=0 = 未指定 → 渲染时按绘图区内接半径自适应（内 0 / 外 75%）；
+            // 直接构造 `ChartSpec` 时不会退化成固定 75px 的小饼
+            radius: (0.0, 0.0),
             label_show: false,
             label_position: LabelPosition::Outside,
             label_font_size: 12.0,
@@ -530,7 +554,10 @@ pub struct GaugeConfig {
     pub min: f64,
     pub max: f64,
     pub center: (f64, f64),
-    /// 外半径，**绝对像素**（P2a 起由 api/compat 层以「画布 min/2」为基准折算）
+    /// 外半径，**绝对像素**（P2a 起由 api/compat 层以「画布 min/2」为基准折算）。
+    ///
+    /// 渲染前经 `builder::resolve_radius` 收口：`<= 0` 表示未指定，按绘图区
+    /// 内接半径的 75% 自适应（见 docs/布局自适应改造计划.md P5）。
     pub radius: f64,
     pub start_angle: f64,
     pub end_angle: f64,
@@ -544,7 +571,8 @@ impl Default for GaugeConfig {
             min: 0.0,
             max: 100.0,
             center: (50.0, 75.0),
-            radius: 75.0,
+            // <=0 = 未指定 → 渲染时按绘图区内接半径的 75% 自适应
+            radius: 0.0,
             start_angle: -225.0,
             end_angle: 45.0,
             split_number: 10,

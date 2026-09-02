@@ -75,6 +75,61 @@ pub fn group(children: Vec<SceneNode>, z: i32) -> SceneNode {
     SceneNode::group(children).with_z(z)
 }
 
+/// 解析极坐标类（饼图/仪表盘）半径为实际像素
+///
+/// P2a 起 `radius` 为**绝对像素**（api/compat 层以「画布 min/2」为基准折算）。
+/// 本函数是 pipeline 侧的统一收口：
+/// - `radius > 0`：折算好的绝对像素，再 clamp 到**绘图区内接半径**，避免
+///   多 subplot / 紧边距下图形越出 subplot 甚至画布（见 docs/布局自适应改造计划.md P5）。
+/// - `radius <= 0`：未指定（如 `PieConfig::default()`）→ 按绘图区内接半径的
+///   `default_pct` 自适应，避免 Default 值被当成固定像素画出小图。
+pub(crate) fn resolve_radius(
+    radius: f64,
+    bounds_width: f64,
+    bounds_height: f64,
+    default_pct: f64,
+) -> f64 {
+    let max_radius = bounds_width.min(bounds_height) * 0.5;
+    if radius > 0.0 {
+        radius.min(max_radius)
+    } else {
+        max_radius * default_pct / 100.0
+    }
+}
+
+/// 解析饼图（内， 外）半径对（单径语义见 [`resolve_radius`]）。
+///
+/// 外径被 clamp 时，内径按**同一比例**缩放：若内外径各自独立 clamp，
+/// 环形图（inner > 0）会出现 `inner == outer` 的零宽圆环，视觉退化为实心圆。
+/// 例：`radius=["40%","75%"]` 在紧边距下 inner 200→75、outer 375→75；
+/// 比例传导后 inner = 200 × (75/375) = 40。
+pub(crate) fn resolve_pie_radii(
+    radius_inner: f64,
+    radius_outer: f64,
+    bounds_width: f64,
+    bounds_height: f64,
+    default_outer_pct: f64,
+) -> (f64, f64) {
+    let outer = resolve_radius(radius_outer, bounds_width, bounds_height, default_outer_pct);
+    let inner = if radius_inner > 0.0 {
+        // clamp 比例 = clamp 后外径 / 原始外径；外径未指定时以自适应值为基准
+        let raw_outer = if radius_outer > 0.0 {
+            radius_outer
+        } else {
+            bounds_width.min(bounds_height) * 0.5 * default_outer_pct / 100.0
+        };
+        let scale = if raw_outer > 0.0 {
+            (outer / raw_outer).min(1.0)
+        } else {
+            1.0
+        };
+        (radius_inner * scale).min(outer)
+    } else {
+        0.0
+    };
+    (inner, outer)
+}
+
 /// `Color` 的 CSS 十六进制解析扩展（lievisual 仅提供 `to_hex`）。
 pub trait ColorExt: Sized {
     fn from_hex(hex: &str) -> Option<Self>;
@@ -258,5 +313,43 @@ pub fn render_mark_lines(
             })
             .with_z(Z_SERIES_LABEL + 2),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_pie_radii, resolve_radius};
+
+    #[test]
+    fn resolve_radius_clamps_to_plot_area() {
+        // P5：绝对像素半径超出绘图区内接半径时（多 subplot / 紧边距）必须被 clamp
+        let max = 100.0f64; // min(200, 400) / 2
+        assert_eq!(resolve_radius(250.0, 200.0, 400.0, 75.0), max);
+        // 未超出时保持原值（P2a 的画布基准语义不变）
+        assert_eq!(resolve_radius(60.0, 200.0, 400.0, 75.0), 60.0);
+    }
+
+    #[test]
+    fn resolve_radius_falls_back_when_unspecified() {
+        // <=0 视为未指定：按内接半径的 default_pct 自适应
+        // （`PieConfig::default()` 的 radius 现在是 (0.0, 0.0)）
+        assert_eq!(resolve_radius(0.0, 200.0, 400.0, 75.0), 75.0);
+        assert_eq!(resolve_radius(-1.0, 200.0, 400.0, 0.0), 0.0);
+    }
+
+    #[test]
+    fn resolve_pie_radii_scales_inner_with_clamped_outer() {
+        // 外径 375 被 clamp 到 75（比例 0.2）：内径 200 应同比例缩到 40，
+        // 而非独立 clamp 成 75（零宽圆环 → 环形图退化为实心圆）
+        let (inner, outer) = resolve_pie_radii(200.0, 375.0, 150.0, 150.0, 75.0);
+        assert!((outer - 75.0).abs() < 1e-9);
+        assert!(
+            (inner - 40.0).abs() < 1e-9,
+            "inner 应为 200×(75/375)=40，实际 {inner}"
+        );
+        // 未触发 clamp 时内外径保持原值
+        let (inner, outer) = resolve_pie_radii(200.0, 300.0, 1000.0, 1000.0, 75.0);
+        assert!((outer - 300.0).abs() < 1e-9);
+        assert!((inner - 200.0).abs() < 1e-9);
     }
 }

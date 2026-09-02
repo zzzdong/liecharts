@@ -135,7 +135,12 @@ fn axis_label_texts(axis: &AxisSpec, min: f64, max: f64) -> Vec<String> {
 /// 粗略估计文本渲染尺寸（像素），不依赖字体引擎。
 ///
 /// 全角字符（CJK 等）按 1.0em、半角字符按 0.55em 估算宽度，
-/// 高度按 1.2em 估算。用于 GridPlanner 在布局阶段预留坐标轴标签空间。
+/// 高度按 1.2em 估算。
+///
+/// ⚠️ 仅供**无 `TextMeasurer` 的场景**（如 pie builder 的标签排版）做粗估。
+/// 布局阶段（`GridPlanner`）与轴渲染阶段必须走 [`measure_labels`] 的真实测量
+/// —— P0 已将 planner 从本函数切走，正是为了消除两侧的测量双轨
+/// （见 docs/布局自适应改造计划.md P0）。禁止在边距预留中重新引入本函数。
 pub fn estimate_text_size(text: &str, font_size: f64) -> (f64, f64) {
     let mut width = 0.0;
     for ch in text.chars() {

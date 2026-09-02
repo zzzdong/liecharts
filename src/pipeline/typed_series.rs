@@ -392,17 +392,21 @@ pub enum SymbolType {
 pub struct SeriesLabelConfig {
     pub show: bool,
     pub position: SeriesLabelPosition,
-    pub color: Color,
+    /// 标签颜色。`None` = 跟随语义默认（外侧跟随系列色 / 柱内白字），对齐 ECharts。
+    pub color: Option<Color>,
     pub font_size: f64,
     /// 标签模板（支持 `{a}`/`{b}`/`{c}`/`{d}`/`{value}`），None 时显示数值
     pub formatter: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum SeriesLabelPosition {
-    /// 在柱子上方 / 折线点上方
+    /// 值端外侧：柱顶（负值柱底）外侧 / 折线点上方
+    #[default]
     Top,
-    /// 在柱子内部
+    /// 值端内侧下方：折线点下方（柱状图回退为 Top）
+    Bottom,
+    /// 在柱子内部（折线图回退为 Top）
     Inside,
 }
 

@@ -111,6 +111,12 @@ pub struct PlanOutput {
     pub demands: Vec<SubplotDemand>,
 }
 
+/// 绘图区顶部的最小留白（像素）。
+///
+/// `default_bounds` 与 `resolve_position` 必须共用此下限：Hug 迭代写回默认
+/// `GridSpec` 时会从前者切到后者，口径不一致会让绘图区在两轮之间跳动。
+const HEADER_MIN_TOP: f64 = 40.0;
+
 /// 纯数学画布切分器
 ///
 /// 职责分两阶段：
@@ -158,9 +164,7 @@ impl<'a> GridPlanner<'a> {
 
         for (series_idx, series) in series.iter().enumerate() {
             if series.grid_index < bindings.len() {
-                bindings[series.grid_index]
-                    .series_indices
-                    .push(series_idx);
+                bindings[series.grid_index].series_indices.push(series_idx);
             }
         }
         for (axis_idx, axis) in x_axes.iter().enumerate() {
@@ -217,15 +221,7 @@ impl<'a> GridPlanner<'a> {
 
         // 根据坐标轴标签的**实测**占用空间自适应调整 subplot 边界，
         // 避免密集/长文本标签（尤其旋转后）超出画布或被截断。
-        let mut demands = self.adjust_label_margins(
-            &mut specs,
-            input.x_axes,
-            input.y_axes,
-            input.labels,
-            input.colors,
-            input.fit_mode,
-            measurer,
-        );
+        let mut demands = self.adjust_label_margins(&mut specs, input, measurer);
 
         // Fixed 语义：画布不可变，需求恒零（调用方不消费）
         if input.fit_mode == FitMode::Fixed {
@@ -249,27 +245,26 @@ impl<'a> GridPlanner<'a> {
     fn adjust_label_margins(
         &self,
         specs: &mut [SubplotSpec],
-        x_axes: &[AxisSpec],
-        y_axes: &[AxisSpec],
-        labels: &AxisLabelSet,
-        colors: &ColorContext,
-        fit_mode: FitMode,
+        input: &LayoutInput<'_>,
         measurer: &mut TextMeasurer,
     ) -> Vec<SubplotDemand> {
+        let x_axes = input.x_axes;
+        let y_axes = input.y_axes;
+        let labels = input.labels;
+        let colors = input.colors;
+
         const X_LABEL_GAP: f64 = 14.0; // 锚点距坐标轴的距离
         const Y_LABEL_GAP: f64 = 8.0; // 锚点距坐标轴的距离
         const LABEL_PAD: f64 = 4.0; // 额外安全边距
         const MIN_PLOT_W: f64 = 50.0;
         const MIN_PLOT_H: f64 = 40.0;
-        let hug = matches!(fit_mode, FitMode::Hug | FitMode::HugMax);
+        let hug = matches!(input.fit_mode, FitMode::Hug | FitMode::HugMax);
 
         let total_w = self.total_width as f64;
         let total_h = self.total_height as f64;
 
-        let mut demands: Vec<SubplotDemand> = specs
-            .iter()
-            .map(|_| SubplotDemand::default())
-            .collect();
+        let mut demands: Vec<SubplotDemand> =
+            specs.iter().map(|_| SubplotDemand::default()).collect();
 
         for (si, spec) in specs.iter_mut().enumerate() {
             let demand = &mut demands[si];
@@ -308,9 +303,11 @@ impl<'a> GridPlanner<'a> {
                     let current_width = spec.bounds.width();
                     if needed_width > current_width {
                         let grow = needed_width - current_width;
-                        // 只加宽画布、保持边距不变（grid_* 不写回）
-                        demand.grow_left += grow * 0.5;
-                        demand.grow_right += grow * 0.5;
+                        // 只加宽画布、保持边距不变（grid_* 不写回）。
+                        // 同一 subplot 的多个 X 轴共享同一绘图区宽度，需求相同
+                        // → 取 max 而非累加，避免双 X 轴时画布被过度加宽。
+                        demand.grow_left = demand.grow_left.max(grow * 0.5);
+                        demand.grow_right = demand.grow_right.max(grow * 0.5);
                     }
                 }
 
@@ -362,18 +359,17 @@ impl<'a> GridPlanner<'a> {
                 // P3：Hug 下 Y 轴 category 标签过多导致抽稀（label_step > 1）
                 // 时，加高画布保持全部标签可见（信息零损失）。用户显式
                 // label_rotate 时可能是有意纵向排布，不干预。
-                if hug
-                    && axis.label_rotate.is_none()
-                    && axis.axis_type == AxisType::Category
-                {
+                if hug && axis.label_rotate.is_none() && axis.axis_type == AxisType::Category {
                     let n = axis_labels.len();
                     if n > 0 {
                         let needed_height = n as f64 * max_h;
                         let current_height = spec.bounds.height();
                         if needed_height > current_height {
+                            // 同 X 轴：同一 subplot 的多个 Y 轴共享绘图区高度，
+                            // 取 max 而非累加，避免双 Y 轴时画布被过度加高。
                             let grow = needed_height - current_height;
-                            demand.grow_top += grow * 0.5;
-                            demand.grow_bottom += grow * 0.5;
+                            demand.grow_top = demand.grow_top.max(grow * 0.5);
+                            demand.grow_bottom = demand.grow_bottom.max(grow * 0.5);
                         }
                     }
                 }
@@ -433,12 +429,13 @@ impl<'a> GridPlanner<'a> {
     /// 无 grid 配置时的默认区域
     ///
     /// left/right/bottom: 留 60px 边距供轴标签和名称使用
-    /// top: 使用 header_height（若无标题/图例则回退 60px）
+    /// top: 使用 header_height（下限 40px，与 [`Self::resolve_position`] 一致，
+    ///      避免 Hug 迭代过程中因补写默认 `GridSpec` 导致绘图区上下跳动）
     fn default_bounds(&self) -> Rect {
         let total_w = self.total_width as f64;
         let total_h = self.total_height as f64;
         let margin = 60.0;
-        let top = self.header_height.max(margin);
+        let top = self.header_height.max(HEADER_MIN_TOP);
         Rect::new(margin, top, total_w - margin, total_h - margin)
     }
 
@@ -470,7 +467,10 @@ impl<'a> GridPlanner<'a> {
 
         let left = resolve_edge(grid.left, default_left, total_w);
         let right = resolve_edge(grid.right, default_right, total_w);
-        let top = resolve_edge(grid.top, self.header_height.max(40.0), total_h);
+        // 顶部默认 = `header_height`（下限 [`HEADER_MIN_TOP`]）。注意这是绝大多数
+        // 图表的实际路径（`Chart` 未显式设 grid 时 `to_chart_spec` 会造一个四边全
+        // None 的 `GridSpec`），改动它会影响大量既有输出。
+        let top = resolve_edge(grid.top, self.header_height.max(HEADER_MIN_TOP), total_h);
         let bottom = resolve_edge(grid.bottom, default_bottom, total_h);
 
         let width = (total_w - left - right).max(0.0);
@@ -601,7 +601,10 @@ mod tests {
         let GridEdge::Px(target_x0) = d.grid_left.expect("左侧应有目标边距") else {
             panic!("Hug 目标边距应为绝对像素");
         };
-        assert!(target_x0 > 60.0, "目标左边距应大于默认 60，实际 {target_x0}");
+        assert!(
+            target_x0 > 60.0,
+            "目标左边距应大于默认 60，实际 {target_x0}"
+        );
         assert!(
             (d.grow_left - (target_x0 - 60.0)).abs() < 1e-6,
             "grow_left 应等于目标边距与默认边距之差"
@@ -681,8 +684,10 @@ mod tests {
         let specs = plan(&planner, &[], &[], &[]);
 
         let s = &specs[0];
-        // top 回退到 60.0（因为 0.0 < margin 60.0）
-        assert!(s.bounds.y0 >= 60.0);
+        // top 回退到 HEADER_MIN_TOP：`default_bounds` 与 `resolve_position` 共用
+        // 同一下限，保证 Hug 写回默认 GridSpec 后（切到 resolve_position 路径）
+        // 绘图区不发生上下跳动。历史值 60 会破坏 resolve_position 的既有输出。
+        assert!((s.bounds.y0 - HEADER_MIN_TOP).abs() < 1e-6);
     }
 
     #[test]

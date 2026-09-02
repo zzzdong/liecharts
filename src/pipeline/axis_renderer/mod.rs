@@ -10,8 +10,8 @@
 use crate::{
     SceneNode,
     pipeline::types::{
-        AxisSpec, ChartType, ColorContext, ResolvedAxisRanges, SeriesSpec, SubplotSpec,
-        TextMeasurer,
+        AxisSpec, ChartType, ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec,
+        SubplotSpec, TextMeasurer,
     },
 };
 
@@ -247,9 +247,18 @@ pub fn render_axes(
 
     // 雷达图坐标轴
     if has_radar {
-        // 雷达指示器从雷达系列的 config 中获取
-        // 框架内目前不渲染雷达图专用网格，但保留调度入口
-        elements.extend(RadarAxisRenderer::render(subplot, &[], colors));
+        // 维度数取第一个雷达系列的指示器配置（与数据多边形、指示器标签同源）。
+        // 历史坑：曾传空数组给 `RadarAxisRenderer`，`max(3)` 兜底使网格
+        // 退化为三角形而数据是 N 边形（见 tests/radar_grid_test.rs）。
+        let indicator_count = series
+            .iter()
+            .find(|s| s.chart_type() == ChartType::Radar)
+            .and_then(|s| match &s.config {
+                SeriesConfig::Radar(c) => Some(c.indicators.len()),
+                _ => None,
+            })
+            .unwrap_or(0);
+        elements.extend(RadarAxisRenderer::render(subplot, indicator_count));
     }
 
     // 极坐标轴

@@ -140,17 +140,7 @@ impl SeriesMaterializer for LineMaterializer {
             values,
             baseline_y,
             baseline_points: None,
-            label: if cfg.label_show {
-                Some(crate::pipeline::typed_series::SeriesLabelConfig {
-                    show: true,
-                    position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
-                    color: Color::rgb(60, 60, 65),
-                    font_size: cfg.label_font_size,
-                    formatter: cfg.label_formatter.clone(),
-                })
-            } else {
-                None
-            },
+            label: crate::pipeline::materializer::line_label_config(cfg),
             mark_lines,
         }))
     }

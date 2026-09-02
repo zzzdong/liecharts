@@ -1,7 +1,10 @@
 use crate::{
     Color,
     api::Size,
-    pipeline::{dataframe::DataFrame, types::LabelPosition},
+    pipeline::{
+        dataframe::DataFrame,
+        types::{LabelPosition, ValueLabelPos},
+    },
 };
 
 // ── StepType ──
@@ -100,6 +103,12 @@ pub struct Line {
     pub sampling: Option<Sampling>,
     pub label_show: bool,
     pub label_font_size: f64,
+    /// 值标签位置，None = Top（数据点上方）
+    pub label_position: Option<ValueLabelPos>,
+    /// 值标签颜色，None = 跟随系列色
+    pub label_color: Option<Color>,
+    /// 值标签模板（`{a}`/`{b}`/`{c}`），None = 直接显示数值
+    pub label_formatter: Option<String>,
 }
 
 impl Line {
@@ -121,6 +130,9 @@ impl Line {
             sampling: None,
             label_show: false,
             label_font_size: 12.0,
+            label_position: None,
+            label_color: None,
+            label_formatter: None,
         }
     }
     pub fn data(mut self, data: DataFrame) -> Self {
@@ -193,6 +205,21 @@ impl Line {
         self.label_font_size = size;
         self
     }
+    /// 值标签位置（`Top` 上方 / `Bottom` 下方；`Inside` 在折线图回退为 `Top`）。
+    pub fn label_position(mut self, position: ValueLabelPos) -> Self {
+        self.label_position = Some(position);
+        self
+    }
+    /// 值标签颜色。默认跟随系列色。
+    pub fn label_color(mut self, color: Color) -> Self {
+        self.label_color = Some(color);
+        self
+    }
+    /// 值标签模板，支持 `{a}`（系列名）/`{b}`（名称）/`{c}`（数值）。
+    pub fn label_formatter(mut self, formatter: impl Into<String>) -> Self {
+        self.label_formatter = Some(formatter.into());
+        self
+    }
 }
 
 impl Default for Line {
@@ -217,6 +244,12 @@ pub struct Bar {
     pub grid_index: usize,
     pub label_show: bool,
     pub label_font_size: f64,
+    /// 值标签位置，None = Top（柱顶外侧；负值柱在柱底外侧）
+    pub label_position: Option<ValueLabelPos>,
+    /// 值标签颜色，None = 柱外跟随系列色 / 柱内白字
+    pub label_color: Option<Color>,
+    /// 值标签模板（`{a}`/`{b}`/`{c}`），None = 直接显示数值
+    pub label_formatter: Option<String>,
 }
 
 impl Bar {
@@ -234,6 +267,9 @@ impl Bar {
             grid_index: 0,
             label_show: false,
             label_font_size: 12.0,
+            label_position: None,
+            label_color: None,
+            label_formatter: None,
         }
     }
     pub fn data(mut self, data: DataFrame) -> Self {
@@ -287,6 +323,23 @@ impl Bar {
     }
     pub fn label_font_size(mut self, size: f64) -> Self {
         self.label_font_size = size;
+        self
+    }
+    /// 值标签位置（`Top` 柱外值端 / `Inside` 柱内值端；`Bottom` 在柱状图回退为 `Top`）。
+    ///
+    /// `Inside` 在柱体高度不足容纳文字时自动回退到柱外，避免文字溢出。
+    pub fn label_position(mut self, position: ValueLabelPos) -> Self {
+        self.label_position = Some(position);
+        self
+    }
+    /// 值标签颜色。默认柱外跟随系列色、柱内白字。
+    pub fn label_color(mut self, color: Color) -> Self {
+        self.label_color = Some(color);
+        self
+    }
+    /// 值标签模板，支持 `{a}`（系列名）/`{b}`（类目名）/`{c}`（数值）。
+    pub fn label_formatter(mut self, formatter: impl Into<String>) -> Self {
+        self.label_formatter = Some(formatter.into());
         self
     }
 }

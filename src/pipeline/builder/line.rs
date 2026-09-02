@@ -18,6 +18,9 @@ use crate::{
     },
 };
 
+/// 值标签与数据点符号边缘的间距（px）
+const LABEL_GAP: f64 = 5.0;
+
 pub struct LineBuilder;
 
 impl SeriesBuilder<LineSeries> for LineBuilder {
@@ -98,20 +101,25 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
                     },
                     &format_value(*value),
                 );
-                let (x, y) = match label_cfg.position {
-                    SeriesLabelPosition::Top => (point.x, point.y - series.symbol_size - 4.0),
-                    SeriesLabelPosition::Inside => {
-                        (point.x, point.y - series.symbol_size - 4.0) // 折线图不支持内部，回退到上方
+                // 与符号边缘保持固定间距：symbol_size 是半径量级，额外加 LABEL_GAP
+                let offset = series.symbol_size + LABEL_GAP;
+                let (y, baseline) = match label_cfg.position {
+                    // 折线图无“柱内”概念，Inside 回退为上方（对齐 ECharts 的降级行为）
+                    SeriesLabelPosition::Top | SeriesLabelPosition::Inside => {
+                        (point.y - offset, TextBaseline::Bottom)
                     }
+                    SeriesLabelPosition::Bottom => (point.y + offset, TextBaseline::Top),
                 };
 
-                let mut style = TextStyle::new(label_cfg.color, label_cfg.font_size, "sans-serif");
+                // 未显式配置时跟随系列色，便于多系列区分（对齐 ECharts 默认）
+                let color = label_cfg.color.unwrap_or(series.color);
+                let mut style = TextStyle::new(color, label_cfg.font_size, "sans-serif");
                 style.align = TextAlign::Center;
-                style.baseline = TextBaseline::Bottom;
+                style.baseline = baseline;
                 elements.push(
                     SceneNode::new(Element::Text {
                         spans: vec![RichSpan::new(text, style.clone())],
-                        position: Point::new(x, y),
+                        position: Point::new(point.x, y),
                         style,
                         layout: None,
                     })

@@ -9,8 +9,8 @@ mod axis_name;
 mod legend;
 mod title;
 
-use legend::LegendLayout;
 pub use axis_name::render_axis_name;
+use legend::LegendLayout;
 pub use legend::measure_legend_layout;
 pub use legend::render_legend;
 use lievisual::text::measure_text;
@@ -120,8 +120,8 @@ pub fn estimate_header_height(spec: &ChartSpec, theme: &Theme, width: f64) -> f6
     }
 
     // 图例占用（在标题下方，有 16px 间距）
-    let legend_layout = legend::measure_legend_layout(spec, width as u32, theme)
-        .unwrap_or_else(|| {
+    let legend_layout =
+        legend::measure_legend_layout(spec, width as u32, theme).unwrap_or_else(|| {
             // 无图例或 auto 单行兜底：保持旧行高估算
             let legend_style = theme.get_legend_text_style();
             let has_legend = spec

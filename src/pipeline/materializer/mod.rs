@@ -538,6 +538,54 @@ fn materialize_bar_group(
     }
 }
 
+/// 将 spec 层的 `ValueLabelPos` 映射为 typed 层的 `SeriesLabelPosition`。
+///
+/// `None` 时取默认值 `Top`（值端外侧），与 ECharts `label.position` 默认一致。
+pub(crate) fn map_label_position(
+    pos: Option<crate::pipeline::types::ValueLabelPos>,
+) -> crate::pipeline::typed_series::SeriesLabelPosition {
+    use crate::pipeline::typed_series::SeriesLabelPosition as Out;
+    use crate::pipeline::types::ValueLabelPos as In;
+
+    match pos.unwrap_or_default() {
+        In::Top => Out::Top,
+        In::Bottom => Out::Bottom,
+        In::Inside => Out::Inside,
+    }
+}
+
+/// 构造折线系列的值标签配置。未开启 label 时返回 None，Builder 不渲染标签。
+pub(crate) fn line_label_config(
+    cfg: &crate::pipeline::types::LineConfig,
+) -> Option<crate::pipeline::typed_series::SeriesLabelConfig> {
+    if !cfg.label_show {
+        return None;
+    }
+    Some(crate::pipeline::typed_series::SeriesLabelConfig {
+        show: true,
+        position: map_label_position(cfg.label_position),
+        color: cfg.label_color,
+        font_size: cfg.label_font_size,
+        formatter: cfg.label_formatter.clone(),
+    })
+}
+
+/// 构造柱状系列的值标签配置。未开启 label 时返回 None，Builder 不渲染标签。
+pub(crate) fn bar_label_config(
+    cfg: &crate::pipeline::types::BarConfig,
+) -> Option<crate::pipeline::typed_series::SeriesLabelConfig> {
+    if !cfg.label_show {
+        return None;
+    }
+    Some(crate::pipeline::typed_series::SeriesLabelConfig {
+        show: true,
+        position: map_label_position(cfg.label_position),
+        color: cfg.label_color,
+        font_size: cfg.label_font_size,
+        formatter: cfg.label_formatter.clone(),
+    })
+}
+
 /// 从分组柱状图中提取第一个 Bar 系列的标签配置。
 ///
 /// 分组柱状图的每个子系列共享同一个标签配置，取第一个系列即可。
@@ -548,22 +596,13 @@ fn first_bar_label_config(
 ) -> Option<crate::pipeline::typed_series::SeriesLabelConfig> {
     use crate::pipeline::types::SeriesConfig;
 
-    let cfg =
-        series_indices
-            .first()
-            .and_then(|&idx| match spec.series.get(idx).map(|s| &s.config) {
-                Some(SeriesConfig::Bar(c)) => Some(c),
-                _ => None,
-            });
-
-    cfg.filter(|c| c.label_show)
-        .map(|c| crate::pipeline::typed_series::SeriesLabelConfig {
-            show: true,
-            position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
-            color: Color::rgb(60, 60, 65),
-            font_size: c.label_font_size,
-            formatter: c.label_formatter.clone(),
+    series_indices
+        .first()
+        .and_then(|&idx| match spec.series.get(idx).map(|s| &s.config) {
+            Some(SeriesConfig::Bar(c)) => Some(c),
+            _ => None,
         })
+        .and_then(bar_label_config)
 }
 
 /// Materialize 并排柱状图
@@ -1023,17 +1062,7 @@ fn materialize_one_stacked_line_group(
             values: values.clone(),
             baseline_y,
             baseline_points: prev_points.clone(),
-            label: if cfg.label_show {
-                Some(crate::pipeline::typed_series::SeriesLabelConfig {
-                    show: true,
-                    position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
-                    color: Color::rgb(60, 60, 65),
-                    font_size: cfg.label_font_size,
-                    formatter: cfg.label_formatter.clone(),
-                })
-            } else {
-                None
-            },
+            label: line_label_config(cfg),
             mark_lines: compute_mark_lines(&cfg.mark_line, &values, y_range, bounds),
         };
 

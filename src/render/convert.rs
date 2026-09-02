@@ -28,12 +28,7 @@ pub fn to_scene(nodes: &[SceneNode], width: u32, height: u32) -> Scene {
 /// 3. 输出尺寸取缩放后的 `scene.width / height`（贴合内容，留 8px 边距）。
 ///
 /// 语义对齐 liemermaid 的 `fit_options`（见 `liemermaid/src/builder/mod.rs`）。
-pub fn to_fit_scene(
-    elements: &[SceneNode],
-    width: u32,
-    height: u32,
-    fit_max: (f64, f64),
-) -> Scene {
+pub fn to_fit_scene(elements: &[SceneNode], width: u32, height: u32, fit_max: (f64, f64)) -> Scene {
     const FIT_MARGIN: f64 = 8.0;
 
     let mut background = Color::WHITE;

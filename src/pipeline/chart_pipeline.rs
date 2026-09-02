@@ -149,11 +149,7 @@ fn resolve_layout(
 }
 
 /// 单轮布局：绑定 → 轴范围 → 轴标签文本 → 像素布局
-fn plan_once(
-    spec: &ChartSpec,
-    theme: &Theme,
-    measurer: &mut TextMeasurer,
-) -> Result<RoundOutput> {
+fn plan_once(spec: &ChartSpec, theme: &Theme, measurer: &mut TextMeasurer) -> Result<RoundOutput> {
     // 0. 估计标题和图例的占用高度，用于 GridPlanner 计算 top margin
     //    （图例按真实换行行数预留，见 estimate_header_height）
     let header_height = decorator::estimate_header_height(spec, theme, spec.width as f64);
@@ -564,31 +560,28 @@ mod tests {
         assert_eq!(fixed.width, 300, "Fixed 画布尺寸必须不变");
         assert!(hug.width > 300, "Hug 应加宽画布，实际 {}", hug.width);
         assert_eq!(hug.height, 200, "本例纵向无缺口，高度不变");
-        assert!(
-            !hug.elements.is_empty(),
-            "Hug 输出应包含可视元素"
-        );
+        assert!(!hug.elements.is_empty(), "Hug 输出应包含可视元素");
     }
 
     #[test]
     fn test_hug_converges_and_labels_stay_inside() {
-        // Hug 收敛后：Y 轴标签锚点（右对齐）不得越过绘图区左缘，
-        // 即标签整体位于绘图区与画布左缘之间
+        // Hug 收敛后：Y 轴标签不得越过绘图区左缘，整体位于绘图区与画布左缘之间。
+        // Y 轴标签现以墨迹盒锚定（align=Left/Top，位置 = 锚点 − R(θ)·ink_center），
+        // 块原点 = 画布内正值。
         let hug = build_chart_with_layout(&make_spec(FitMode::Hug), &Theme::echarts()).unwrap();
 
         use lievisual::scene::Element;
+        // 本测试 X 轴 label_show=false，场景中的 Text 元素全部是 Y 轴刻度标签
         let text_xs: Vec<f64> = hug
             .elements
             .iter()
             .filter_map(|n| match &n.element {
-                Element::Text { position, style, .. } if style.align == lievisual::text::TextAlign::Right => {
-                    Some(position.x)
-                }
+                Element::Text { position, .. } => Some(position.x),
                 _ => None,
             })
             .collect();
         assert!(!text_xs.is_empty(), "应存在 Y 轴刻度标签");
-        // 画布加宽后绘图区左缘 = 目标边距，标签右对齐锚点应小于画布宽
+        // 画布加宽后绘图区左缘 = 目标边距，标签块原点应在画布内
         for &x in &text_xs {
             assert!(x > 0.0 && x < hug.width as f64, "标签锚点 x={x} 越界");
         }

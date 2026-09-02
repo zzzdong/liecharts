@@ -5,8 +5,8 @@
 
 use lievisual::{
     Color,
-    scene::{SceneNode, Stroke},
-    text::{TextAlign, TextBaseline, TextStyle},
+    scene::{Element, SceneNode, Stroke},
+    text::{RichSpan, TextAlign, measure_text},
 };
 use vello_cpu::kurbo::{Point, Rect};
 
@@ -83,6 +83,76 @@ fn push_x_label(
     let mut s = style;
     s.rotation = draw_rotation;
     elements.push(text_el(text.to_string(), Point::new(x, y), s, Z_LABEL));
+}
+
+/// 生成单个 Y 轴刻度标签（垂直墨迹盒中心对齐 + 贴轴侧后端锚定）。
+///
+/// - **垂直**：墨迹盒（`TextLayout::ink_bounds`，skrifa 按字形轮廓计算，相对
+///   块左上角）的中心精确落在刻度 y。此前未旋转分支用 `TextBaseline::Middle`
+///   （后端实现为行盒启发式 `alphabetic_baseline − em_height_ascent×0.5`），
+///   旋转分支用行盒旋转 AABB 近似——对齐的都是**行盒**而非墨迹：行盒含
+///   ascent/descent 设计边距，且墨迹随内容（数字、逗号/括号下探、负号、CJK）
+///   变化，产生 1~2px 的内容相关偏差（表现为"标签看着稍偏下"）。与图例文本
+///   对 symbol 的对齐方式（`decorator/legend.rs`）同源。
+/// - **水平（贴轴侧）**：交给后端自身的 advance 盒锚定——左轴
+///   `align=Right`（SVG `text-anchor=end`）、右轴 `align=Left`（start），
+///   文字贴轴侧的边缘由渲染器钉在锚点 x 上，间隙 = 锚点预留（8px）− 刻度
+///   长度（5px）− side bearing ≈ 3px，与历史行为一致。
+///
+///   历史坑：曾改为"墨迹盒贴轴侧边缘对齐锚点"（`align=Left` + parley 墨迹
+///   宽反推 position.x），PNG 后端（用 parley 直接画 glyph）是精确的，但
+///   SVG 后端的 `<text>` 由**浏览器排版**——浏览器解析 `sans-serif` 得到的
+///   字体 advance 与 parley 嵌入字体不一致，文字实际画得比 parley 墨迹宽，
+///   右缘向右越过预留间隙、与刻度重叠（"标签和 tick 连在一起"）。
+///   advance 盒锚定对字体差异免疫（两端文字同时向画布外侧伸缩）。
+///
+/// 旋转（含 0°）统一处理：`baseline = Top`（锚点 = 块左上角）时，两个后端
+/// 均以 `position` 为旋转中心、把 advance 盒按 align 平移后旋转，墨迹中心
+/// 最终位置 = `position + R(θ)·(icx + dx_align, icy)`，反解 y：
+/// `position.y = tick_y − [R(θ)·(icx + dx_align, icy)]_y`；x 直接用锚点
+/// （贴轴侧由 align/advance 锚定，无需墨迹反推）。
+fn push_y_tick_label(
+    elements: &mut Vec<SceneNode>,
+    text: &str,
+    anchor: Point,
+    rotation: f64,
+    colors: &ColorContext,
+    is_right: bool,
+) {
+    let style = label_style(colors); // Left/Top 语义：位置即预计算的块左上角
+    let mut style = style;
+    // 贴轴侧锚定：左轴文字向左伸展（advance 右缘 = 锚点），右轴相反
+    style.align = if is_right {
+        TextAlign::Left
+    } else {
+        TextAlign::Right
+    };
+    style.rotation = rotation; // 旋转仅作用于渲染变换，不影响 layout 测量
+    let layout = measure_text(
+        &[RichSpan::new(text.to_string(), style.clone())],
+        style.max_width,
+    )
+    .layout;
+    let ink = layout.ink_bounds();
+    let icx = (ink.min_x() + ink.max_x()) / 2.0;
+    let icy = (ink.min_y() + ink.max_y()) / 2.0;
+
+    // 后端语义：块原点 = position，advance 盒按 align 平移 dx（Right →
+    // −width，Left → 0），再绕 position 旋转 θ。
+    let dx = if is_right { 0.0 } else { -layout.width };
+    let (sn, cs) = rotation.sin_cos();
+    // 墨迹中心相对锚点的最终 y 偏移：[R(θ)·(icx + dx, icy)]_y
+    let py = anchor.y - ((icx + dx) * sn + icy * cs);
+
+    elements.push(
+        SceneNode::new(Element::Text {
+            spans: vec![RichSpan::new(text.to_string(), style.clone())],
+            position: Point::new(anchor.x, py),
+            style,
+            layout: Some(layout),
+        })
+        .with_z(Z_LABEL),
+    );
 }
 
 /// 笛卡尔坐标轴渲染器
@@ -499,10 +569,10 @@ impl CartesianAxisRenderer {
         if !axis_cfg.label_show {
             return;
         }
-        let (mut x, align) = if is_right {
-            (bounds.x1 + 8.0, TextAlign::Left)
+        let mut x = if is_right {
+            bounds.x1 + 8.0
         } else {
-            (bounds.x0 - 8.0, TextAlign::Right)
+            bounds.x0 - 8.0
         };
 
         // 先排版得到刻度标签的实际尺寸，再据此校准锚点，避免左轴标签超出画布左边界。
@@ -531,37 +601,7 @@ impl CartesianAxisRenderer {
             }
         };
 
-        // 生成单个 Y 轴标签：未旋转时保持现有对齐方式，旋转时锚点对齐旋转后包围盒
-        // 的外侧边缘（左侧轴贴右边缘、右侧轴贴左边缘），并保持垂直居中于刻度，
-        // 避免旋转标签被拉到轴线另一侧而侵入绘图区。
-        let push_y_label = |elements: &mut Vec<SceneNode>,
-                            text: &str,
-                            anchor: Point,
-                            rotation: f64,
-                            colors: &ColorContext,
-                            text_measurer: &mut TextMeasurer| {
-            if rotation == 0.0 {
-                let mut s = TextStyle::new(colors.axis_label_color, 11.0, "sans-serif");
-                s.align = align;
-                s.baseline = TextBaseline::Middle;
-                elements.push(text_el(text.to_string(), anchor, s, Z_LABEL));
-            } else {
-                let style = label_style(colors);
-                let (w, h) = text_measurer.measure(text, &style);
-                let (s2, c) = rotation.sin_cos();
-                let rotated_w = w * c.abs() + h * s2.abs();
-                let rotated_h = w * s2.abs() + h * c.abs();
-                let x = if is_right {
-                    anchor.x
-                } else {
-                    anchor.x - rotated_w
-                };
-                let y = anchor.y - rotated_h / 2.0;
-                let mut s = style;
-                s.rotation = rotation;
-                elements.push(text_el(text.to_string(), Point::new(x, y), s, Z_LABEL));
-            }
-        };
+        // Y 轴刻度标签：由模块级 `push_y_tick_label` 统一生成（墨迹盒对齐）
 
         if axis_cfg.axis_type == AxisType::Category {
             let n = axis_cfg.categories.len();
@@ -589,13 +629,13 @@ impl CartesianAxisRenderer {
                 last_rendered = Some(i);
                 let t = (i as f64 + 0.5) / n as f64;
                 let y = bounds.y1 - t * bounds.height();
-                push_y_label(
+                push_y_tick_label(
                     elements,
                     &labels[i],
                     Point::new(x, y),
                     rotation,
                     colors,
-                    text_measurer,
+                    is_right,
                 );
             }
             let last_idx = n - 1;
@@ -609,13 +649,13 @@ impl CartesianAxisRenderer {
                 let (_, ph) = rotated_bounds(w, h, rotation);
                 if gap >= ph {
                     let y = bounds.y1 - (n as f64 - 0.5) / n as f64 * bounds.height();
-                    push_y_label(
+                    push_y_tick_label(
                         elements,
                         &labels[last_idx],
                         Point::new(x, y),
                         rotation,
                         colors,
-                        text_measurer,
+                        is_right,
                     );
                 }
             }
@@ -651,13 +691,13 @@ impl CartesianAxisRenderer {
         adjust_left_anchor(&labels, rotation, text_measurer, colors);
 
         for i in (0..positions.len()).step_by(step) {
-            push_y_label(
+            push_y_tick_label(
                 elements,
                 &labels[i],
                 Point::new(x, positions[i]),
                 rotation,
                 colors,
-                text_measurer,
+                is_right,
             );
         }
         let last_idx = positions.len() - 1;
@@ -671,13 +711,13 @@ impl CartesianAxisRenderer {
             let (w, h) = text_measurer.measure(&labels[last_idx], &style);
             let (_, ph) = rotated_bounds(w, h, rotation);
             if gap >= ph {
-                push_y_label(
+                push_y_tick_label(
                     elements,
                     &labels[last_idx],
                     Point::new(x, positions[last_idx]),
                     rotation,
                     colors,
-                    text_measurer,
+                    is_right,
                 );
             }
         }
@@ -944,6 +984,214 @@ mod tests {
                     "旋转标签文本开头应位于轴线下方（>={}), 实际 y={}",
                     expected_top,
                     position.y
+                );
+            }
+        }
+    }
+
+    fn value_axis(position: AxisPosition, label_rotate: Option<f64>) -> AxisSpec {
+        AxisSpec {
+            axis_type: AxisType::Value,
+            position,
+            grid_index: 0,
+            min: None,
+            max: None,
+            name: None,
+            name_location: None,
+            categories: vec![],
+            boundary_gap: false,
+            inverse: false,
+            split_number: None,
+            label_show: true,
+            label_formatter: None,
+            label_rotate,
+            axis_line_show: true,
+            split_line_show: true,
+            z: None,
+        }
+    }
+
+    /// 收集所有 Text 元素「墨迹盒中心」的最终像素 y。
+    ///
+    /// 与 `push_y_tick_label` 的定位通式一致：墨迹中心 = `position +
+    /// R(θ)·(icx + dx_align, icy)`，其中 `dx_align = −width`（align=Right）/
+    /// `0`（align=Left）——与两个后端「advance 盒按 align 平移后绕 position
+    /// 旋转」的语义一致。
+    fn rendered_ink_center_y(elements: &[SceneNode]) -> Vec<f64> {
+        elements
+            .iter()
+            .filter_map(|e| {
+                let Element::Text {
+                    position,
+                    style,
+                    layout,
+                    ..
+                } = &e.element
+                else {
+                    return None;
+                };
+                let layout = layout.as_ref()?;
+                let ink = layout.ink_bounds();
+                let icx = (ink.min_x() + ink.max_x()) / 2.0;
+                let icy = (ink.min_y() + ink.max_y()) / 2.0;
+                let dx = match style.align {
+                    TextAlign::Right => -layout.width,
+                    _ => 0.0,
+                };
+                let (sn, cs) = style.rotation.sin_cos();
+                Some(position.y + (icx + dx) * sn + icy * cs)
+            })
+            .collect()
+    }
+
+    /// 计算 Text 元素旋转后墨迹盒的最大像素 x（左轴墨迹右缘 = 贴轴一侧）。
+    fn rendered_ink_max_x(e: &SceneNode) -> Option<f64> {
+        let Element::Text {
+            position,
+            style,
+            layout,
+            ..
+        } = &e.element
+        else {
+            return None;
+        };
+        let layout = layout.as_ref()?;
+        let ink = layout.ink_bounds();
+        let dx = match style.align {
+            TextAlign::Right => -layout.width,
+            _ => 0.0,
+        };
+        let (sn, cs) = style.rotation.sin_cos();
+        let corners = [
+            (ink.min_x(), ink.min_y()),
+            (ink.max_x(), ink.min_y()),
+            (ink.min_x(), ink.max_y()),
+            (ink.max_x(), ink.max_y()),
+        ];
+        let max_px = corners
+            .iter()
+            .map(|&(x, y)| (x + dx) * cs - y * sn)
+            .fold(f64::NEG_INFINITY, f64::max);
+        Some(position.x + max_px)
+    }
+
+    /// Y 轴刻度标签的墨迹盒中心必须精确落在刻度像素 y 上（未旋转）。
+    ///
+    /// 回归：此前 `TextBaseline::Middle` 对齐的是行盒启发式
+    /// （`alphabetic_baseline − em_height_ascent×0.5`），行盒含设计边距且墨迹
+    /// 随内容变化（逗号/括号下探等），标签墨迹中心会比刻度低 1~2px
+    /// （"标签看着稍偏下"）。
+    #[test]
+    fn y_tick_label_ink_center_aligns_with_tick() {
+        let bounds = Rect::new(60.0, 40.0, 700.0, 500.0);
+        let subplot = SubplotSpec {
+            id: 0,
+            bounds,
+            series_indices: vec![],
+            x_axis_indices: vec![],
+            y_axis_indices: vec![0],
+        };
+        let y_axes = vec![value_axis(AxisPosition::Left, None)];
+        let ranges = ResolvedAxisRanges {
+            ranges: vec![ResolvedAxisRange {
+                axis_index: 0,
+                position: AxisPosition::Left,
+                axis_type: AxisType::Value,
+                min: 0.0,
+                max: 100.0,
+                is_user_defined: false,
+                tick_count_hint: None,
+                categories: vec![],
+            }],
+        };
+        let colors = ColorContext::default();
+        let mut measurer = TextMeasurer::new();
+        let elements =
+            CartesianAxisRenderer::render(&subplot, &[], &y_axes, &ranges, &colors, &mut measurer);
+
+        // 期望刻度 y 集合（与渲染同一公式：y0 + (1-t)*height）
+        let (norm_positions, _) = axis_ticks(AxisType::Value, 0.0, 100.0);
+        let tick_ys: Vec<f64> = norm_positions
+            .iter()
+            .map(|&t| bounds.y0 + (1.0 - t) * bounds.height())
+            .collect();
+        assert!(tick_ys.len() >= 3, "value 轴应产生多个刻度");
+
+        let centers = rendered_ink_center_y(&elements);
+        assert!(
+            centers.len() >= 3,
+            "应渲染出多个 Y 轴刻度标签，实际 {}",
+            centers.len()
+        );
+        for cy in &centers {
+            let nearest = tick_ys
+                .iter()
+                .map(|&ty| (cy - ty).abs())
+                .fold(f64::INFINITY, f64::min);
+            assert!(
+                nearest < 1e-6,
+                "标签墨迹中心 y={cy} 应精确对齐某个刻度，最近偏差 {nearest}"
+            );
+        }
+    }
+
+    /// 旋转（90°）的 Y 轴刻度标签：墨迹中心仍须落在刻度 y 上，且墨迹盒整体
+    /// 位于轴外侧（左轴墨迹右缘 ≤ 锚点 x），不侵入绘图区。
+    #[test]
+    fn y_rotated_tick_label_ink_center_aligns_with_tick() {
+        let bounds = Rect::new(60.0, 40.0, 700.0, 500.0);
+        let subplot = SubplotSpec {
+            id: 0,
+            bounds,
+            series_indices: vec![],
+            x_axis_indices: vec![],
+            y_axis_indices: vec![0],
+        };
+        let y_axes = vec![value_axis(AxisPosition::Left, Some(90.0))];
+        let ranges = ResolvedAxisRanges {
+            ranges: vec![ResolvedAxisRange {
+                axis_index: 0,
+                position: AxisPosition::Left,
+                axis_type: AxisType::Value,
+                min: 0.0,
+                max: 100.0,
+                is_user_defined: false,
+                tick_count_hint: None,
+                categories: vec![],
+            }],
+        };
+        let colors = ColorContext::default();
+        let mut measurer = TextMeasurer::new();
+        let elements =
+            CartesianAxisRenderer::render(&subplot, &[], &y_axes, &ranges, &colors, &mut measurer);
+
+        let (norm_positions, _) = axis_ticks(AxisType::Value, 0.0, 100.0);
+        let tick_ys: Vec<f64> = norm_positions
+            .iter()
+            .map(|&t| bounds.y0 + (1.0 - t) * bounds.height())
+            .collect();
+
+        // 垂直：墨迹中心对齐刻度
+        let centers = rendered_ink_center_y(&elements);
+        assert!(!centers.is_empty(), "应渲染出旋转的 Y 轴刻度标签");
+        for cy in &centers {
+            let nearest = tick_ys
+                .iter()
+                .map(|&ty| (cy - ty).abs())
+                .fold(f64::INFINITY, f64::min);
+            assert!(
+                nearest < 1e-6,
+                "旋转标签墨迹中心 y={cy} 应精确对齐某个刻度，最近偏差 {nearest}"
+            );
+        }
+
+        // 水平：墨迹右缘 ≤ 锚点 x（bounds.x0 − 8），不越过锚点侵入绘图区
+        let anchor_x = bounds.x0 - 8.0;
+        for e in &elements {
+            if let Some(ink_max_x) = rendered_ink_max_x(e) {
+                assert!(
+                    ink_max_x <= anchor_x + 1e-6,
+                    "旋转标签墨迹右缘 {ink_max_x} 应 ≤ 锚点 {anchor_x}（不侵入绘图区）"
                 );
             }
         }

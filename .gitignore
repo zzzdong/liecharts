@@ -3,5 +3,3 @@
 *.svg
 site/pkg/
 site/node_modules/
-/baseline_before/
-/baseline_after/

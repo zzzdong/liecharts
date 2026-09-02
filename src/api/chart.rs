@@ -648,8 +648,8 @@ impl Chart {
     pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
         use crate::pipeline::types::{
             AxisSpec, BarConfig, BoxplotConfig, BubbleConfig, CandlestickConfig, ChartSpec,
-            GaugeConfig, GridSpec, HeatmapConfig, ItemStyleSpec, LegendSpec, LineConfig,
-            PieConfig, PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
+            GaugeConfig, GridSpec, HeatmapConfig, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
+            PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
             SeriesSpec, SymbolType, TableConfig, TitleSpec,
         };
 
@@ -668,10 +668,10 @@ impl Chart {
                 .map(|g| GridSpec {
                     // P2b：保留原始语义（Percent 不提前固化），由 GridPlanner 在
                     // 布局阶段解析，画布长大（Hug）时百分比边距随比例缩放
-                    left: Some(position_to_grid_edge(g.left, self.width as f64)),
-                    right: Some(position_to_grid_edge(g.right, self.width as f64)),
-                    top: Some(position_to_grid_edge(g.top, self.height as f64)),
-                    bottom: Some(position_to_grid_edge(g.bottom, self.height as f64)),
+                    left: Some(position_to_grid_edge(g.left)),
+                    right: Some(position_to_grid_edge(g.right)),
+                    top: Some(position_to_grid_edge(g.top)),
+                    bottom: Some(position_to_grid_edge(g.bottom)),
                     contain_label: g.contain_label,
                 })
                 .collect()
@@ -888,7 +888,9 @@ impl Chart {
                             symbol_size: l.symbol_size,
                             label_show: l.label_show,
                             label_font_size: l.label_font_size,
-                            label_formatter: None,
+                            label_formatter: l.label_formatter.clone(),
+                            label_position: l.label_position,
+                            label_color: l.label_color,
                             mark_line: Vec::new(),
                         })
                     }
@@ -914,7 +916,9 @@ impl Chart {
                             }),
                             label_show: l.label_show,
                             label_font_size: l.label_font_size,
-                            label_formatter: None,
+                            label_formatter: l.label_formatter.clone(),
+                            label_position: l.label_position,
+                            label_color: l.label_color,
                             mark_line: Vec::new(),
                         })
                     }
@@ -1244,15 +1248,17 @@ fn size_to_abs_px(s: Size, benchmark: f64) -> f64 {
 
 /// 把 [`Position`] 转换为可延迟解析的 [`GridEdge`]（P2b）。
 ///
-/// 与旧的 `Position::to_pixels` 结果语义一致，但 `Percent` 不再提前固化；
-/// `Auto`/`Center` 表达为 50% 使画布变化时保持居中。
-fn position_to_grid_edge(p: Position, total: f64) -> GridEdge {
+/// 与旧的 `Position::to_pixels` 结果语义一致，但 `Percent` 不再提前固化：
+/// 全部表达为 `Px`/`Pct`，由 `GridPlanner` 在布局阶段按**当前画布**解析，
+/// 因此 Hug 长大画布后所有边距（含贴边）都会自动跟随。
+fn position_to_grid_edge(p: Position) -> GridEdge {
     match p {
         Position::Pixel(v) => GridEdge::Px(v),
         Position::Percent(v) => GridEdge::Pct(v),
         Position::Auto | Position::Center => GridEdge::Pct(50.0),
         Position::Left | Position::Top => GridEdge::Px(0.0),
-        Position::Right | Position::Bottom => GridEdge::Px(total),
+        // 贴边：占满对应维度（等价于旧的 `total`）
+        Position::Right | Position::Bottom => GridEdge::Pct(100.0),
     }
 }
 

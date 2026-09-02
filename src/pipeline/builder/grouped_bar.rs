@@ -15,6 +15,11 @@ use crate::{
     },
 };
 
+/// 柱外标签与柱体值端的间距（px）
+const LABEL_OUTSIDE_GAP: f64 = 5.0;
+/// 柱内标签与柱体值端的内边距（px）
+const LABEL_INSIDE_PADDING: f64 = 5.0;
+
 pub struct GroupedBarBuilder;
 
 impl SeriesBuilder<GroupedBarSeries> for GroupedBarBuilder {
@@ -39,47 +44,87 @@ impl SeriesBuilder<GroupedBarSeries> for GroupedBarBuilder {
                     &format_value(row.value),
                 );
                 let bar_rect = row.bar_rect;
-                let bar_dim = bar_rect.height().max(bar_rect.width());
                 let is_horizontal = bar_rect.width() >= bar_rect.height();
+                let negative = row.value < 0.0;
 
-                let (x, y, label_color, va) = if is_horizontal {
-                    // 横向柱状图：文字在柱子末端右侧
-                    (
-                        bar_rect.x1 + 4.0,
-                        bar_rect.y0 + bar_rect.height() / 2.0,
-                        row.color,
-                        TextBaseline::Middle,
-                    )
-                } else if bar_dim > 25.0 {
-                    // 高柱子：内部顶部，白色文字
-                    let y = if label_cfg.position == SeriesLabelPosition::Top {
-                        bar_rect.y0 + 14.0
-                    } else {
-                        bar_rect.y0 + bar_rect.height() / 2.0
-                    };
-                    let va = if label_cfg.position == SeriesLabelPosition::Top {
-                        TextBaseline::Top
-                    } else {
-                        TextBaseline::Middle
-                    };
-                    (
-                        bar_rect.x0 + bar_rect.width() / 2.0,
-                        y,
-                        Color::rgb(255, 255, 255),
-                        va,
-                    )
+                // Inside 需柱体在“值方向”上放得下文字，否则回退到柱外避免溢出
+                let value_extent = if is_horizontal {
+                    bar_rect.width()
                 } else {
-                    // 矮柱子：外部上方，柱子同色文字
-                    (
-                        bar_rect.x0 + bar_rect.width() / 2.0,
-                        bar_rect.y0 - 4.0,
-                        row.color,
-                        TextBaseline::Bottom,
-                    )
+                    bar_rect.height()
+                };
+                let inside = label_cfg.position == SeriesLabelPosition::Inside
+                    && value_extent >= label_cfg.font_size + LABEL_INSIDE_PADDING * 2.0;
+
+                let (x, y, ha, va) = if is_horizontal {
+                    // 横向柱：值端在右（正值）/ 左（负值）
+                    let cy = bar_rect.y0 + bar_rect.height() / 2.0;
+                    match (inside, negative) {
+                        (true, false) => (
+                            bar_rect.x1 - LABEL_INSIDE_PADDING,
+                            cy,
+                            TextAlign::Right,
+                            TextBaseline::Middle,
+                        ),
+                        (true, true) => (
+                            bar_rect.x0 + LABEL_INSIDE_PADDING,
+                            cy,
+                            TextAlign::Left,
+                            TextBaseline::Middle,
+                        ),
+                        (false, false) => (
+                            bar_rect.x1 + LABEL_OUTSIDE_GAP,
+                            cy,
+                            TextAlign::Left,
+                            TextBaseline::Middle,
+                        ),
+                        (false, true) => (
+                            bar_rect.x0 - LABEL_OUTSIDE_GAP,
+                            cy,
+                            TextAlign::Right,
+                            TextBaseline::Middle,
+                        ),
+                    }
+                } else {
+                    // 纵向柱：值端在上（正值）/ 下（负值）
+                    let cx = bar_rect.x0 + bar_rect.width() / 2.0;
+                    match (inside, negative) {
+                        (true, false) => (
+                            cx,
+                            bar_rect.y0 + LABEL_INSIDE_PADDING,
+                            TextAlign::Center,
+                            TextBaseline::Top,
+                        ),
+                        (true, true) => (
+                            cx,
+                            bar_rect.y1 - LABEL_INSIDE_PADDING,
+                            TextAlign::Center,
+                            TextBaseline::Bottom,
+                        ),
+                        (false, false) => (
+                            cx,
+                            bar_rect.y0 - LABEL_OUTSIDE_GAP,
+                            TextAlign::Center,
+                            TextBaseline::Bottom,
+                        ),
+                        (false, true) => (
+                            cx,
+                            bar_rect.y1 + LABEL_OUTSIDE_GAP,
+                            TextAlign::Center,
+                            TextBaseline::Top,
+                        ),
+                    }
                 };
 
+                // 颜色优先取用户配置；否则柱内白字、柱外跟随该子系列色
+                let label_color = label_cfg.color.unwrap_or(if inside {
+                    Color::rgb(255, 255, 255)
+                } else {
+                    row.color
+                });
+
                 let mut style = TextStyle::new(label_color, label_cfg.font_size, "sans-serif");
-                style.align = TextAlign::Center;
+                style.align = ha;
                 style.baseline = va;
                 elements.push(
                     SceneNode::new(Element::Text {

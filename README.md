@@ -73,6 +73,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+### Canvas Fit Modes
+
+The `width`/`height` you pass to `Chart::new` can mean three different things — pick one with `.fit(FitMode::...)`:
+
+- **`FitMode::Fixed`** (default): the canvas is rigid. When content does not fit, the plot area shrinks, labels rotate/thin, and rows compress — historical behavior, byte-compatible.
+- **`FitMode::Hug`**: `width`/`height` are *desired* sizes. Layout components report their space needs (axis labels, legend wrapping, table minimum row height) and the canvas **grows on demand** — zero information loss, constant font sizes, no global scaling.
+- **`FitMode::HugMax`**: same as `Hug`, but the size is also a *limit*: if the content outgrows it, the whole chart is scaled down to fit.
+
+```rust
+use liecharts::api::*;
+
+// Long date labels: Hug widens the canvas to keep them horizontal
+// instead of rotating/thinning them
+Chart::new(300, 200)
+    .fit(FitMode::Hug)
+    .data(df)
+    .add_line(Line::new().x("date").y("value"))
+    .render_to_svg("hug.svg")?;
+
+// Dashboard slot: let the chart grow, then clamp back to the slot size
+Chart::new(320, 240)
+    .fit(FitMode::HugMax)
+    .data(df)
+    .add_bar(Bar::new().x("cat").y("val"))
+    .render_to_png("slot.png")?;
+```
+
+See `examples/hug_demo.rs` for a side-by-side comparison, and
+`docs/布局自适应改造计划.md` for the full layout redesign notes.
+
 ## Examples
 
 Check the [`examples`](./examples) directory. Run with: `cargo run --example <name>`

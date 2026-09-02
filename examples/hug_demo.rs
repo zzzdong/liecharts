@@ -21,7 +21,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .title(Title::new("Hug: 长Y轴刻度"))
         .y_axis(Axis::value().name("数值(元)"))
         .add_bar(Bar::new().name("值").data(df_big).x("cat").y("val"));
-    common::save(&bar.clone().fit(FitMode::Fixed), "hug_demo_1_long_y_fixed.svg")?;
+    common::save(
+        &bar.clone().fit(FitMode::Fixed),
+        "hug_demo_1_long_y_fixed.svg",
+    )?;
     common::save(&bar.fit(FitMode::Hug), "hug_demo_1_long_y_hug.svg")?;
 
     // ── 场景 2：多行表格（Hug 下画布加高，行高不被压扁）──
@@ -33,7 +36,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table = Chart::new(320, 260)
         .title(Title::new("Hug: 多行表格"))
         .add_table(Table::new().name("库存表").data(df_table));
-    common::save(&table.clone().fit(FitMode::Fixed), "hug_demo_2_table_fixed.svg")?;
+    common::save(
+        &table.clone().fit(FitMode::Fixed),
+        "hug_demo_2_table_fixed.svg",
+    )?;
     common::save(&table.fit(FitMode::Hug), "hug_demo_2_table_hug.svg")?;
 
     // ── 场景 3：多系列图例换行 ──
@@ -60,7 +66,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .y("v1"),
         );
     }
-    common::save(&chart.clone().fit(FitMode::Fixed), "hug_demo_3_legend_fixed.svg")?;
+    common::save(
+        &chart.clone().fit(FitMode::Fixed),
+        "hug_demo_3_legend_fixed.svg",
+    )?;
     common::save(&chart.fit(FitMode::Hug), "hug_demo_3_legend_hug.svg")?;
 
     println!("hug_demo 完成：对比 *_fixed.svg 与 *_hug.svg 的画布尺寸");

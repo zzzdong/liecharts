@@ -60,7 +60,11 @@ pub fn render_legend(
 
     let data = &legend.data;
     let symbol_size = legend.symbol_size;
-    let item_gap = 8.0; // symbol 和文本之间的间距
+    // 相邻图例项的间隔：用户字段 `legend.item_gap`（ECharts 语义）。
+    // symbol 与文本之间的间距是独立常量 `LEGEND_SYMBOL_TEXT_GAP`——历史
+    // bug 中局部 `item_gap = 8.0` 与字段同名混用，导致字段完全未生效
+    //（项间距只靠两侧 legend_padding 隐式形成）。
+    let item_gap = legend.item_gap.max(0.0);
     let legend_padding = 16.0; // 每个 item 内部的 padding
 
     // 判断图表类型：饼图/环形图/极坐标柱状图使用 palette（按数据点着色），其他使用 series_colors（按系列着色）
@@ -106,100 +110,105 @@ pub fn render_legend(
             (*measure_text(&[RichSpan::new(name.clone(), lv_style)], None).layout).clone();
         let text_width = text_layout.width;
 
-        let item_width = symbol_size + item_gap + text_width + legend_padding * 2.0;
+        let item_width = symbol_size + LEGEND_SYMBOL_TEXT_GAP + text_width + legend_padding * 2.0;
         item_widths.push(item_width);
     }
 
     // 第二步：按可用宽度分行（超宽溢出裁剪 → 换行，信息零丢失）
-    let rows = wrap_legend_rows(&item_widths, width);
+    let rows = wrap_legend_rows(&item_widths, width, item_gap);
 
     // 第三步：逐行整体居中并布局 item
     let row_height = legend_style.font_size * 1.4 + 16.0;
     let y0 = 24.0 + title_height + 16.0;
 
     for (row_idx, row) in rows.iter().enumerate() {
-        let row_total: f64 = row.iter().map(|&i| item_widths[i]).sum();
+        // 行总宽计入项间距：k 项有 (k-1) 个 item_gap，用于整行居中
+        let row_total: f64 = row.iter().map(|&i| item_widths[i]).sum::<f64>()
+            + row.len().saturating_sub(1) as f64 * item_gap;
         let y = y0 + row_idx as f64 * (row_height + LEGEND_ROW_GAP);
-        let mut current_x = (width as f64 - row_total) / 2.0;
+        // 整行居中；单个 item 就超出可用宽度时（换行也放不下）退化为左对齐到
+        // 安全边距，避免 `start_x < 0` 导致图例被画布左缘裁掉（旧行为）。
+        let mut current_x = ((width as f64 - row_total) / 2.0).max(LEGEND_EDGE_MARGIN);
 
         for &i in row {
             let item_width = item_widths[i];
             let content_start_x = current_x + legend_padding;
             let display_text = &display_texts[i];
 
-        let color = if spec
-            .series
-            .get(i)
-            .is_some_and(|s| s.config.chart_type() == ChartType::Candlestick)
-        {
-            // K 线图用 up_color（红色）可同时代表涨/跌，比 palette 颜色更贴切
-            colors.up_color
-        } else if use_palette {
-            colors
-                .palette
+            let color = if spec
+                .series
                 .get(i)
-                .copied()
-                .unwrap_or_else(|| colors.get_series_color(i))
-        } else {
-            colors
-                .series_colors
-                .get(i)
-                .copied()
-                .unwrap_or_else(|| colors.get_series_color(i))
-        };
+                .is_some_and(|s| s.config.chart_type() == ChartType::Candlestick)
+            {
+                // K 线图用 up_color（红色）可同时代表涨/跌，比 palette 颜色更贴切
+                colors.up_color
+            } else if use_palette {
+                colors
+                    .palette
+                    .get(i)
+                    .copied()
+                    .unwrap_or_else(|| colors.get_series_color(i))
+            } else {
+                colors
+                    .series_colors
+                    .get(i)
+                    .copied()
+                    .unwrap_or_else(|| colors.get_series_color(i))
+            };
 
-        // 图例符号 - 以 y 为中心垂直对齐
-        let symbol_x = content_start_x;
-        elements.push(rect(
-            Rect::new(
-                symbol_x,
-                y - symbol_size / 2.0,
-                symbol_x + symbol_size,
-                y + symbol_size / 2.0,
-            ),
-            lievisual::scene::FillStrokeStyle {
-                fill: Some(Fill::Solid(color)),
-                stroke: None,
-            },
-            Z_TITLE,
-        ));
+            // 图例符号 - 以 y 为中心垂直对齐
+            let symbol_x = content_start_x;
+            elements.push(rect(
+                Rect::new(
+                    symbol_x,
+                    y - symbol_size / 2.0,
+                    symbol_x + symbol_size,
+                    y + symbol_size / 2.0,
+                ),
+                lievisual::scene::FillStrokeStyle {
+                    fill: Some(Fill::Solid(color)),
+                    stroke: None,
+                },
+                Z_TITLE,
+            ));
 
-        // 图例文字 - 使用 Left 对齐，位置在 symbol 右侧。
-        // 垂直对齐：显式计算文本 ink_bounds 的视觉中心，将其对齐到 symbol 矩形中心，
-        // 而不是依赖 baseline=Middle 的隐式居中（浏览器 SVG 渲染时基线换算
-        // 与 parley 度量不一致会产生 1-2px 偏差）。
-        let text_x = symbol_x + symbol_size + item_gap;
-        let mut style = TextStyle::new(
-            legend_color,
-            legend_style.font_size,
-            legend_style.font_family.clone(),
-        );
-        style.align = TextAlign::Left;
-        style.baseline = TextBaseline::Top; // 布局原点语义：ink_bounds 相对此原点
-        let mut lv_style = style.clone();
-        if lv_style.font_family.trim().is_empty()
-            || lv_style
-                .font_family
-                .trim()
-                .eq_ignore_ascii_case("sans-serif")
-        {
-            lv_style.font_family = DEFAULT_FONT_STACK.to_string();
-        }
-        let text_layout =
-            (*measure_text(&[RichSpan::new(display_text.clone(), lv_style)], None).layout).clone();
-        let ink = text_layout.ink_bounds();
-        let ink_center_y = ink.min_y() + (ink.max_y() - ink.min_y()).max(0.0) / 2.0;
-        elements.push(
-            SceneNode::new(Element::Text {
-                spans: vec![RichSpan::new(display_text.clone(), style.clone())],
-                position: Point::new(text_x, y - ink_center_y),
-                style,
-                layout: Some(std::sync::Arc::new(text_layout)),
-            })
-            .with_z(Z_TITLE),
-        );
+            // 图例文字 - 使用 Left 对齐，位置在 symbol 右侧。
+            // 垂直对齐：显式计算文本 ink_bounds 的视觉中心，将其对齐到 symbol 矩形中心，
+            // 而不是依赖 baseline=Middle 的隐式居中（浏览器 SVG 渲染时基线换算
+            // 与 parley 度量不一致会产生 1-2px 偏差）。
+            let text_x = symbol_x + symbol_size + LEGEND_SYMBOL_TEXT_GAP;
+            let mut style = TextStyle::new(
+                legend_color,
+                legend_style.font_size,
+                legend_style.font_family.clone(),
+            );
+            style.align = TextAlign::Left;
+            style.baseline = TextBaseline::Top; // 布局原点语义：ink_bounds 相对此原点
+            let mut lv_style = style.clone();
+            if lv_style.font_family.trim().is_empty()
+                || lv_style
+                    .font_family
+                    .trim()
+                    .eq_ignore_ascii_case("sans-serif")
+            {
+                lv_style.font_family = DEFAULT_FONT_STACK.to_string();
+            }
+            let text_layout =
+                (*measure_text(&[RichSpan::new(display_text.clone(), lv_style)], None).layout)
+                    .clone();
+            let ink = text_layout.ink_bounds();
+            let ink_center_y = ink.min_y() + (ink.max_y() - ink.min_y()).max(0.0) / 2.0;
+            elements.push(
+                SceneNode::new(Element::Text {
+                    spans: vec![RichSpan::new(display_text.clone(), style.clone())],
+                    position: Point::new(text_x, y - ink_center_y),
+                    style,
+                    layout: Some(std::sync::Arc::new(text_layout)),
+                })
+                .with_z(Z_TITLE),
+            );
 
-            current_x += item_width;
+            current_x += item_width + item_gap;
         }
     }
 
@@ -212,23 +221,33 @@ pub fn render_legend(
 /// 两侧各留 8px 安全边距。单行且放得下时行为与旧版逐字节一致。
 const LEGEND_ROW_GAP: f64 = 6.0;
 const LEGEND_EDGE_MARGIN: f64 = 8.0;
+/// symbol 与图例文本之间的固定间距（与用户可配的 `LegendSpec::item_gap`
+/// ——相邻图例项的间隔——是两个不同语义，勿混用）
+const LEGEND_SYMBOL_TEXT_GAP: f64 = 8.0;
 
 /// 按可用宽度把图例项分行（贪心装填：放不下即换行）
 ///
+/// `item_gap` 为相邻项间隔：行内第 2 项起的装入代价是 `item_gap + 宽度`，
+/// 与 `render_legend` 的行总宽（Σ宽 + (k-1)×gap）口径一致，保证换行
+/// 行数与实际绘制不脱节。
+///
 /// 返回每行包含的 item 下标。空输入返回单个空行。
-fn wrap_legend_rows(item_widths: &[f64], width: u32) -> Vec<Vec<usize>> {
+fn wrap_legend_rows(item_widths: &[f64], width: u32, item_gap: f64) -> Vec<Vec<usize>> {
     let avail = (width as f64 - 2.0 * LEGEND_EDGE_MARGIN).max(0.0);
     let mut rows: Vec<Vec<usize>> = vec![Vec::new()];
     let mut row_w = 0.0;
 
     for (i, w) in item_widths.iter().enumerate() {
         let cur = rows.last_mut().expect("rows 非空");
-        if !cur.is_empty() && row_w + *w > avail {
+        if cur.is_empty() {
+            cur.push(i);
+            row_w = *w;
+        } else if row_w + item_gap + *w > avail {
             rows.push(vec![i]);
             row_w = *w;
         } else {
             cur.push(i);
-            row_w += *w;
+            row_w += item_gap + *w;
         }
     }
     rows
@@ -269,7 +288,9 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
 
     let legend_style = theme.get_legend_text_style();
     let symbol_size = legend.symbol_size;
-    let item_gap = 8.0;
+    // 与 `render_legend` 同口径：item_gap 为相邻项间隔（用户字段），
+    // 符号↔文本间距用 LEGEND_SYMBOL_TEXT_GAP 常量
+    let item_gap = legend.item_gap.max(0.0);
     let legend_padding = 16.0;
     let legend_color = Color::from_hex(&legend_style.color).unwrap_or(Color::rgb(50, 50, 50));
 
@@ -289,7 +310,7 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
             lv_style.font_family = DEFAULT_FONT_STACK.to_string();
         }
         let layout = (*measure_text(&[RichSpan::new(name.clone(), lv_style)], None).layout).clone();
-        let w = symbol_size + item_gap + layout.width + legend_padding * 2.0;
+        let w = symbol_size + LEGEND_SYMBOL_TEXT_GAP + layout.width + legend_padding * 2.0;
         item_widths.push(w);
     }
     if item_widths.is_empty() {
@@ -297,7 +318,7 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
     }
 
     let row_height = legend_style.font_size * 1.4 + 16.0;
-    let rows = wrap_legend_rows(&item_widths, width).len();
+    let rows = wrap_legend_rows(&item_widths, width, item_gap).len();
     Some(LegendLayout {
         rows,
         row_height,

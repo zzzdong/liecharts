@@ -1,8 +1,6 @@
 use crate::pipeline::{
     grid_planner::SubplotBinding,
-    types::{
-        AxisSpec, AxisType, ChartType, ResolvedAxisRange, ResolvedAxisRanges, SeriesSpec,
-    },
+    types::{AxisSpec, AxisType, ChartType, ResolvedAxisRange, ResolvedAxisRanges, SeriesSpec},
 };
 
 /// 轴绑定解析器

@@ -24,24 +24,16 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         sampling::SamplingType,
     };
 
-    let total_w = width as f64;
-    let total_h = height as f64;
-
-    // Grids
+    // 注：P2b 起 grid 边距不再在此处折算（`total_w` / `total_h` 已无使用者），
+    // 原始语义交由 `GridPlanner` 在布局阶段按当前画布解析。
     let grids: Vec<GridSpec> = option
         .grid
         .iter()
         .map(|g| {
-            let left = g.left.as_ref().map(|p| position_option_to_edge(p, total_w));
-            let right = g
-                .right
-                .as_ref()
-                .map(|p| position_option_to_edge(p, total_w));
-            let top = g.top.as_ref().map(|p| position_option_to_edge(p, total_h));
-            let bottom = g
-                .bottom
-                .as_ref()
-                .map(|p| position_option_to_edge(p, total_h));
+            let left = g.left.as_ref().map(position_option_to_edge);
+            let right = g.right.as_ref().map(position_option_to_edge);
+            let top = g.top.as_ref().map(position_option_to_edge);
+            let bottom = g.bottom.as_ref().map(position_option_to_edge);
             GridSpec {
                 left,
                 right,
@@ -372,6 +364,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .and_then(|l| l.font_size)
                             .unwrap_or(12.0),
                         label_formatter: ls.label.as_ref().and_then(|l| l.formatter.clone()),
+                        label_position: parse_value_label_position(ls.label.as_ref()),
+                        label_color: parse_label_color(ls.label.as_ref()),
                         mark_line: parse_mark_line(ls.mark_line.as_ref()),
                     };
                     SeriesSpec {
@@ -464,6 +458,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                                 .and_then(|l| l.font_size)
                                 .unwrap_or(12.0),
                             label_formatter: bs.label.as_ref().and_then(|l| l.formatter.clone()),
+                            label_position: parse_value_label_position(bs.label.as_ref()),
+                            label_color: parse_label_color(bs.label.as_ref()),
                             mark_line: parse_mark_line(bs.mark_line.as_ref()),
                         };
                         SeriesSpec {
@@ -1108,6 +1104,30 @@ fn parse_mark_line(
     specs
 }
 
+/// 将 ECharts `label.position` 映射为笛卡尔系列（line/bar）的值标签位置。
+///
+/// 仅支持 Top/Bottom/Inside 三种垂直语义；其余（Left/Right/Center/Start/...）
+/// 在纵向笛卡尔系列上无明确对应，统一按 ECharts 默认降级为 `Top`。
+fn parse_value_label_position(
+    label: Option<&crate::option::LabelOption>,
+) -> Option<crate::pipeline::types::ValueLabelPos> {
+    use crate::option::LabelPosition as In;
+    use crate::pipeline::types::ValueLabelPos as Out;
+
+    label.and_then(|l| l.position).map(|p| match p {
+        In::Bottom => Out::Bottom,
+        In::Inside | In::Center | In::Middle => Out::Inside,
+        _ => Out::Top,
+    })
+}
+
+/// 提取 ECharts `label.color` 为标签颜色；未配置时返回 None（由 Builder 取语义默认色）。
+fn parse_label_color(label: Option<&crate::option::LabelOption>) -> Option<Color> {
+    label
+        .and_then(|l| l.color.as_ref())
+        .map(|c| Color::rgba(c.r, c.g, c.b, c.a))
+}
+
 /// 当 legend 未显式提供 data 时，自动从系列收集展示名（与 ECharts 行为一致）。
 ///
 /// - 饼图/环形图/极坐标柱状图：按数据点取色，图例项为**数据点名**（category 列）
@@ -1217,7 +1237,7 @@ fn resolve_visual_map(
 ///
 /// 与旧的 [`resolve_position_option`] 结果语义一致，但 `Percent` 保留比例
 /// 由 `GridPlanner` 在布局阶段解析（画布变化时随比例缩放）。
-fn position_option_to_edge(pos: &PositionOption, total: f64) -> crate::pipeline::types::GridEdge {
+fn position_option_to_edge(pos: &PositionOption) -> crate::pipeline::types::GridEdge {
     match pos {
         PositionOption::Pixel(v) => crate::pipeline::types::GridEdge::Px(*v),
         PositionOption::Percent(p) => crate::pipeline::types::GridEdge::Pct(*p),
@@ -1228,11 +1248,12 @@ fn position_option_to_edge(pos: &PositionOption, total: f64) -> crate::pipeline:
             crate::pipeline::types::GridEdge::Pct(50.0)
         }
         PositionOption::Preset(PositionPreset::Left)
-        | PositionOption::Preset(PositionPreset::Top) => {
-            crate::pipeline::types::GridEdge::Px(0.0)
-        }
+        | PositionOption::Preset(PositionPreset::Top) => crate::pipeline::types::GridEdge::Px(0.0),
         PositionOption::Preset(PositionPreset::Right)
-        | PositionOption::Preset(PositionPreset::Bottom) => crate::pipeline::types::GridEdge::Px(total),
+        | PositionOption::Preset(PositionPreset::Bottom) => {
+            // 贴边：占满对应维度（等价于旧的 `total`），Hug 长大时自动跟随
+            crate::pipeline::types::GridEdge::Pct(100.0)
+        }
     }
 }
 

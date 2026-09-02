@@ -12,7 +12,7 @@ use vello_cpu::kurbo::{BezPath, Point};
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, fill_style, path},
+        builder::{SeriesBuilder, Z_SERIES_FILL, fill_style, path, resolve_pie_radii},
         typed_series::{LabelPosition, PieSeries, RenderContext},
     },
 };
@@ -49,10 +49,16 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
         let center_y = bounds.y0 + height * 0.55;
         let center = Point::new(center_x, center_y);
 
-        // P2a：radius 已在 api/compat 层折算为**绝对像素**（基准 = 画布 min/2），
-        // 不再相对绘图区折算，消除基准不一致（见 docs/布局自适应改造计划.md P2a）。
-        let inner_radius = series.radius_inner;
-        let outer_radius = series.radius_outer;
+        // P2a：radius 为**绝对像素**（api/compat 层按「画布 min/2」折算）；
+        // P5 起由 `resolve_pie_radii` 统一 clamp 到绘图区内接半径，避免多
+        // subplot / 紧边距时越界；外径被 clamp 时内径同比例缩放（零宽圆环防护）。
+        let (inner_radius, outer_radius) = resolve_pie_radii(
+            series.radius_inner,
+            series.radius_outer,
+            width,
+            height,
+            75.0,
+        );
 
         let mut start_angle = 0.0; // 从 12 点钟方向开始
 

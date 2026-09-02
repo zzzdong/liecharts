@@ -1,43 +1,43 @@
 //! 雷达图坐标轴渲染器
 //!
-//! 生成雷达图专用的同心多边形网格线和径向轴线，以及指示器标签。
-//! 与笛卡尔坐标轴没有共享逻辑，完全独立的几何体系。
+//! 生成雷达图专用的同心多边形网格线和径向轴线。
+//! 指示器名称标签由 `builder::radar::build_radar_indicators` 在 subplot
+//! 级别绘制（按角度选择对齐方向），本模块只负责网格几何，不重复绘制。
 
 use std::f64::consts::PI;
 
 use lievisual::{
     Color,
     scene::{FillStrokeStyle, SceneNode, Stroke},
-    text::{TextAlign, TextBaseline, TextStyle},
 };
 use vello_cpu::kurbo::{BezPath, Point};
 
-use crate::{
-    option::RadarIndicatorOption,
-    pipeline::{
-        builder::{Z_GRID, Z_LABEL, line, path, text_el},
-        types::{ColorContext, SubplotSpec},
-    },
+use crate::pipeline::{
+    builder::{Z_GRID, line, path},
+    types::SubplotSpec,
 };
 
 /// 雷达图坐标轴渲染器
 ///
 /// 渲染雷达图专用的：
-/// - 同心多边形网格（多层）
+/// - 同心多边形网格（多层，顶点数 = 指示器数量）
 /// - 从中心到各顶点的径向轴线
-/// - 各顶点的指示器名称标签
 pub struct RadarAxisRenderer;
 
 impl RadarAxisRenderer {
-    /// 渲染雷达图坐标轴（网格线和指示器标签）
-    pub fn render(
-        subplot: &SubplotSpec,
-        indicators: &[RadarIndicatorOption],
-        colors: &ColorContext,
-    ) -> Vec<SceneNode> {
+    /// 渲染雷达图坐标轴（同心多边形网格 + 径向轴线）
+    ///
+    /// `indicator_count`：维度数，来自第一个雷达系列的指示器配置，
+    /// 与数据多边形（`RadarBuilder`）和指示器标签（`build_radar_indicators`）
+    /// 同源同口径；`< 3` 时兜底为 3。
+    ///
+    /// 历史坑：本函数曾接收 `&[RadarIndicatorOption]`，调用方传空数组导致
+    /// 网格退化为三角形而数据多边形是 N 边形——已改为显式传维度数，
+    /// 使"空指示器"不再可能静默改变网格形状。
+    pub fn render(subplot: &SubplotSpec, indicator_count: usize) -> Vec<SceneNode> {
         let mut elements = Vec::new();
 
-        let indicator_count = indicators.len().max(3);
+        let indicator_count = indicator_count.max(3);
         let bounds = subplot.bounds;
         let width = bounds.width();
         let height = bounds.height();
@@ -92,26 +92,6 @@ impl RadarAxisRenderer {
                 Stroke::new(Color::rgb(200, 200, 200), 1.0),
                 Z_GRID,
             ));
-        }
-
-        // 绘制指示器标签
-        for (i, indicator) in indicators.iter().enumerate() {
-            if let Some(ref name) = indicator.name {
-                let angle = -PI / 2.0 + 2.0 * PI * i as f64 / indicator_count as f64;
-                let label_radius = radius + 20.0;
-                let label_x = center.x + label_radius * angle.cos();
-                let label_y = center.y + label_radius * angle.sin();
-
-                let mut style = TextStyle::new(colors.axis_label_color, 12.0, "sans-serif");
-                style.align = TextAlign::Center;
-                style.baseline = TextBaseline::Middle;
-                elements.push(text_el(
-                    name.clone(),
-                    Point::new(label_x, label_y),
-                    style,
-                    Z_LABEL,
-                ));
-            }
         }
 
         elements
