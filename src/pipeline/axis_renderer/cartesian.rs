@@ -10,7 +10,7 @@ use lievisual::{
 };
 use vello_cpu::kurbo::{Point, Rect};
 
-use super::axis_ticks;
+use super::axis_ticks_with_count;
 use crate::pipeline::{
     axis_label::{
         auto_rotate, format_label, label_step, label_style, measure_labels, rotated_bounds,
@@ -291,16 +291,27 @@ impl CartesianAxisRenderer {
             (axis_y, axis_y + TICK_LEN)
         };
         let xs: Vec<f64> = if axis_cfg.axis_type == AxisType::Category {
-            let n = axis_cfg.categories.len();
-            (0..n)
-                .map(|i| bounds.x0 + (i as f64 + 0.5) / n as f64 * bounds.width())
+            (0..axis_cfg.category_count())
+                .map(|i| bounds.x0 + axis_cfg.category_norm(i) * bounds.width())
                 .collect()
         } else {
-            let (positions, _) = axis_ticks(axis_cfg.axis_type, x_min, x_max);
-            positions
-                .iter()
-                .map(|&t| bounds.x0 + t * bounds.width())
-                .collect()
+            let (positions, _) = axis_ticks_with_count(
+                axis_cfg.axis_type,
+                x_min,
+                x_max,
+                axis_cfg.split_number.unwrap_or(5),
+            );
+            if axis_cfg.inverse {
+                positions
+                    .iter()
+                    .map(|&t| bounds.x1 - t * bounds.width())
+                    .collect()
+            } else {
+                positions
+                    .iter()
+                    .map(|&t| bounds.x0 + t * bounds.width())
+                    .collect()
+            }
         };
         for x in xs {
             elements.push(crate::pipeline::builder::line(
@@ -331,16 +342,28 @@ impl CartesianAxisRenderer {
             (axis_x - TICK_LEN, axis_x)
         };
         let ys: Vec<f64> = if axis_cfg.axis_type == AxisType::Category {
-            let n = axis_cfg.categories.len();
-            (0..n)
-                .map(|i| bounds.y1 - (i as f64 + 0.5) / n as f64 * bounds.height())
+            (0..axis_cfg.category_count())
+                .map(|i| bounds.y1 - axis_cfg.category_norm(i) * bounds.height())
                 .collect()
         } else {
-            let (positions, _) = axis_ticks(axis_cfg.axis_type, y_min, y_max);
-            positions
-                .iter()
-                .map(|&t| bounds.y0 + (1.0 - t) * bounds.height())
-                .collect()
+            let (positions, _) = axis_ticks_with_count(
+                axis_cfg.axis_type,
+                y_min,
+                y_max,
+                axis_cfg.split_number.unwrap_or(5),
+            );
+            if axis_cfg.inverse {
+                // inverse：min 在顶部、max 在底部
+                positions
+                    .iter()
+                    .map(|&t| bounds.y0 + t * bounds.height())
+                    .collect()
+            } else {
+                positions
+                    .iter()
+                    .map(|&t| bounds.y0 + (1.0 - t) * bounds.height())
+                    .collect()
+            }
         };
         for y in ys {
             elements.push(crate::pipeline::builder::line(
@@ -361,10 +384,16 @@ impl CartesianAxisRenderer {
         colors: &ColorContext,
     ) {
         if axis_cfg.axis_type == AxisType::Category {
-            let n = axis_cfg.categories.len();
+            let n = axis_cfg.category_count();
             if n > 1 {
-                for i in 0..=n {
-                    let t = i as f64 / n as f64;
+                // 留白：网格线落在 n+1 条带边界上（inverse 时仍对称，方向不影响）
+                // 无留白：网格线与数据点对齐
+                for i in 0..if axis_cfg.boundary_gap { n + 1 } else { n } {
+                    let t = if axis_cfg.boundary_gap {
+                        i as f64 / n as f64
+                    } else {
+                        axis_cfg.category_norm(i)
+                    };
                     let x = bounds.x0 + t * bounds.width();
                     elements.push(crate::pipeline::builder::line(
                         Point::new(x, bounds.y0),
@@ -376,9 +405,18 @@ impl CartesianAxisRenderer {
             }
         } else {
             // Value / Time / Log 轴：网格线位置与刻度位置一致
-            let (positions, _labels) = axis_ticks(axis_cfg.axis_type, x_min, x_max);
+            let (positions, _labels) = axis_ticks_with_count(
+                axis_cfg.axis_type,
+                x_min,
+                x_max,
+                axis_cfg.split_number.unwrap_or(5),
+            );
             for t in positions {
-                let x = bounds.x0 + t * bounds.width();
+                let x = if axis_cfg.inverse {
+                    bounds.x1 - t * bounds.width()
+                } else {
+                    bounds.x0 + t * bounds.width()
+                };
                 elements.push(crate::pipeline::builder::line(
                     Point::new(x, bounds.y0),
                     Point::new(x, bounds.y1),
@@ -397,10 +435,20 @@ impl CartesianAxisRenderer {
         y_max: f64,
         colors: &ColorContext,
     ) {
-        let (positions, _labels) = axis_ticks(axis_cfg.axis_type, y_min, y_max);
+        let (positions, _labels) = axis_ticks_with_count(
+            axis_cfg.axis_type,
+            y_min,
+            y_max,
+            axis_cfg.split_number.unwrap_or(5),
+        );
         for t in positions {
             // Y 轴自下而上：t=(v-min)/(max-min)，像素 y = y0 + (1-t)*height
-            let y = bounds.y0 + (1.0 - t) * bounds.height();
+            // inverse：min 在顶部、max 在底部 → y = y0 + t*height
+            let y = if axis_cfg.inverse {
+                bounds.y0 + t * bounds.height()
+            } else {
+                bounds.y0 + (1.0 - t) * bounds.height()
+            };
             elements.push(crate::pipeline::builder::line(
                 Point::new(bounds.x0, y),
                 Point::new(bounds.x1, y),
@@ -453,7 +501,7 @@ impl CartesianAxisRenderer {
             let mut last_rendered: Option<usize> = None;
             for i in (0..n).step_by(step) {
                 last_rendered = Some(i);
-                let cx = bounds.x0 + (i as f64 + 0.5) / n as f64 * bounds.width();
+                let cx = bounds.x0 + axis_cfg.category_norm(i) * bounds.width();
                 push_x_label(
                     elements,
                     &labels[i],
@@ -475,7 +523,7 @@ impl CartesianAxisRenderer {
                 let (w, h) = text_measurer.measure(&labels[last_idx], &style);
                 let (pw, _) = rotated_bounds(w, h, rotation);
                 if gap >= pw {
-                    let cx = bounds.x1 - slot_w / 2.0;
+                    let cx = bounds.x0 + axis_cfg.category_norm(last_idx) * bounds.width();
                     push_x_label(
                         elements,
                         &labels[last_idx],
@@ -489,7 +537,12 @@ impl CartesianAxisRenderer {
             }
         } else {
             // Value / Time / Log 轴：统一通过 axis_ticks 生成刻度位置与标签
-            let (norm_positions, tick_labels) = axis_ticks(axis_cfg.axis_type, x_min, x_max);
+            let (norm_positions, tick_labels) = axis_ticks_with_count(
+                axis_cfg.axis_type,
+                x_min,
+                x_max,
+                axis_cfg.split_number.unwrap_or(5),
+            );
             if tick_labels.is_empty() {
                 return;
             }
@@ -497,10 +550,16 @@ impl CartesianAxisRenderer {
                 .iter()
                 .map(|label| format_label(label, &axis_cfg.label_formatter))
                 .collect();
-            // 刻度像素位置（X 轴自左向右，t=(v-min)/(max-min)）
+            // 刻度像素位置（X 轴自左向右，t=(v-min)/(max-min)；inverse 时自右向左）
             let positions: Vec<f64> = norm_positions
                 .iter()
-                .map(|&t| bounds.x0 + t * bounds.width())
+                .map(|&t| {
+                    if axis_cfg.inverse {
+                        bounds.x1 - t * bounds.width()
+                    } else {
+                        bounds.x0 + t * bounds.width()
+                    }
+                })
                 .collect();
             let slot_w = if positions.len() > 1 {
                 positions
@@ -627,8 +686,7 @@ impl CartesianAxisRenderer {
             let mut last_rendered: Option<usize> = None;
             for i in (0..n).step_by(step) {
                 last_rendered = Some(i);
-                let t = (i as f64 + 0.5) / n as f64;
-                let y = bounds.y1 - t * bounds.height();
+                let y = bounds.y1 - axis_cfg.category_norm(i) * bounds.height();
                 push_y_tick_label(
                     elements,
                     &labels[i],
@@ -648,7 +706,7 @@ impl CartesianAxisRenderer {
                 let (w, h) = text_measurer.measure(&labels[last_idx], &style);
                 let (_, ph) = rotated_bounds(w, h, rotation);
                 if gap >= ph {
-                    let y = bounds.y1 - (n as f64 - 0.5) / n as f64 * bounds.height();
+                    let y = bounds.y1 - axis_cfg.category_norm(last_idx) * bounds.height();
                     push_y_tick_label(
                         elements,
                         &labels[last_idx],
@@ -663,15 +721,27 @@ impl CartesianAxisRenderer {
         }
 
         // Value / Time / Log 轴：统一通过 axis_ticks 生成刻度位置与标签
-        let (norm_positions, tick_labels) = axis_ticks(axis_cfg.axis_type, y_min, y_max);
+        let (norm_positions, tick_labels) = axis_ticks_with_count(
+            axis_cfg.axis_type,
+            y_min,
+            y_max,
+            axis_cfg.split_number.unwrap_or(5),
+        );
         let labels: Vec<String> = tick_labels
             .iter()
             .map(|label| format_label(label, &axis_cfg.label_formatter))
             .collect();
         // Y 轴自下而上：t=(v-min)/(max-min)，像素 y = y0 + (1-t)*height
+        // inverse：min 在顶部、max 在底部 → y = y0 + t*height
         let positions: Vec<f64> = norm_positions
             .iter()
-            .map(|&t| bounds.y0 + (1.0 - t) * bounds.height())
+            .map(|&t| {
+                if axis_cfg.inverse {
+                    bounds.y0 + t * bounds.height()
+                } else {
+                    bounds.y0 + (1.0 - t) * bounds.height()
+                }
+            })
             .collect();
         let slot_h = if positions.len() > 1 {
             positions
@@ -780,6 +850,8 @@ mod tests {
                     is_user_defined: false,
                     tick_count_hint: None,
                     categories: vec![],
+                    inverse: false,
+                    boundary_gap: true,
                 },
                 ResolvedAxisRange {
                     axis_index: 0,
@@ -790,6 +862,8 @@ mod tests {
                     is_user_defined: false,
                     tick_count_hint: None,
                     categories: vec![],
+                    inverse: false,
+                    boundary_gap: true,
                 },
             ],
         };
@@ -851,6 +925,8 @@ mod tests {
                     is_user_defined: false,
                     tick_count_hint: None,
                     categories: vec![],
+                    inverse: false,
+                    boundary_gap: true,
                 },
                 ResolvedAxisRange {
                     axis_index: 0,
@@ -861,6 +937,8 @@ mod tests {
                     is_user_defined: false,
                     tick_count_hint: None,
                     categories: vec![],
+                    inverse: false,
+                    boundary_gap: true,
                 },
             ],
         };
@@ -939,6 +1017,8 @@ mod tests {
                     is_user_defined: false,
                     tick_count_hint: None,
                     categories: vec![],
+                    inverse: false,
+                    boundary_gap: true,
                 },
                 ResolvedAxisRange {
                     axis_index: 0,
@@ -949,6 +1029,8 @@ mod tests {
                     is_user_defined: false,
                     tick_count_hint: None,
                     categories: vec![],
+                    inverse: false,
+                    boundary_gap: true,
                 },
             ],
         };
@@ -1102,6 +1184,8 @@ mod tests {
                 is_user_defined: false,
                 tick_count_hint: None,
                 categories: vec![],
+                inverse: false,
+                boundary_gap: true,
             }],
         };
         let colors = ColorContext::default();
@@ -1110,7 +1194,8 @@ mod tests {
             CartesianAxisRenderer::render(&subplot, &[], &y_axes, &ranges, &colors, &mut measurer);
 
         // 期望刻度 y 集合（与渲染同一公式：y0 + (1-t)*height）
-        let (norm_positions, _) = axis_ticks(AxisType::Value, 0.0, 100.0);
+        let (norm_positions, _) =
+            crate::pipeline::axis_renderer::axis_ticks(AxisType::Value, 0.0, 100.0);
         let tick_ys: Vec<f64> = norm_positions
             .iter()
             .map(|&t| bounds.y0 + (1.0 - t) * bounds.height())
@@ -1158,6 +1243,8 @@ mod tests {
                 is_user_defined: false,
                 tick_count_hint: None,
                 categories: vec![],
+                inverse: false,
+                boundary_gap: true,
             }],
         };
         let colors = ColorContext::default();
@@ -1165,7 +1252,8 @@ mod tests {
         let elements =
             CartesianAxisRenderer::render(&subplot, &[], &y_axes, &ranges, &colors, &mut measurer);
 
-        let (norm_positions, _) = axis_ticks(AxisType::Value, 0.0, 100.0);
+        let (norm_positions, _) =
+            crate::pipeline::axis_renderer::axis_ticks(AxisType::Value, 0.0, 100.0);
         let tick_ys: Vec<f64> = norm_positions
             .iter()
             .map(|&t| bounds.y0 + (1.0 - t) * bounds.height())

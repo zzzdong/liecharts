@@ -104,6 +104,21 @@ pub struct AxisSpec {
     pub z: Option<f64>,
 }
 
+impl AxisSpec {
+    /// Category 轴的类目总数（刻度标签的来源）。
+    pub fn category_count(&self) -> usize {
+        self.categories.len()
+    }
+
+    /// 分类轴第 `i` 个类目的归一化位置（见 [`category_norm`]）。
+    ///
+    /// 已含 `boundary_gap` 与 `inverse` 的处理：`inverse` 时类目顺序反转
+    /// （类目 0 落到轴的另一端），与数据侧（像素映射）的口径一致。
+    pub fn category_norm(&self, i: usize) -> f64 {
+        category_norm(i, self.category_count(), self.boundary_gap, self.inverse)
+    }
+}
+
 /// 图表类型枚举
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ChartType {
@@ -778,6 +793,50 @@ pub struct SubplotSpec {
     pub y_axis_indices: Vec<usize>,
 }
 
+/// 分类轴第 `i` 个类目（共 `n` 个）的类目下标；`inverse` 时反转顺序。
+fn category_index(i: usize, n: usize, inverse: bool) -> usize {
+    if inverse { n.saturating_sub(1 + i) } else { i }
+}
+
+/// 分类轴第 `i` 个类目（共 `n` 个）的归一化位置 `t ∈ [0,1]`
+///（X 轴像素 = `x0 + t·W`，Y 轴 = `y1 − t·H`）。
+///
+/// 口径与轴范围解析（`axis_binding_resolver`）保持一致：
+/// - `boundary_gap = true`：解析范围 `[0, n]`，类目落在带中心 `(i+0.5)/n`；
+/// - `boundary_gap = false`：解析范围 `[0, n-1]`，类目落在数据点 `i/(n-1)`；
+/// - `n <= 1` 且无留白：范围退化为 `[0, 0]`，统一取 0。
+///
+/// `inverse = true`（ECharts `axis.inverse`）时类目顺序反转。
+pub fn category_norm(i: usize, n: usize, boundary_gap: bool, inverse: bool) -> f64 {
+    if n == 0 {
+        return 0.0;
+    }
+    let j = category_index(i, n, inverse);
+    if boundary_gap {
+        (j as f64 + 0.5) / n as f64
+    } else if n <= 1 {
+        0.0
+    } else {
+        j as f64 / (n - 1) as f64
+    }
+}
+
+/// 分类轴第 `i` 个类目在轴**数据空间**中的坐标，可直接交给
+/// `map_x_to_pixel` / `map_y_to_pixel`。
+///
+/// 与 [`category_norm`] 同源，区别是不做归一化（留白时返回带中心 `i+0.5`）。
+/// 该坐标恒落在 `[min, max]` 内，调用方无需再 clamp。
+///
+/// 注意：这里**不**处理 `inverse` —— 类目顺序反转统一由像素映射
+/// （`map_x_to_pixel` / `map_y_to_pixel`）实现，保证折线、散点等按原始数据坐标
+/// 映射的系列与柱状图族行为一致。
+pub fn category_value(i: usize, n: usize, boundary_gap: bool) -> f64 {
+    if n == 0 {
+        return 0.0;
+    }
+    i as f64 + if boundary_gap { 0.5 } else { 0.0 }
+}
+
 /// AxisBindingResolver 的输出：单个轴实例的解析结果
 #[derive(Debug, Clone)]
 pub struct ResolvedAxisRange {
@@ -789,11 +848,50 @@ pub struct ResolvedAxisRange {
     pub is_user_defined: bool,
     pub tick_count_hint: Option<usize>,
     pub categories: Vec<String>,
+    /// 坐标轴反向（`AxisSpec.inverse`）。像素方向翻转，但 `min`/`max` 的先后不交换：
+    /// - X 轴：`min` 在右端、`max` 在左端；
+    /// - Y 轴：`min` 在顶部、`max` 在底部；
+    /// - Category 轴：类目顺序反转（`category_value`）。
+    ///
+    /// 该标志同时被像素映射（`map_x_to_pixel` / `map_y_to_pixel`）与刻度绘制读取，
+    /// 二者口径一致。
+    pub inverse: bool,
+    /// 分类轴是否在两端留白（`AxisSpec.boundary_gap`）。
+    ///
+    /// 决定类目落在**带中心**（`[0, n]`，留白）还是**数据点**（`[0, n-1]`，无留白）。
+    /// 此前各 materializer 靠 `(max - min) >= n` 反推该标志，在多系列行数不等时会
+    /// 误判并导致系列间错位，故改为随解析结果直传。
+    pub boundary_gap: bool,
 }
 
 impl ResolvedAxisRange {
     pub fn is_y_axis(&self) -> bool {
         matches!(self.position, AxisPosition::Left | AxisPosition::Right)
+    }
+
+    /// Category 轴的类目总数；非 Category 轴返回 0。
+    ///
+    /// 优先取轴声明的 [`Self::categories`]（与刻度标签同源），否则由解析范围反推：
+    /// 留白时范围 `[0, n]` → `n = span`；无留白时 `[0, n-1]` → `n = span + 1`。
+    pub fn category_count(&self) -> usize {
+        if self.axis_type != AxisType::Category {
+            return 0;
+        }
+        if !self.categories.is_empty() {
+            return self.categories.len();
+        }
+        let span = (self.max - self.min).max(0.0);
+        let n = if self.boundary_gap { span } else { span + 1.0 };
+        n.round().max(1.0) as usize
+    }
+
+    /// 分类轴第 `i` 个类目的数据空间坐标（见 [`category_value`]）。
+    ///
+    /// 数据坐标始终按**升序**（类目 0 对应 `min` 端）排列；`inverse` 由像素映射
+    /// （`map_x_to_pixel` / `map_y_to_pixel`）统一翻转，与折线等按数据坐标映射的
+    /// 系列保持一致。
+    pub fn category_value(&self, i: usize) -> f64 {
+        category_value(i, self.category_count(), self.boundary_gap)
     }
 }
 

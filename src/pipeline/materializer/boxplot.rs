@@ -6,7 +6,7 @@ use crate::{
     Color,
     error::Result,
     pipeline::{
-        materializer::{SeriesMaterializer, map_y_to_pixel},
+        materializer::{SeriesMaterializer, map_x_to_pixel, map_y_to_pixel},
         typed_series::{BoxplotRect, BoxplotSeries, TypedSeries},
         types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
@@ -63,22 +63,34 @@ impl SeriesMaterializer for BoxplotMaterializer {
             .get_column(&cfg.max_col)
             .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.max_col.clone()))?;
 
-        let cat_count = (x_range.max - x_range.min).max(1.0) as usize;
-        let slot_width = bounds.width() / cat_count as f64;
+        // 类目总数与留白风格直接取自解析结果，与坐标轴刻度口径严格一致
+        let n_cat = x_range.category_count().max(1);
+        let slot_width = bounds.width() / n_cat as f64;
         let box_width = (slot_width * 0.5).max(4.0); // 箱线图比 K 线略宽
 
         let mut boxes = Vec::with_capacity(spec.data.row_count());
 
         for i in 0..spec.data.row_count() {
-            let min = min_col.as_f64(i).unwrap_or(0.0);
-            let q1 = q1_col.as_f64(i).unwrap_or(0.0);
-            let median = median_col.as_f64(i).unwrap_or(0.0);
-            let q3 = q3_col.as_f64(i).unwrap_or(0.0);
-            let max = max_col.as_f64(i).unwrap_or(0.0);
+            let mut five = [
+                min_col.as_f64(i).unwrap_or(0.0),
+                q1_col.as_f64(i).unwrap_or(0.0),
+                median_col.as_f64(i).unwrap_or(0.0),
+                q3_col.as_f64(i).unwrap_or(0.0),
+                max_col.as_f64(i).unwrap_or(0.0),
+            ];
+            // 数值乱序（如 min>max、q1>q3）会产出负高矩形：统一排序归一，
+            // 非有限值按 0 处理，避免 NaN 坐标。
+            for v in five.iter_mut() {
+                if !v.is_finite() {
+                    *v = 0.0;
+                }
+            }
+            five.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let (min, q1, median, q3, max) = (five[0], five[1], five[2], five[3], five[4]);
             let category = category_col.as_string(i).unwrap_or_default();
 
-            let cat_idx = i % cat_count;
-            let px = bounds.x0 + (cat_idx as f64 + 0.5) / cat_count as f64 * bounds.width();
+            let cat_idx = i.min(n_cat - 1);
+            let px = map_x_to_pixel(x_range.category_value(cat_idx), x_range, bounds);
             let half_width = box_width / 2.0;
 
             let py_min = map_y_to_pixel(min, y_range, bounds);

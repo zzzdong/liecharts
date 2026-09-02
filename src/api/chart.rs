@@ -319,6 +319,10 @@ pub struct Axis {
     pub min: Option<f64>,
     pub max: Option<f64>,
     pub boundary_gap: bool,
+    /// 坐标轴反向（ECharts `inverse`）：像素方向翻转，min/max 的先后不交换。
+    pub inverse: bool,
+    /// 数值/时间轴的分割段数（ECharts `splitNumber`）；`None` 时默认 5。
+    pub split_number: Option<usize>,
     pub grid_index: usize,
 }
 
@@ -332,6 +336,8 @@ impl Default for Axis {
             min: None,
             max: None,
             boundary_gap: true,
+            inverse: false,
+            split_number: None,
             grid_index: 0,
         }
     }
@@ -372,6 +378,18 @@ impl Axis {
     }
     pub fn boundary_gap(mut self, gap: bool) -> Self {
         self.boundary_gap = gap;
+        self
+    }
+    /// 坐标轴反向（ECharts `inverse`）。
+    ///
+    /// X 轴：`min` 在右端；Y 轴：`min` 在顶部；Category 轴：类目顺序反转。
+    pub fn inverse(mut self, inverse: bool) -> Self {
+        self.inverse = inverse;
+        self
+    }
+    /// 数值/时间轴的分割段数（ECharts `splitNumber`），`None` 时默认 5。
+    pub fn split_number(mut self, n: usize) -> Self {
+        self.split_number = Some(n);
         self
     }
     pub fn grid_index(mut self, idx: usize) -> Self {
@@ -767,8 +785,8 @@ impl Chart {
                         a.data.clone()
                     },
                     boundary_gap: a.boundary_gap,
-                    inverse: false,
-                    split_number: None,
+                    inverse: a.inverse,
+                    split_number: a.split_number,
                     label_show: true,
                     label_formatter: None,
                     label_rotate: None,
@@ -831,8 +849,8 @@ impl Chart {
                     name_location: None,
                     categories: a.data.clone(),
                     boundary_gap: a.boundary_gap,
-                    inverse: false,
-                    split_number: None,
+                    inverse: a.inverse,
+                    split_number: a.split_number,
                     label_show: true,
                     label_formatter: None,
                     label_rotate: None,

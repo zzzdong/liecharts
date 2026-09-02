@@ -6,7 +6,7 @@ use crate::{
     Color,
     error::Result,
     pipeline::{
-        materializer::{SeriesMaterializer, map_y_to_pixel},
+        materializer::{SeriesMaterializer, map_x_to_pixel, map_y_to_pixel},
         typed_series::{CandleRect, CandlestickSeries, TypedSeries},
         types::{ColorContext, ResolvedAxisRanges, SeriesConfig, SeriesSpec},
     },
@@ -63,7 +63,8 @@ impl SeriesMaterializer for CandlestickMaterializer {
             .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.high_col.clone()))?;
 
         // 计算蜡烛宽度 — K线图通常比较紧凑窄小
-        let cat_count = (x_range.max - x_range.min).max(1.0) as usize;
+        // 类目总数取自解析结果，与坐标轴刻度口径一致（此前按 span 截断会丢类目）
+        let cat_count = x_range.category_count().max(1);
         let slot_width = bounds.width() / cat_count as f64;
         let candle_width = (slot_width * 0.35).max(2.0); // 窄小紧凑，最小 2px
 
@@ -78,8 +79,8 @@ impl SeriesMaterializer for CandlestickMaterializer {
             let category = category_col.as_string(i).unwrap_or_default();
 
             // 计算 X 位置（类别中心）
-            let cat_idx = i % cat_count;
-            let px = bounds.x0 + (cat_idx as f64 + 0.5) / cat_count as f64 * bounds.width();
+            let cat_idx = i.min(cat_count - 1);
+            let px = map_x_to_pixel(x_range.category_value(cat_idx), x_range, bounds);
 
             // 映射 Y 坐标
             let py_open = map_y_to_pixel(open, y_range, bounds);

@@ -93,8 +93,16 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
         }
         let total_sweep = end_angle - start_angle;
 
-        // 计算数值角度
-        let value_ratio = ((series.value - series.min) / (series.max - series.min)).clamp(0.0, 1.0);
+        // 计算数值角度。min == max（轴退化为单点）时避免除零：
+        // 值不小于该点视为满格，否则视为 0。
+        let span = series.max - series.min;
+        let value_ratio = if span > 0.0 {
+            ((series.value - series.min) / span).clamp(0.0, 1.0)
+        } else if series.value >= series.min {
+            1.0
+        } else {
+            0.0
+        };
         let value_angle = start_angle + total_sweep * value_ratio;
 
         // 轴环：外缘 = radius，厚 spec::RING_WIDTH%

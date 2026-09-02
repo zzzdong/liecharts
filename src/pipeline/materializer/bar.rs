@@ -58,8 +58,9 @@ impl SeriesMaterializer for BarMaterializer {
                 .get_column(&cfg.y_col)
                 .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.y_col.clone()))?;
 
-            let cat_count = (y_range.max - y_range.min).max(1.0) as usize;
-            let bar_height = bounds.height() / cat_count as f64 * cfg.bar_width;
+            // 类目总数与留白风格直接取自解析结果，与坐标轴刻度口径严格一致
+            let n_cat = y_range.category_count().max(1);
+            let bar_height = bounds.height() / n_cat as f64 * cfg.bar_width;
             // 基线：如果0在范围内，使用0；否则使用范围的最小值
             let baseline_x = if x_range.min <= 0.0 && x_range.max >= 0.0 {
                 map_x_to_pixel(0.0, x_range, bounds)
@@ -73,7 +74,7 @@ impl SeriesMaterializer for BarMaterializer {
 
             for i in 0..spec.data.row_count() {
                 let value = x_vals.as_f64(i).unwrap_or(0.0);
-                let cat_idx = y_vals.as_f64(i).unwrap_or(i as f64) as usize % cat_count;
+                let cat_idx = y_vals.as_f64(i).unwrap_or(i as f64).min(n_cat as f64 - 1.0) as usize;
 
                 // 类别标签从 Y 轴配置获取
                 let category = if let Some(cat) = y_range.categories.get(cat_idx) {
@@ -83,7 +84,7 @@ impl SeriesMaterializer for BarMaterializer {
                 };
 
                 // 计算 Y 位置（类别中心）
-                let py = bounds.y1 - (cat_idx as f64 + 0.5) / cat_count as f64 * bounds.height();
+                let py = map_y_to_pixel(y_range.category_value(cat_idx), y_range, bounds);
                 let px = map_x_to_pixel(value, x_range, bounds);
 
                 // 创建矩形（从基线延伸到数据点）
@@ -112,8 +113,9 @@ impl SeriesMaterializer for BarMaterializer {
                 .get_column(&cfg.y_col)
                 .ok_or_else(|| crate::error::ChartError::MissingColumn(cfg.y_col.clone()))?;
             // 纵向柱状图：X轴是分类，Y轴是数值
-            let cat_count = (x_range.max - x_range.min).max(1.0) as usize;
-            let bar_width = bounds.width() / cat_count as f64 * cfg.bar_width;
+            // 类目总数与留白风格直接取自解析结果，与坐标轴刻度口径严格一致
+            let n_cat = x_range.category_count().max(1);
+            let bar_width = bounds.width() / n_cat as f64 * cfg.bar_width;
             // 基线：如果0在范围内，使用0；否则使用范围的最小值（底部）
             let baseline_y = if y_range.min <= 0.0 && y_range.max >= 0.0 {
                 map_y_to_pixel(0.0, y_range, bounds)
@@ -127,7 +129,7 @@ impl SeriesMaterializer for BarMaterializer {
 
             for i in 0..spec.data.row_count() {
                 let value = y_vals.as_f64(i).unwrap_or(0.0);
-                let cat_idx = x_vals.as_f64(i).unwrap_or(i as f64) as usize % cat_count;
+                let cat_idx = x_vals.as_f64(i).unwrap_or(i as f64).min(n_cat as f64 - 1.0) as usize;
 
                 // 类别标签从 X 轴配置获取
                 let category = if let Some(cat) = x_range.categories.get(cat_idx) {
@@ -137,7 +139,7 @@ impl SeriesMaterializer for BarMaterializer {
                 };
 
                 // 计算 X 位置（类别中心）
-                let px = bounds.x0 + (cat_idx as f64 + 0.5) / cat_count as f64 * bounds.width();
+                let px = map_x_to_pixel(x_range.category_value(cat_idx), x_range, bounds);
                 let py = map_y_to_pixel(value, y_range, bounds);
 
                 // 创建矩形（从基线延伸到数据点）

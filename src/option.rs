@@ -1997,6 +1997,8 @@ pub struct AxisOption {
     pub axis_tick: Option<AxisTickOption>,
     pub split_line: Option<SplitLineOption>,
     pub split_area: Option<SplitAreaOption>,
+    /// 数值/时间轴的分割段数（ECharts `splitNumber`）。`None` 时默认 5。
+    pub split_number: Option<usize>,
     pub min: Option<LenientAxisLimit>,
     pub max: Option<LenientAxisLimit>,
     pub min_interval: Option<f64>,
@@ -2031,6 +2033,7 @@ impl Default for AxisOption {
             grid_index: None,
             split_line: None,
             split_area: None,
+            split_number: None,
             min: None,
             max: None,
             min_interval: None,
@@ -2907,6 +2910,8 @@ impl BarSeriesOption {
 #[derive(Default)]
 pub struct CandlestickSeriesOption {
     pub name: Option<String>,
+    /// 数据点。dataset + datasetIndex 场景可省略（兼容 ECharts dataset 用法）。
+    #[serde(default)]
     pub data: Vec<CandlestickDataPoint>,
     pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,
@@ -3046,6 +3051,8 @@ pub struct CandlestickItemStyleOption {
 #[derive(Default)]
 pub struct BoxplotSeriesOption {
     pub name: Option<String>,
+    /// 数据点。dataset + datasetIndex 场景可省略（兼容 ECharts dataset 用法）。
+    #[serde(default)]
     pub data: Vec<BoxplotDataPoint>,
     pub x_axis_index: Option<usize>,
     pub y_axis_index: Option<usize>,

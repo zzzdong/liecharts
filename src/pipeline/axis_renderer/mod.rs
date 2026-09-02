@@ -76,17 +76,29 @@ pub fn axis_ticks(
     min: f64,
     max: f64,
 ) -> (Vec<f64>, Vec<String>) {
+    axis_ticks_with_count(axis_type, min, max, 5)
+}
+
+/// 同 [`axis_ticks`]，但允许指定分段数（`AxisSpec.split_number`，ECharts `splitNumber`）。
+/// Log 轴按整数幂生成刻度，分段数对其无意义（忽略）。
+pub fn axis_ticks_with_count(
+    axis_type: crate::pipeline::types::AxisType,
+    min: f64,
+    max: f64,
+    count: usize,
+) -> (Vec<f64>, Vec<String>) {
+    let count = count.max(1);
     match axis_type {
         crate::pipeline::types::AxisType::Log => log_ticks(min, max),
         crate::pipeline::types::AxisType::Time => {
             // 时间戳（秒/毫秒）仍按线性刻度，标签格式化为日期
-            let ticks = compute_nice_ticks(min, max, 5);
+            let ticks = compute_nice_ticks(min, max, count);
             let positions = normalize_ticks(&ticks, min, max);
             let labels: Vec<String> = ticks.iter().map(|&v| format_time_label(v)).collect();
             (positions, labels)
         }
         _ => {
-            let ticks = compute_nice_ticks(min, max, 5);
+            let ticks = compute_nice_ticks(min, max, count);
             let positions = normalize_ticks(&ticks, min, max);
             let labels: Vec<String> = format_value_ticks(&ticks);
             (positions, labels)

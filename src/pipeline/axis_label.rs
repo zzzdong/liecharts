@@ -11,7 +11,7 @@ pub use super::collision::{ROT_45, ROT_90, auto_rotate, label_step, rotated_boun
 use lievisual::text::{TextAlign, TextBaseline, TextStyle};
 
 use crate::pipeline::{
-    axis_renderer::axis_ticks,
+    axis_renderer::axis_ticks_with_count,
     types::{AxisSpec, AxisType, ColorContext, ResolvedAxisRanges, TextMeasurer},
 };
 
@@ -124,7 +124,9 @@ fn axis_label_texts(axis: &AxisSpec, min: f64, max: f64) -> Vec<String> {
             .map(|l| format_label(l, &axis.label_formatter))
             .collect()
     } else {
-        let (_, tick_labels) = axis_ticks(axis.axis_type, min, max);
+        // 与 CartesialAxisRenderer 的刻度口径一致（splitNumber → 分段数）
+        let (_, tick_labels) =
+            axis_ticks_with_count(axis.axis_type, min, max, axis.split_number.unwrap_or(5));
         tick_labels
             .iter()
             .map(|l| format_label(l, &axis.label_formatter))

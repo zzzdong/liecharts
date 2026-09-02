@@ -42,6 +42,16 @@ impl SamplingProcessor {
         if df.row_count() <= threshold {
             return df.clone();
         }
+        // 非法阈值守卫（须在采样计算之前）：LTTB 需要至少 3 个点参与
+        // （内部有 `threshold - 2` 运算），分桶采样需至少 1 个桶。
+        // 阈值不足时放弃采样，避免 usize 下溢 / 除零。
+        let valid_threshold = match sampling_type {
+            SamplingType::Lttb => threshold >= 3,
+            SamplingType::Average | SamplingType::Max | SamplingType::Min => threshold >= 1,
+        };
+        if !valid_threshold {
+            return df.clone();
+        }
 
         match sampling_type {
             SamplingType::Lttb => Self::sample_lttb(df, threshold),
@@ -212,4 +222,49 @@ enum BucketOp {
     Average,
     Max,
     Min,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::pipeline::dataframe::{DataFrame, DataValue};
+
+    fn make_df(rows: usize) -> DataFrame {
+        let mut df = DataFrame::new();
+        let x: Vec<DataValue> = (0..rows).map(|i| DataValue::Float(i as f64)).collect();
+        let y: Vec<DataValue> = (0..rows)
+            .map(|i| DataValue::Float((i as f64).sin() * 10.0))
+            .collect();
+        df.add_column(Series::new("x", x));
+        df.add_column(Series::new("y", y));
+        df
+    }
+
+    #[test]
+    fn invalid_thresholds_do_not_panic_and_keep_data() {
+        let df = make_df(100);
+        // LTTB 阈值 < 3：放弃采样，返回完整数据（此前 usize 下溢/除零）
+        for threshold in [0usize, 1, 2] {
+            let out = SamplingProcessor::sample(&df, threshold, SamplingType::Lttb);
+            assert_eq!(
+                out.row_count(),
+                100,
+                "LTTB threshold={threshold} 应放弃采样"
+            );
+        }
+        // 分桶阈值 0：放弃采样，返回完整数据（此前除零得空结果）
+        for ty in [SamplingType::Average, SamplingType::Max, SamplingType::Min] {
+            let out = SamplingProcessor::sample(&df, 0, ty);
+            assert_eq!(out.row_count(), 100, "bucket threshold=0 应放弃采样");
+        }
+    }
+
+    #[test]
+    fn normal_thresholds_still_sample() {
+        let df = make_df(100);
+        let out = SamplingProcessor::sample(&df, 10, SamplingType::Lttb);
+        assert!(out.row_count() <= 10);
+        let out2 = SamplingProcessor::sample(&df, 10, SamplingType::Max);
+        assert!(out2.row_count() <= 10);
+    }
 }

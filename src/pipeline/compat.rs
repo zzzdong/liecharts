@@ -104,7 +104,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     crate::option::LenientBoundaryGap::Gap(_, _) => true,
                 }),
                 inverse: a.inverse.unwrap_or(false),
-                split_number: None,
+                split_number: a.split_number,
                 label_show: a
                     .axis_label
                     .as_ref()
@@ -171,7 +171,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     crate::option::LenientBoundaryGap::Gap(_, _) => true,
                 }),
                 inverse: a.inverse.unwrap_or(false),
-                split_number: None,
+                split_number: a.split_number,
                 label_show: a
                     .axis_label
                     .as_ref()
@@ -614,36 +614,44 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     }
                 }
                 SeriesOption::Candlestick(cs) => {
-                    // ECharts K 线数据：[open, close, low, high]，名称缺省时用序号
-                    let mut data = crate::pipeline::dataframe::DataFrame::new();
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "category",
-                        cs.data
-                            .iter()
-                            .enumerate()
-                            .map(|(i, d)| {
-                                DataValue::from(
-                                    d.name.clone().unwrap_or_else(|| (i + 1).to_string()),
-                                )
-                            })
-                            .collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "open",
-                        cs.data.iter().map(|d| DataValue::from(d.open)).collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "close",
-                        cs.data.iter().map(|d| DataValue::from(d.close)).collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "low",
-                        cs.data.iter().map(|d| DataValue::from(d.low)).collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "high",
-                        cs.data.iter().map(|d| DataValue::from(d.high)).collect(),
-                    ));
+                    // 优先 dataset + datasetIndex（列名/encode 匹配）；否则用 series.data
+                    let ds_idx = resolve_dataset_index(cs.dataset_index, !cs.data.is_empty());
+                    let data = match candlestick_dataset_df(ds_idx, &cs.encode, &datasets) {
+                        Some(df) => df,
+                        None => {
+                            // ECharts K 线数据：[open, close, low, high]，名称缺省时用序号
+                            let mut d = crate::pipeline::dataframe::DataFrame::new();
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "category",
+                                cs.data
+                                    .iter()
+                                    .enumerate()
+                                    .map(|(i, dp)| {
+                                        DataValue::from(
+                                            dp.name.clone().unwrap_or_else(|| (i + 1).to_string()),
+                                        )
+                                    })
+                                    .collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "open",
+                                cs.data.iter().map(|dp| DataValue::from(dp.open)).collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "close",
+                                cs.data.iter().map(|dp| DataValue::from(dp.close)).collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "low",
+                                cs.data.iter().map(|dp| DataValue::from(dp.low)).collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "high",
+                                cs.data.iter().map(|dp| DataValue::from(dp.high)).collect(),
+                            ));
+                            d
+                        }
+                    };
                     let config = crate::pipeline::types::CandlestickConfig {
                         category_col: "category".into(),
                         open_col: "open".into(),
@@ -665,38 +673,51 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     }
                 }
                 SeriesOption::Boxplot(bs) => {
-                    let mut data = crate::pipeline::dataframe::DataFrame::new();
-                    let categories: Vec<DataValue> = bs
-                        .data
-                        .iter()
-                        .enumerate()
-                        .map(|(i, d)| {
-                            DataValue::from(d.name.clone().unwrap_or_else(|| (i + 1).to_string()))
-                        })
-                        .collect();
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "category", categories,
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "min",
-                        bs.data.iter().map(|d| DataValue::from(d.min)).collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "q1",
-                        bs.data.iter().map(|d| DataValue::from(d.q1)).collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "median",
-                        bs.data.iter().map(|d| DataValue::from(d.median)).collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "q3",
-                        bs.data.iter().map(|d| DataValue::from(d.q3)).collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "max",
-                        bs.data.iter().map(|d| DataValue::from(d.max)).collect(),
-                    ));
+                    // 优先 dataset + datasetIndex；否则用 series.data
+                    let ds_idx = resolve_dataset_index(bs.dataset_index, !bs.data.is_empty());
+                    let data = match boxplot_dataset_df(ds_idx, &bs.encode, &datasets) {
+                        Some(df) => df,
+                        None => {
+                            let mut d = crate::pipeline::dataframe::DataFrame::new();
+                            let categories: Vec<DataValue> = bs
+                                .data
+                                .iter()
+                                .enumerate()
+                                .map(|(i, dp)| {
+                                    DataValue::from(
+                                        dp.name.clone().unwrap_or_else(|| (i + 1).to_string()),
+                                    )
+                                })
+                                .collect();
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "category", categories,
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "min",
+                                bs.data.iter().map(|dp| DataValue::from(dp.min)).collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "q1",
+                                bs.data.iter().map(|dp| DataValue::from(dp.q1)).collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "median",
+                                bs.data
+                                    .iter()
+                                    .map(|dp| DataValue::from(dp.median))
+                                    .collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "q3",
+                                bs.data.iter().map(|dp| DataValue::from(dp.q3)).collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "max",
+                                bs.data.iter().map(|dp| DataValue::from(dp.max)).collect(),
+                            ));
+                            d
+                        }
+                    };
                     let config = crate::pipeline::types::BoxplotConfig {
                         category_col: "category".into(),
                         min_col: "min".into(),
@@ -732,19 +753,30 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     }
                 }
                 SeriesOption::Heatmap(hs) => {
-                    let mut data = crate::pipeline::dataframe::DataFrame::new();
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "x",
-                        hs.data.iter().map(|d| DataValue::Float(d.x)).collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "y",
-                        hs.data.iter().map(|d| DataValue::Float(d.y)).collect(),
-                    ));
-                    data.add_column(crate::pipeline::dataframe::Series::new(
-                        "value",
-                        hs.data.iter().map(|d| DataValue::Float(d.value)).collect(),
-                    ));
+                    // 优先 dataset + datasetIndex；否则用 series.data
+                    let ds_idx = resolve_dataset_index(hs.dataset_index, !hs.data.is_empty());
+                    let data = match heatmap_dataset_df(ds_idx, &hs.encode, &datasets) {
+                        Some(df) => df,
+                        None => {
+                            let mut d = crate::pipeline::dataframe::DataFrame::new();
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "x",
+                                hs.data.iter().map(|dp| DataValue::Float(dp.x)).collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "y",
+                                hs.data.iter().map(|dp| DataValue::Float(dp.y)).collect(),
+                            ));
+                            d.add_column(crate::pipeline::dataframe::Series::new(
+                                "value",
+                                hs.data
+                                    .iter()
+                                    .map(|dp| DataValue::Float(dp.value))
+                                    .collect(),
+                            ));
+                            d
+                        }
+                    };
 
                     // visualMap → 热力图颜色映射
                     let (vm_min, vm_max, vm_colors) = resolve_visual_map(option, &data);
@@ -1656,6 +1688,14 @@ fn dataset_to_dataframe(dataset: &option::DatasetOption) -> crate::pipeline::dat
             }
         }
 
+        // 行不齐（某行比首行短）时用 Null 补齐，保证各列等长——
+        // 与有表头分支一致，否则 DataFrame::add_column 会对长度不一的列 panic。
+        for row_data in col_data.iter_mut() {
+            while row_data.len() < source.len() {
+                row_data.push(DataValue::Null);
+            }
+        }
+
         for (i, data) in col_data.iter().enumerate() {
             df.add_column(DfSeries::new(format!("column{}", i), data.clone()));
         }
@@ -1738,6 +1778,168 @@ fn extract_encoded_columns(
     (result_df, x_col, y_col)
 }
 
+// ═══ H3: candlestick / boxplot / heatmap 支持 dataset + datasetIndex ═══
+
+/// 解析系列实际使用的 dataset 下标。
+///
+/// ECharts 语义：`datasetIndex` 缺省为 **0**，因此只要系列没有显式提供 `data`，
+/// 就默认读第 0 个 dataset；显式给了 `series.data` 时 data 优先，返回 `None`
+/// 让调用方回退到 series.data。
+fn resolve_dataset_index(dataset_index: Option<usize>, has_series_data: bool) -> Option<usize> {
+    match dataset_index {
+        Some(i) => Some(i),
+        None if !has_series_data => Some(0),
+        None => None,
+    }
+}
+
+/// 解析 encode 某一维的首个列名（字符串按名、整数按下标）。
+fn encode_dim_first(
+    dim: &Option<option::OneOrMany<option::StringOrInt>>,
+    df: &crate::pipeline::dataframe::DataFrame,
+) -> Option<String> {
+    let item = match dim {
+        Some(option::OneOrMany::One(i)) => i,
+        Some(option::OneOrMany::Many(v)) => v.first()?,
+        None => return None,
+    };
+    match item {
+        option::StringOrInt::Str(s) => Some(s.clone()),
+        option::StringOrInt::Int(idx) => df.column_names().get(*idx).cloned(),
+    }
+}
+
+/// encode.y 的多维名列表（如 candlestick 的 [open,close,low,high]）。
+fn encode_y_names(
+    encode: &Option<option::SeriesEncodeOption>,
+    df: &crate::pipeline::dataframe::DataFrame,
+) -> Vec<String> {
+    let Some(y) = encode.as_ref().and_then(|e| e.y.clone()) else {
+        return Vec::new();
+    };
+    let to_name = |i: &option::StringOrInt| -> Option<String> {
+        match i {
+            option::StringOrInt::Str(s) => Some(s.clone()),
+            option::StringOrInt::Int(idx) => df.column_names().get(*idx).cloned(),
+        }
+    };
+    match y {
+        option::OneOrMany::One(i) => to_name(&i).into_iter().collect(),
+        option::OneOrMany::Many(items) => items.iter().filter_map(to_name).collect(),
+    }
+}
+
+/// 从 dataset 数据框取列：优先 encode 指定列名，其次按别名（大小写不敏感）匹配。
+/// 无法匹配时返回 `None`——调用方回退 series.data。
+fn pick_dataset_col(
+    df: &crate::pipeline::dataframe::DataFrame,
+    encode_name: Option<&String>,
+    aliases: &[&str],
+) -> Option<Vec<crate::pipeline::dataframe::DataValue>> {
+    if let Some(name) = encode_name
+        && let Some(col) = df.get_column(name)
+    {
+        return Some(col.data.clone());
+    }
+    for a in aliases {
+        if let Some(col) = df.get_column(a) {
+            return Some(col.data.clone());
+        }
+        if let Some(n) = df.column_names().iter().find(|n| n.eq_ignore_ascii_case(a))
+            && let Some(col) = df.get_column(n)
+        {
+            return Some(col.data.clone());
+        }
+    }
+    None
+}
+
+/// K 线图：dataset 数据框 → [category, open, close, low, high] 子数据框。
+fn candlestick_dataset_df(
+    ds_idx: Option<usize>,
+    encode: &Option<option::SeriesEncodeOption>,
+    datasets: &[crate::pipeline::dataframe::DataFrame],
+) -> Option<crate::pipeline::dataframe::DataFrame> {
+    use crate::pipeline::dataframe::{DataFrame, Series as DfSeries};
+    let df = datasets.get(ds_idx?)?;
+    let y_names = encode_y_names(encode, df);
+    let x_name = encode.as_ref().and_then(|e| encode_dim_first(&e.x, df));
+
+    let category = pick_dataset_col(df, x_name.as_ref(), &["category", "name", "x", "date"])?;
+    let open = pick_dataset_col(df, y_names.first(), &["open"])?;
+    let close = pick_dataset_col(df, y_names.get(1), &["close"])?;
+    let low = pick_dataset_col(df, y_names.get(2), &["low", "lowest"])?;
+    let high = pick_dataset_col(df, y_names.get(3), &["high", "highest"])?;
+
+    let mut out = DataFrame::new();
+    out.add_column(DfSeries::new("category", category));
+    out.add_column(DfSeries::new("open", open));
+    out.add_column(DfSeries::new("close", close));
+    out.add_column(DfSeries::new("low", low));
+    out.add_column(DfSeries::new("high", high));
+    Some(out)
+}
+
+/// 箱线图：dataset 数据框 → [category, min, q1, median, q3, max] 子数据框。
+fn boxplot_dataset_df(
+    ds_idx: Option<usize>,
+    encode: &Option<option::SeriesEncodeOption>,
+    datasets: &[crate::pipeline::dataframe::DataFrame],
+) -> Option<crate::pipeline::dataframe::DataFrame> {
+    use crate::pipeline::dataframe::{DataFrame, Series as DfSeries};
+    let df = datasets.get(ds_idx?)?;
+    let y_names = encode_y_names(encode, df);
+    let x_name = encode.as_ref().and_then(|e| encode_dim_first(&e.x, df));
+
+    let category = pick_dataset_col(df, x_name.as_ref(), &["category", "name", "x"])?;
+    let min = pick_dataset_col(df, y_names.first(), &["min"])?;
+    let q1 = pick_dataset_col(df, y_names.get(1), &["q1", "quartile1"])?;
+    let median = pick_dataset_col(df, y_names.get(2), &["median"])?;
+    let q3 = pick_dataset_col(df, y_names.get(3), &["q3", "quartile3"])?;
+    let max = pick_dataset_col(df, y_names.get(4), &["max"])?;
+
+    let mut out = DataFrame::new();
+    out.add_column(DfSeries::new("category", category));
+    out.add_column(DfSeries::new("min", min));
+    out.add_column(DfSeries::new("q1", q1));
+    out.add_column(DfSeries::new("median", median));
+    out.add_column(DfSeries::new("q3", q3));
+    out.add_column(DfSeries::new("max", max));
+    Some(out)
+}
+
+/// 热力图：dataset 数据框 → [x, y, value] 子数据框。
+fn heatmap_dataset_df(
+    ds_idx: Option<usize>,
+    encode: &Option<option::SeriesEncodeOption>,
+    datasets: &[crate::pipeline::dataframe::DataFrame],
+) -> Option<crate::pipeline::dataframe::DataFrame> {
+    use crate::pipeline::dataframe::{DataFrame, Series as DfSeries};
+    let df = datasets.get(ds_idx?)?;
+    let e = encode.as_ref();
+    let x = pick_dataset_col(
+        df,
+        e.and_then(|e| encode_dim_first(&e.x, df)).as_ref(),
+        &["x"],
+    )?;
+    let y = pick_dataset_col(
+        df,
+        e.and_then(|e| encode_dim_first(&e.y, df)).as_ref(),
+        &["y"],
+    )?;
+    let value = pick_dataset_col(
+        df,
+        e.and_then(|e| encode_dim_first(&e.value, df)).as_ref(),
+        &["value", "val"],
+    )?;
+
+    let mut out = DataFrame::new();
+    out.add_column(DfSeries::new("x", x));
+    out.add_column(DfSeries::new("y", y));
+    out.add_column(DfSeries::new("value", value));
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1786,5 +1988,121 @@ mod tests {
         assert_eq!(ts2, 1785542400 + 10 * 3600);
         // 非法输入返回 None
         assert!(parse_date_string("not-a-date").is_none());
+    }
+
+    #[test]
+    fn ragged_no_header_dataset_does_not_panic() {
+        // H1 回归：无表头 dataset 行不齐时（某行比首行短/长）不得因列长不齐 panic，
+        // 缺失单元格应补 Null。此前 dataset_to_dataframe 无补位 → DataFrame::add_column panic。
+        let json = r#"{
+            "dataset": {
+                "source": [[1, 2], [3], [4, 5, 6]],
+                "sourceHeader": false
+            },
+            "series": [{ "type": "line", "data": [] }]
+        }"#;
+        let opt: crate::option::ChartOption = serde_json::from_str(json).unwrap();
+        let spec = chart_option_to_chart_spec(&opt, 800, 600);
+        // datasets 解析成功即可；显式验证 dataset 数据框各列等长（3 行）
+        let ds = opt.dataset.as_ref().unwrap().as_slice()[0].clone();
+        let df = dataset_to_dataframe(&ds);
+        assert_eq!(df.row_count(), 3);
+        for name in df.column_names() {
+            assert_eq!(
+                df.get_column(name).map(|c| c.len()).unwrap_or(0),
+                3,
+                "列 {name} 应补齐到 3 行"
+            );
+        }
+        let _ = spec;
+    }
+
+    #[test]
+    fn candlestick_reads_dataset_by_index() {
+        // H3 回归：candlestick 应支持 dataset + datasetIndex，而非静默空图
+        let json = r#"{
+            "dataset": {
+                "source": [
+                    ["category", "open", "close", "low", "high"],
+                    ["d1", 10, 20, 5, 25],
+                    ["d2", 20, 15, 10, 22]
+                ]
+            },
+            "xAxis": [{ "type": "category" }],
+            "yAxis": [{ "type": "value" }],
+            "series": [{ "type": "candlestick", "datasetIndex": 0 }]
+        }"#;
+        let opt: crate::option::ChartOption =
+            serde_json::from_str(json).expect("candlestick JSON 应可解析");
+        let spec = chart_option_to_chart_spec(&opt, 800, 600);
+        assert_eq!(
+            spec.series.len(),
+            1,
+            "应解析出 1 个系列，实际 {}",
+            spec.series.len()
+        );
+        let s = spec.series.first().unwrap();
+        assert_eq!(s.data.row_count(), 2, "应从 dataset 读取 2 行 K 线数据");
+        assert!(s.data.get_column("open").is_some());
+        assert!(s.data.get_column("high").is_some());
+    }
+
+    #[test]
+    fn candlestick_defaults_dataset_index_zero_when_data_omitted() {
+        // H3 回归：存在 dataset 且系列省略 datasetIndex/data 时，应默认读第 0 个
+        // dataset（ECharts 语义），而非回退到空 series.data。
+        let json = r#"{
+            "dataset": {
+                "source": [
+                    ["category", "open", "close", "low", "high"],
+                    ["d1", 10, 20, 5, 25]
+                ]
+            },
+            "xAxis": [{ "type": "category" }],
+            "yAxis": [{ "type": "value" }],
+            "series": [{ "type": "candlestick" }]
+        }"#;
+        let opt: crate::option::ChartOption =
+            serde_json::from_str(json).expect("candlestick JSON 应可解析");
+        let spec = chart_option_to_chart_spec(&opt, 800, 600);
+        let s = spec.series.first().unwrap();
+        assert_eq!(
+            s.data.row_count(),
+            1,
+            "未写 datasetIndex/data 时也应按默认 datasetIndex=0 读取"
+        );
+    }
+
+    #[test]
+    fn explicit_series_data_overrides_dataset() {
+        // ECharts 语义：显式给了 series.data 时优先于 dataset（不因缺省 datasetIndex=0
+        // 而被 dataset 覆盖）。
+        let json = r#"{
+            "dataset": {
+                "source": [
+                    ["category", "open", "close", "low", "high"],
+                    ["d1", 10, 20, 5, 25]
+                ]
+            },
+            "xAxis": [{ "type": "category" }],
+            "yAxis": [{ "type": "value" }],
+            "series": [{
+                "type": "candlestick",
+                "data": [
+                    { "name": "e1", "open": 1, "close": 2, "low": 0.5, "high": 3 }
+                ]
+            }]
+        }"#;
+        let opt: crate::option::ChartOption =
+            serde_json::from_str(json).expect("candlestick JSON 应可解析");
+        let spec = chart_option_to_chart_spec(&opt, 800, 600);
+        let s = spec.series.first().unwrap();
+        assert_eq!(s.data.row_count(), 1);
+        // 值应来自 series.data 的 e1（open=1），而不是 dataset 的 d1（open=10）
+        let open = s.data.get_column("open").and_then(|c| c.as_f64(0));
+        assert!(
+            (open.unwrap_or(0.0) - 1.0).abs() < 1e-9,
+            "series.data 应覆盖 dataset，open 应为 1，实际 {open:?}"
+        );
     }
 }

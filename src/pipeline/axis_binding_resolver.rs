@@ -72,6 +72,8 @@ impl<'a> AxisBindingResolver<'a> {
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
                 tick_count_hint: None,
                 categories: axis.categories.clone(),
+                inverse: axis.inverse,
+                boundary_gap: axis.boundary_gap,
             });
         }
 
@@ -90,19 +92,10 @@ impl<'a> AxisBindingResolver<'a> {
                     })
             });
 
-            // 热力图的 category Y 轴：范围已由 collect_y_axis_range 按 distinct 坐标数算好，
-            // 跳过 compute_final_range，避免在未声明 categories 时退化为 (0, 1)。
-            let is_heatmap_category = matches!(axis.axis_type, AxisType::Category)
-                && specs.iter().any(|s| {
-                    s.y_axis_indices.contains(&axis_idx)
-                        && s.series_indices.iter().any(|&si| {
-                            self.series
-                                .get(si)
-                                .is_some_and(|ser| matches!(ser.chart_type(), ChartType::Heatmap))
-                        })
-                });
-
-            let (resolved_min, resolved_max) = if is_heatmap_category {
+            // Category 轴：范围已由 collect_y_axis_range 按类目数算好（横向柱状图按
+            // 行数、热力图按 distinct 坐标数），直接采用；交给 compute_final_range 会在
+            // 未声明 categories 时退化为 (0, 1)。
+            let (resolved_min, resolved_max) = if matches!(axis.axis_type, AxisType::Category) {
                 (data_min, data_max)
             } else {
                 self.compute_final_range(
@@ -126,6 +119,8 @@ impl<'a> AxisBindingResolver<'a> {
                 is_user_defined: axis.min.is_some() || axis.max.is_some(),
                 tick_count_hint: None,
                 categories: axis.categories.clone(),
+                inverse: axis.inverse,
+                boundary_gap: axis.boundary_gap,
             });
         }
 
@@ -154,17 +149,13 @@ impl<'a> AxisBindingResolver<'a> {
                     continue;
                 }
                 let count = if matches!(series.chart_type(), ChartType::Heatmap) {
-                    // 热力图数据是一行一个格子（x*y 行），不能按行数算轴范围；
-                    // 优先使用轴声明的 categories，否则统计 distinct 坐标数。
-                    if !axis.categories.is_empty() {
-                        axis.categories.len()
-                    } else {
-                        series
-                            .data
-                            .get_column(series.config.x_col_name())
-                            .map(count_distinct_values)
-                            .unwrap_or(0)
-                    }
+                    // 热力图数据是一行一个格子（x*y 行），不能按行数算轴范围，
+                    // 改为统计 distinct 坐标数。
+                    series
+                        .data
+                        .get_column(series.config.x_col_name())
+                        .map(count_distinct_values)
+                        .unwrap_or(0)
                 } else {
                     series.data.row_count()
                 };
@@ -172,14 +163,21 @@ impl<'a> AxisBindingResolver<'a> {
                     max_count = count;
                 }
             }
-            if max_count == 0 {
+            // 轴声明的 categories 优先于数据行数：刻度标签、柱体位置都以它为准
+            //（ECharts 语义）。否则多系列行数不等时各系列会算出不同的 n 而错位。
+            let n = if !axis.categories.is_empty() {
+                axis.categories.len()
+            } else {
+                max_count
+            };
+            if n == 0 {
                 return (0.0, 1.0);
             }
             // 返回索引范围：0 到 n-1（或 n，取决于 boundary_gap）
             if axis.boundary_gap {
-                return (0.0, max_count as f64);
+                return (0.0, n as f64);
             } else {
-                return (0.0, (max_count - 1) as f64);
+                return (0.0, (n - 1) as f64);
             }
         }
 
@@ -332,40 +330,44 @@ impl<'a> AxisBindingResolver<'a> {
             bound_series.push(series);
         }
 
-        // 热力图：Y 轴范围由 distinct y 坐标数决定（而不是值列的范围）
-        if bound_series
-            .iter()
-            .any(|s| matches!(s.chart_type(), super::ChartType::Heatmap))
-        {
-            let axis = &self.y_axes[axis_idx];
+        // Category 轴（横向柱状图 / 热力图等）：范围由**类目数**决定，而不是值域。
+        // 横向柱状图的 y 列存的是类目名，参与值域统计没有意义；热力图则是一行一个
+        // 格子（x*y 行），须按 distinct 坐标数统计。
+        let axis = &self.y_axes[axis_idx];
+        if matches!(axis.axis_type, AxisType::Category) {
             let mut max_count = 0;
             for series in &bound_series {
-                if !matches!(series.chart_type(), super::ChartType::Heatmap) {
-                    continue;
-                }
-                let y_col = match &series.config {
-                    super::SeriesConfig::Heatmap(c) => c.y_col.clone(),
-                    _ => series.config.y_col_name().to_string(),
-                };
-                let count = if !axis.categories.is_empty() {
-                    axis.categories.len()
-                } else {
+                let count = if matches!(series.chart_type(), ChartType::Heatmap) {
+                    let y_col = match &series.config {
+                        super::SeriesConfig::Heatmap(c) => c.y_col.clone(),
+                        _ => series.config.y_col_name().to_string(),
+                    };
                     series
                         .data
                         .get_column(&y_col)
                         .map(count_distinct_values)
                         .unwrap_or(0)
+                } else {
+                    series.data.row_count()
                 };
                 if count > max_count {
                     max_count = count;
                 }
             }
-            let (lo, hi) = if axis.boundary_gap {
-                (0.0, max_count as f64)
+            // 轴声明的 categories 优先于数据行数（与 X 轴口径一致）
+            let n = if !axis.categories.is_empty() {
+                axis.categories.len()
             } else {
-                (0.0, (max_count.saturating_sub(1)) as f64)
+                max_count
             };
-            return (lo, hi);
+            if n == 0 {
+                return (0.0, 1.0);
+            }
+            return if axis.boundary_gap {
+                (0.0, n as f64)
+            } else {
+                (0.0, (n - 1) as f64)
+            };
         }
 
         if all_values.is_empty() {
