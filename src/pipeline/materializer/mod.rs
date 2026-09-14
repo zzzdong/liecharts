@@ -322,6 +322,98 @@ pub fn compute_mark_lines(
     result
 }
 
+/// 根据数据值计算标注点（`markPoint`，支持 average/min/max）的像素位置。
+///
+/// - `min`/`max`：直接取对应数据点（`anchors` 已算好像素坐标）；
+/// - `average`：锚在中间数据点上，另一维坐标由 `map_value(avg)` 求值
+///   （纵向柱/折线改 y、横向柱改 x），使标记落在真正的平均线上。
+///
+/// `anchors` 与 `values` 必须一一对应，且 `anchors` 为像素空间坐标。
+pub fn compute_mark_points(
+    specs: &[crate::pipeline::types::MarkPointSpec],
+    anchors: &[vello_cpu::kurbo::Point],
+    values: &[f64],
+    horizontal: bool,
+    map_value: impl Fn(f64) -> f64,
+) -> Vec<crate::pipeline::typed_series::MarkPointRender> {
+    use crate::pipeline::{typed_series::MarkPointRender, types::MarkPointType};
+
+    if specs.is_empty() || values.is_empty() || anchors.len() != values.len() {
+        return Vec::new();
+    }
+    // 索引与值一起过滤，保证 NaN/Inf 被剔除后坐标与数值仍对应
+    let pairs: Vec<(usize, f64)> = values
+        .iter()
+        .enumerate()
+        .filter_map(|(i, v)| v.is_finite().then_some((i, *v)))
+        .collect();
+    if pairs.is_empty() {
+        return Vec::new();
+    }
+
+    let avg = pairs.iter().map(|(_, v)| *v).sum::<f64>() / pairs.len() as f64;
+    let (min_idx, min_v) = pairs
+        .iter()
+        .copied()
+        .reduce(|a, b| if b.1 < a.1 { b } else { a })
+        .unwrap();
+    let (max_idx, max_v) = pairs
+        .iter()
+        .copied()
+        .reduce(|a, b| if b.1 > a.1 { b } else { a })
+        .unwrap();
+
+    let mut result = Vec::new();
+    for spec in specs {
+        let (value, idx) = match spec.data_type {
+            MarkPointType::Min => (spec.value.unwrap_or(min_v), min_idx),
+            MarkPointType::Max => (spec.value.unwrap_or(max_v), max_idx),
+            // 平均值没有对应数据点，锚在中间数据点上
+            MarkPointType::Average => (spec.value.unwrap_or(avg), pairs[pairs.len() / 2].0),
+        };
+        let anchor = anchors[idx];
+        // min/max：值就是该点的值，像素坐标直接用锚点；average：值轴坐标重算
+        let point = if spec.data_type == MarkPointType::Average {
+            if horizontal {
+                vello_cpu::kurbo::Point::new(map_value(value), anchor.y)
+            } else {
+                vello_cpu::kurbo::Point::new(anchor.x, map_value(value))
+            }
+        } else {
+            anchor
+        };
+        let name = spec.name.clone().unwrap_or_else(|| match spec.data_type {
+            MarkPointType::Average => "平均值".to_string(),
+            MarkPointType::Min => "最小值".to_string(),
+            MarkPointType::Max => "最大值".to_string(),
+        });
+        result.push(MarkPointRender {
+            point,
+            label: format!("{}: {}", name, format_value(value)),
+            color: Color::rgb(220, 60, 60),
+        });
+    }
+    result
+}
+
+/// 解析系列的最终配色：`itemStyle.color` → `lineStyle.color` → 调色板。
+///
+/// ECharts 中 `series.itemStyle.color` / `lineStyle.color` 是最常用的单系列配色方式；
+/// 此前只有 boxplot 读取 `itemStyle.color`，其余图表一律走调色板，显式配色被静默忽略。
+pub(crate) fn series_color(
+    spec: &crate::pipeline::types::SeriesSpec,
+    idx: usize,
+    colors: &ColorContext,
+) -> Color {
+    spec.item_style
+        .color
+        .or(match &spec.config {
+            crate::pipeline::types::SeriesConfig::Line(c) => c.line_color,
+            _ => None,
+        })
+        .unwrap_or_else(|| colors.get_series_color(idx))
+}
+
 /// 格式化数值（整数值不带小数，否则保留 1 位）
 fn format_value(v: f64) -> String {
     if v.fract() == 0.0 {
@@ -366,7 +458,7 @@ pub fn materialize_all(
                 stacked_line_specs.push((global_idx, s));
             }
             _ => {
-                let color = colors.get_series_color(global_idx);
+                let color = series_color(s, global_idx, colors);
                 let materializer = create_materializer(s.chart_type());
                 let typed = materializer(s, bounds, axis_ranges, color, colors)?;
                 result.push((global_idx, typed));
@@ -509,7 +601,7 @@ fn materialize_bar_group(
         BarGroupType::Single => {
             let series_idx = plan.series_indices[0];
             let series_spec = &spec.series[series_idx];
-            let color = colors.get_series_color(series_idx);
+            let color = series_color(series_spec, series_idx, colors);
             BarMaterializer::materialize(series_spec, bounds, axis_ranges, color, colors)
         }
         BarGroupType::SideBySide => {
@@ -521,7 +613,7 @@ fn materialize_bar_group(
                     let s = &spec.series[idx];
                     BarSubSeries {
                         name: s.name.clone(),
-                        color: colors.get_series_color(idx),
+                        color: series_color(s, idx, colors),
                     }
                 })
                 .collect();
@@ -535,12 +627,16 @@ fn materialize_bar_group(
             )?;
 
             let label = first_bar_label_config(spec, &plan.series_indices);
+            let border_radius = group_bar_border_radius(spec, &plan.series_indices);
+            let background_color = bar_layout_of(&spec.series[plan.series_indices[0]]).background;
 
             Ok(TypedSeries::GroupedBar(GroupedBarSeries {
                 sub_series,
                 group_type: TypedBarGroupType::SideBySide,
                 rows,
                 label,
+                border_radius,
+                background_color,
             }))
         }
         BarGroupType::Stacked => {
@@ -552,7 +648,7 @@ fn materialize_bar_group(
                     let s = &spec.series[idx];
                     BarSubSeries {
                         name: s.name.clone(),
-                        color: colors.get_series_color(idx),
+                        color: series_color(s, idx, colors),
                     }
                 })
                 .collect();
@@ -561,12 +657,16 @@ fn materialize_bar_group(
                 materialize_stacked_bars(&plan.series_indices, spec, axis_ranges, bounds, colors)?;
 
             let label = first_bar_label_config(spec, &plan.series_indices);
+            let border_radius = group_bar_border_radius(spec, &plan.series_indices);
+            let background_color = bar_layout_of(&spec.series[plan.series_indices[0]]).background;
 
             Ok(TypedSeries::GroupedBar(GroupedBarSeries {
                 sub_series,
                 group_type: TypedBarGroupType::Stacked,
                 rows,
                 label,
+                border_radius,
+                background_color,
             }))
         }
     }
@@ -639,6 +739,25 @@ fn first_bar_label_config(
         .and_then(bar_label_config)
 }
 
+/// 从分组柱状图中提取柱体圆角半径（取组内第一个系列）。
+///
+/// 圆角属于 `itemStyle`（不在 `BarConfig` 里），因此直接读 `SeriesSpec`。
+fn group_bar_border_radius(spec: &ChartSpec, series_indices: &[usize]) -> f64 {
+    series_indices
+        .first()
+        .and_then(|&idx| spec.series.get(idx))
+        .and_then(|s| s.item_style.border_radius)
+        .unwrap_or(0.0)
+}
+
+/// 取系列的柱体几何配置（非柱系列回退默认布局）。
+fn bar_layout_of(s: &crate::pipeline::types::SeriesSpec) -> crate::pipeline::types::BarLayout {
+    match &s.config {
+        crate::pipeline::types::SeriesConfig::Bar(c) => c.layout.clone(),
+        _ => crate::pipeline::types::BarLayout::default(),
+    }
+}
+
 /// Materialize 并排柱状图
 fn materialize_side_by_side_bars(
     series_indices: &[usize],
@@ -661,19 +780,22 @@ fn materialize_side_by_side_bars(
 
     let is_horizontal = matches!(y_range.axis_type, AxisType::Category);
     let series_count = series_indices.len();
-    let bar_width_ratio = 0.6; // 默认柱宽比例
+    // 组内几何取自组内第一个柱系列的配置（`barGap` / `barCategoryGap` 是系列级配置，
+    // 同组混用不同值时以第一个为准）
+    let layout = bar_layout_of(first_series);
 
     // 类目总数与留白风格直接取自解析结果（与坐标轴刻度同源），避免各系列按自身
     // 行数反推 boundary_gap 而算出不同的 n 导致系列间错位。
     let cat_range = if is_horizontal { y_range } else { x_range };
     let cat_count = cat_range.category_count().max(1);
-    let (group_dim, bar_dim): (f64, f64) = if is_horizontal {
-        let group_dim = bounds.height() / cat_count as f64 * bar_width_ratio;
-        (group_dim, group_dim / series_count as f64)
+    let slot = if is_horizontal {
+        bounds.height() / cat_count as f64
     } else {
-        let group_dim = bounds.width() / cat_count as f64 * bar_width_ratio;
-        (group_dim, group_dim / series_count as f64)
+        bounds.width() / cat_count as f64
     };
+    let (bar_dim, bar_gap) = layout.band(slot, series_count);
+    // 组宽 = n 根柱 + (n-1) 个间距
+    let group_dim = bar_dim * series_count as f64 + bar_gap * series_count.saturating_sub(1) as f64;
 
     let mut rows = Vec::new();
 
@@ -700,7 +822,7 @@ fn materialize_side_by_side_bars(
 
     for (sub_idx, &series_idx) in series_indices.iter().enumerate() {
         let series = &spec.series[series_idx];
-        let color = colors.get_series_color(series_idx);
+        let color = series_color(series, series_idx, colors);
 
         let y_col = series.config.y_col_name();
         let x_col = series.config.x_col_name();
@@ -728,7 +850,7 @@ fn materialize_side_by_side_bars(
                     // 横向柱状图：Y=Category, X=Value
                     let py = map_y_to_pixel(y_range.category_value(cat_idx), y_range, bounds);
                     // 组内偏移
-                    let bar_y = py - group_dim / 2.0 + sub_idx as f64 * bar_dim;
+                    let bar_y = py - group_dim / 2.0 + sub_idx as f64 * (bar_dim + bar_gap);
                     let px = map_x_to_pixel(value, x_range, bounds);
 
                     let rect = KurboRect::new(
@@ -739,6 +861,9 @@ fn materialize_side_by_side_bars(
                     );
 
                     rows.push(GroupedBarRow {
+                        background: layout
+                            .background
+                            .map(|_| KurboRect::new(bounds.x0, rect.y0, bounds.x1, rect.y1)),
                         bar_rect: rect,
                         sub_series_idx: sub_idx,
                         color,
@@ -748,7 +873,7 @@ fn materialize_side_by_side_bars(
                 } else {
                     // 纵向柱状图：X=Category, Y=Value
                     let group_x = map_x_to_pixel(x_range.category_value(cat_idx), x_range, bounds);
-                    let bar_x = group_x - group_dim / 2.0 + sub_idx as f64 * bar_dim;
+                    let bar_x = group_x - group_dim / 2.0 + sub_idx as f64 * (bar_dim + bar_gap);
 
                     let py = map_y_to_pixel(value, y_range, bounds);
 
@@ -760,6 +885,9 @@ fn materialize_side_by_side_bars(
                     );
 
                     rows.push(GroupedBarRow {
+                        background: layout
+                            .background
+                            .map(|_| KurboRect::new(rect.x0, bounds.y0, rect.x1, bounds.y1)),
                         bar_rect: rect,
                         sub_series_idx: sub_idx,
                         color,
@@ -795,16 +923,18 @@ fn materialize_stacked_bars(
         .ok_or_else(|| crate::error::ChartError::InvalidAxisBinding("Y axis not found".into()))?;
 
     let is_horizontal = matches!(y_range.axis_type, AxisType::Category);
-    let bar_width_ratio = 0.6;
+    let layout = bar_layout_of(first_series);
 
     // 类目总数与留白风格直接取自解析结果（与坐标轴刻度同源）
     let cat_range = if is_horizontal { y_range } else { x_range };
     let cat_count = cat_range.category_count().max(1);
-    let bar_dim = if is_horizontal {
-        bounds.height() / cat_count as f64 * bar_width_ratio
+    let slot = if is_horizontal {
+        bounds.height() / cat_count as f64
     } else {
-        bounds.width() / cat_count as f64 * bar_width_ratio
+        bounds.width() / cat_count as f64
     };
+    // 堆叠柱共享一个 band
+    let (bar_dim, _) = layout.band(slot, 1);
 
     // 收集每个类别的堆叠值
     let mut category_stacks: Vec<Vec<(usize, f64, f64)>> = vec![Vec::new(); cat_count];
@@ -855,7 +985,7 @@ fn materialize_stacked_bars(
 
             for &(sub_idx, value, base) in stack {
                 let series_idx = series_indices[sub_idx];
-                let color = colors.get_series_color(series_idx);
+                let color = series_color(&spec.series[series_idx], series_idx, colors);
                 let y_col = spec.series[series_idx].config.y_col_name();
                 let x_col = spec.series[series_idx].config.x_col_name();
                 let category_col = if is_horizontal { y_col } else { x_col };
@@ -882,6 +1012,9 @@ fn materialize_stacked_bars(
                 let rect = KurboRect::new(px_left, bar_y, px_right, bar_y + bar_dim);
 
                 rows.push(GroupedBarRow {
+                    background: layout
+                        .background
+                        .map(|_| KurboRect::new(bounds.x0, rect.y0, bounds.x1, rect.y1)),
                     bar_rect: rect,
                     sub_series_idx: sub_idx,
                     color,
@@ -896,7 +1029,7 @@ fn materialize_stacked_bars(
 
             for &(sub_idx, value, base) in stack {
                 let series_idx = series_indices[sub_idx];
-                let color = colors.get_series_color(series_idx);
+                let color = series_color(&spec.series[series_idx], series_idx, colors);
                 let y_col = spec.series[series_idx].config.y_col_name();
                 let x_col = spec.series[series_idx].config.x_col_name();
                 let category_col = if is_horizontal { y_col } else { x_col };
@@ -918,6 +1051,9 @@ fn materialize_stacked_bars(
                 let rect = KurboRect::new(bar_x, py_top, bar_x + bar_dim, py_bot);
 
                 rows.push(GroupedBarRow {
+                    background: layout
+                        .background
+                        .map(|_| KurboRect::new(rect.x0, bounds.y0, rect.x1, bounds.y1)),
                     bar_rect: rect,
                     sub_series_idx: sub_idx,
                     color,
@@ -998,7 +1134,7 @@ fn materialize_one_stacked_line_group(
     let mut results: Vec<(usize, TypedSeries)> = Vec::with_capacity(group.len());
 
     for &(series_idx, s) in group {
-        let color = colors.get_series_color(series_idx);
+        let color = series_color(s, series_idx, colors);
         let cfg = match &s.config {
             crate::pipeline::types::SeriesConfig::Line(c) => c,
             _ => continue,
@@ -1056,6 +1192,7 @@ fn materialize_one_stacked_line_group(
             name: s.name.clone(),
             color,
             line_width: cfg.line_width,
+            line_dash: cfg.line_dash.clone(),
             smooth: cfg.smooth,
             step: cfg.step.map(|s| match s {
                 crate::pipeline::types::StepType::Start => {
@@ -1078,6 +1215,9 @@ fn materialize_one_stacked_line_group(
             baseline_points: prev_points.clone(),
             label: line_label_config(cfg),
             mark_lines: compute_mark_lines(&cfg.mark_line, &values, y_range, bounds),
+            mark_points: compute_mark_points(&cfg.mark_point, &points, &values, false, |v| {
+                map_y_to_pixel(v, y_range, bounds)
+            }),
         };
 
         prev_points = Some(points);

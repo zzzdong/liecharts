@@ -678,6 +678,8 @@ impl Chart {
                 right: None,
                 top: None,
                 bottom: None,
+                width: None,
+                height: None,
                 contain_label: false,
             }]
         } else {
@@ -690,6 +692,8 @@ impl Chart {
                     right: Some(position_to_grid_edge(g.right)),
                     top: Some(position_to_grid_edge(g.top)),
                     bottom: Some(position_to_grid_edge(g.bottom)),
+                    width: None,
+                    height: None,
                     contain_label: g.contain_label,
                 })
                 .collect()
@@ -746,8 +750,9 @@ impl Chart {
                 label_show: true,
                 label_formatter: None,
                 label_rotate: None,
-                axis_line_show: true,
-                split_line_show: true,
+                name_gap: None,
+                label_interval: None,
+                decor: crate::pipeline::types::AxisDecor::echant_defaults(),
                 z: None,
             }]
         } else {
@@ -790,8 +795,9 @@ impl Chart {
                     label_show: true,
                     label_formatter: None,
                     label_rotate: None,
-                    axis_line_show: true,
-                    split_line_show: true,
+                    name_gap: None,
+                    label_interval: None,
+                    decor: crate::pipeline::types::AxisDecor::echant_defaults(),
                     z: None,
                 })
                 .collect()
@@ -814,8 +820,9 @@ impl Chart {
                 label_show: true,
                 label_formatter: None,
                 label_rotate: None,
-                axis_line_show: true,
-                split_line_show: true,
+                name_gap: None,
+                label_interval: None,
+                decor: crate::pipeline::types::AxisDecor::echant_defaults(),
                 z: None,
             }]
         } else {
@@ -854,8 +861,9 @@ impl Chart {
                     label_show: true,
                     label_formatter: None,
                     label_rotate: None,
-                    axis_line_show: true,
-                    split_line_show: true,
+                    name_gap: None,
+                    label_interval: None,
+                    decor: crate::pipeline::types::AxisDecor::echant_defaults(),
                     z: None,
                 })
                 .collect()
@@ -899,8 +907,12 @@ impl Chart {
                                 }
                             }),
                             line_width: 2.0,
+                            line_dash: Vec::new(),
+                            line_color: None,
+                            connect_nulls: false,
                             area,
                             area_color,
+                            mark_point: Vec::new(),
                             area_opacity: 0.5,
                             symbol_type: sym,
                             symbol_size: l.symbol_size,
@@ -928,16 +940,24 @@ impl Chart {
                         SeriesConfig::Bar(BarConfig {
                             x_col,
                             y_col,
-                            bar_width: l.bar_width.map_or(0.6, |bw| match bw {
-                                crate::api::Size::Percent(p) => p / 100.0,
-                                crate::api::Size::Pixel(p) => p / 100.0,
-                            }),
+                            layout: crate::pipeline::types::BarLayout {
+                                width: l.bar_width.map(|bw| match bw {
+                                    crate::api::Size::Percent(p) => {
+                                        crate::pipeline::types::BarSize::Ratio(p / 100.0)
+                                    }
+                                    crate::api::Size::Pixel(p) => {
+                                        crate::pipeline::types::BarSize::Px(p)
+                                    }
+                                }),
+                                ..Default::default()
+                            },
                             label_show: l.label_show,
                             label_font_size: l.label_font_size,
                             label_formatter: l.label_formatter.clone(),
                             label_position: l.label_position,
                             label_color: l.label_color,
                             mark_line: Vec::new(),
+                            mark_point: Vec::new(),
                         })
                     }
                     LayerSpec::Scatter(l) => SeriesConfig::Scatter(ScatterConfig {
@@ -958,6 +978,7 @@ impl Chart {
                         close_col: l.close.clone(),
                         low_col: l.low.clone(),
                         high_col: l.high.clone(),
+                        ..Default::default()
                     }),
                     LayerSpec::Boxplot(l) => SeriesConfig::Boxplot(BoxplotConfig {
                         category_col: l.category.clone(),
@@ -1005,11 +1026,15 @@ impl Chart {
                             label_position: l.label_position,
                             label_font_size: 12.0,
                             label_formatter: None,
+                            ..Default::default()
                         })
                     }
                     LayerSpec::Radar(l) => SeriesConfig::Radar(RadarConfig {
                         value_col: l.values.clone(),
                         indicators: l.indicators.clone(),
+                        maxes: vec![],
+                        label_show: false,
+                        label_font_size: 12.0,
                     }),
                     LayerSpec::PolarBar(l) => SeriesConfig::PolarBar(PolarBarConfig {
                         angle_col: l.angle.clone(),
@@ -1221,6 +1246,7 @@ impl Chart {
                 subfont_size: None,
                 color: None,
                 subcolor: None,
+                ..Default::default()
             }),
             legend: self.legend.as_ref().map(|l| LegendSpec {
                 show: l.show,

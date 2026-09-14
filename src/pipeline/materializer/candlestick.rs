@@ -119,8 +119,10 @@ impl SeriesMaterializer for CandlestickMaterializer {
 
         Ok(TypedSeries::Candlestick(CandlestickSeries {
             name: spec.name.clone(),
-            up_color: colors.up_color,
-            down_color: colors.down_color,
+            up_color: cfg.up_color.unwrap_or(colors.up_color),
+            down_color: cfg.down_color.unwrap_or(colors.down_color),
+            border_color: cfg.border_color,
+            explicit_colors: cfg.up_color.is_some() || cfg.down_color.is_some(),
             candles,
         }))
     }

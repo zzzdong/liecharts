@@ -240,6 +240,8 @@ fn apply_demands(spec: &mut ChartSpec, demands: &[crate::pipeline::grid_planner:
                 right: None,
                 top: None,
                 bottom: None,
+                width: None,
+                height: None,
                 contain_label: false,
             });
         }
@@ -412,6 +414,8 @@ mod tests {
                 right: None,
                 top: None,
                 bottom: None,
+                width: None,
+                height: None,
                 contain_label: false,
             }],
             x_axes: vec![],
@@ -436,11 +440,7 @@ mod tests {
             }],
             title: Some(crate::pipeline::types::TitleSpec {
                 text: Some("Pie Test".into()),
-                subtext: None,
-                font_size: None,
-                subfont_size: None,
-                color: None,
-                subcolor: None,
+                ..Default::default()
             }),
             legend: None,
             background: Color::rgb(255, 255, 255),
@@ -489,6 +489,8 @@ mod tests {
                 right: None,
                 top: None,
                 bottom: None,
+                width: None,
+                height: None,
                 contain_label: false,
             }],
             x_axes: vec![AxisSpec {
@@ -506,8 +508,9 @@ mod tests {
                 label_show: false,
                 label_formatter: None,
                 label_rotate: None,
-                axis_line_show: true,
-                split_line_show: true,
+                name_gap: None,
+                label_interval: None,
+                decor: crate::pipeline::types::AxisDecor::echant_defaults(),
                 z: None,
             }],
             y_axes: vec![AxisSpec {
@@ -525,8 +528,9 @@ mod tests {
                 label_show: true,
                 label_formatter: None,
                 label_rotate: None,
-                axis_line_show: true,
-                split_line_show: true,
+                name_gap: None,
+                label_interval: None,
+                decor: crate::pipeline::types::AxisDecor::echant_defaults(),
                 z: None,
             }],
             series: vec![SeriesSpec {

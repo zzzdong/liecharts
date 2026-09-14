@@ -60,7 +60,8 @@ impl SeriesMaterializer for BarMaterializer {
 
             // 类目总数与留白风格直接取自解析结果，与坐标轴刻度口径严格一致
             let n_cat = y_range.category_count().max(1);
-            let bar_height = bounds.height() / n_cat as f64 * cfg.bar_width;
+            let slot = bounds.height() / n_cat as f64;
+            let (bar_height, _) = cfg.layout.band(slot, 1);
             // 基线：如果0在范围内，使用0；否则使用范围的最小值
             let baseline_x = if x_range.min <= 0.0 && x_range.max >= 0.0 {
                 map_x_to_pixel(0.0, x_range, bounds)
@@ -94,8 +95,16 @@ impl SeriesMaterializer for BarMaterializer {
                     px.max(baseline_x),
                     py + bar_height / 2.0,
                 );
+                let rect = match cfg.layout.min_height {
+                    Some(m) => apply_min_extent(rect, m, baseline_x, true, value < 0.0),
+                    None => rect,
+                };
 
                 bars.push(BarRect {
+                    background: cfg
+                        .layout
+                        .background
+                        .map(|_| Rect::new(bounds.x0, rect.y0, bounds.x1, rect.y1)),
                     rect,
                     category,
                     value,
@@ -115,7 +124,8 @@ impl SeriesMaterializer for BarMaterializer {
             // 纵向柱状图：X轴是分类，Y轴是数值
             // 类目总数与留白风格直接取自解析结果，与坐标轴刻度口径严格一致
             let n_cat = x_range.category_count().max(1);
-            let bar_width = bounds.width() / n_cat as f64 * cfg.bar_width;
+            let slot = bounds.width() / n_cat as f64;
+            let (bar_width, _) = cfg.layout.band(slot, 1);
             // 基线：如果0在范围内，使用0；否则使用范围的最小值（底部）
             let baseline_y = if y_range.min <= 0.0 && y_range.max >= 0.0 {
                 map_y_to_pixel(0.0, y_range, bounds)
@@ -149,8 +159,16 @@ impl SeriesMaterializer for BarMaterializer {
                     px + bar_width / 2.0,
                     py.max(baseline_y),
                 );
+                let rect = match cfg.layout.min_height {
+                    Some(m) => apply_min_extent(rect, m, baseline_y, false, value < 0.0),
+                    None => rect,
+                };
 
                 bars.push(BarRect {
+                    background: cfg
+                        .layout
+                        .background
+                        .map(|_| Rect::new(rect.x0, bounds.y0, rect.x1, bounds.y1)),
                     rect,
                     category,
                     value,
@@ -165,13 +183,92 @@ impl SeriesMaterializer for BarMaterializer {
             y_range,
             bounds,
         );
+        // 标注点锚在「柱体值端中心」：x 取柱中心、y 由数值映射得到，
+        // 与 `compute_mark_points` 的 min/max（落在数据点）语义一致。
+        let anchors: Vec<vello_cpu::kurbo::Point> = bars
+            .iter()
+            .map(|b| {
+                vello_cpu::kurbo::Point::new(
+                    if is_horizontal {
+                        if b.value < 0.0 { b.rect.x0 } else { b.rect.x1 }
+                    } else {
+                        b.rect.x0 + b.rect.width() / 2.0
+                    },
+                    if is_horizontal {
+                        b.rect.y0 + b.rect.height() / 2.0
+                    } else if b.value < 0.0 {
+                        b.rect.y1
+                    } else {
+                        b.rect.y0
+                    },
+                )
+            })
+            .collect();
+        let mark_points = if is_horizontal {
+            // 横向柱：数值轴在 X 方向，平均值按 X 轴映射
+            crate::pipeline::materializer::compute_mark_points(
+                &cfg.mark_point,
+                &anchors,
+                &bar_values,
+                true,
+                |v| map_x_to_pixel(v, x_range, bounds),
+            )
+        } else {
+            crate::pipeline::materializer::compute_mark_points(
+                &cfg.mark_point,
+                &anchors,
+                &bar_values,
+                false,
+                |v| map_y_to_pixel(v, y_range, bounds),
+            )
+        };
 
         Ok(TypedSeries::Bar(BarSeries {
             name: spec.name.clone(),
             color,
+            border_radius: spec.item_style.border_radius.unwrap_or(0.0),
+            background_color: cfg.layout.background,
             bars,
             label: crate::pipeline::materializer::bar_label_config(cfg),
             mark_lines,
+            mark_points,
         }))
+    }
+}
+
+/// 把矩形在**值方向**上撑到至少 `min_extent` 像素（自基线向值端延伸）。
+///
+/// 对齐 ECharts `barMinHeight`：极小值（或 0）也能露出一条可见的柱体。
+/// `negative` = 值为负（值端朝 X/Y 负方向）。
+fn apply_min_extent(
+    rect: Rect,
+    min_extent: f64,
+    baseline: f64,
+    horizontal: bool,
+    negative: bool,
+) -> Rect {
+    if min_extent <= 0.0 {
+        return rect;
+    }
+    if horizontal {
+        if rect.width() >= min_extent {
+            return rect;
+        }
+        let to = if negative {
+            baseline - min_extent
+        } else {
+            baseline + min_extent
+        };
+        Rect::new(baseline.min(to), rect.y0, baseline.max(to), rect.y1)
+    } else {
+        if rect.height() >= min_extent {
+            return rect;
+        }
+        let to = if negative {
+            baseline + min_extent
+        } else {
+            baseline - min_extent
+        };
+        Rect::new(rect.x0, baseline.min(to), rect.x1, baseline.max(to))
     }
 }

@@ -25,6 +25,29 @@ pub fn circle(
     SceneNode::new(Element::circle(center, radius, style)).with_z(z)
 }
 
+/// 便捷构造函数：圆角矩形节点。
+///
+/// `radius <= 0` 时退化为普通矩形（避免后端对 0 半径的边界处理差异）。
+/// 半径被自动 clamp 到短边的一半，保证退化柱体（高/宽极小）不产生畸形路径。
+pub fn rounded_rect(
+    bounds: vello_cpu::kurbo::Rect,
+    radius: f64,
+    style: FillStrokeStyle,
+    z: i32,
+) -> SceneNode {
+    let max_radius = (bounds.width().min(bounds.height()) / 2.0).max(0.0);
+    let radius = radius.clamp(0.0, max_radius);
+    if radius <= 0.0 {
+        return rect(bounds, style, z);
+    }
+    SceneNode::new(Element::RoundedRect {
+        rect: bounds,
+        radius,
+        style,
+    })
+    .with_z(z)
+}
+
 /// 便捷构造函数：线段节点。
 pub fn line(
     start: vello_cpu::kurbo::Point,
@@ -308,6 +331,43 @@ pub fn render_mark_lines(
             SceneNode::new(Element::Text {
                 spans: vec![RichSpan::new(ml.label.clone(), style.clone())],
                 position: Point::new(bounds.x0 + 4.0, ml.y - 4.0),
+                style,
+                layout: None,
+            })
+            .with_z(Z_SERIES_LABEL + 2),
+        );
+    }
+}
+
+/// 渲染标注点（markPoint）：实心圆点 + 标签文本。
+pub fn render_mark_points(
+    elements: &mut Vec<SceneNode>,
+    mark_points: &[crate::pipeline::typed_series::MarkPointRender],
+) {
+    use lievisual::{
+        geometry::Point,
+        text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+    };
+
+    const R: f64 = 5.0;
+    for mp in mark_points {
+        elements.push(circle(
+            mp.point,
+            R,
+            FillStrokeStyle {
+                fill: Some(Fill::Solid(mp.color)),
+                stroke: Some(Stroke::new(Color::rgb(255, 255, 255), 1.0)),
+            },
+            Z_SERIES_LABEL + 1,
+        ));
+
+        let mut style = TextStyle::new(mp.color, 11.0, "sans-serif");
+        style.align = TextAlign::Center;
+        style.baseline = TextBaseline::Bottom;
+        elements.push(
+            SceneNode::new(Element::Text {
+                spans: vec![RichSpan::new(mp.label.clone(), style.clone())],
+                position: Point::new(mp.point.x, mp.point.y - R - 3.0),
                 style,
                 layout: None,
             })

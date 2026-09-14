@@ -466,15 +466,27 @@ impl<'a> GridPlanner<'a> {
         let default_bottom = 60.0;
 
         let left = resolve_edge(grid.left, default_left, total_w);
-        let right = resolve_edge(grid.right, default_right, total_w);
         // 顶部默认 = `header_height`（下限 [`HEADER_MIN_TOP`]）。注意这是绝大多数
         // 图表的实际路径（`Chart` 未显式设 grid 时 `to_chart_spec` 会造一个四边全
         // None 的 `GridSpec`），改动它会影响大量既有输出。
         let top = resolve_edge(grid.top, self.header_height.max(HEADER_MIN_TOP), total_h);
-        let bottom = resolve_edge(grid.bottom, default_bottom, total_h);
 
-        let width = (total_w - left - right).max(0.0);
-        let height = (total_h - top - bottom).max(0.0);
+        // ECharts 语义：显式 `width`/`height` 优先于由 `right`/`bottom` 推得的尺寸。
+        // 未指定时保持原行为（`total - left - right`），既有输出逐字节不变。
+        let width = match grid.width {
+            Some(w) => resolve_edge(Some(w), 0.0, total_w).min((total_w - left).max(0.0)),
+            None => {
+                let right = resolve_edge(grid.right, default_right, total_w);
+                (total_w - left - right).max(0.0)
+            }
+        };
+        let height = match grid.height {
+            Some(h) => resolve_edge(Some(h), 0.0, total_h).min((total_h - top).max(0.0)),
+            None => {
+                let bottom = resolve_edge(grid.bottom, default_bottom, total_h);
+                (total_h - top - bottom).max(0.0)
+            }
+        };
 
         Rect::new(left, top, left + width, top + height)
     }
@@ -520,6 +532,8 @@ mod tests {
                 right: None,
                 top: None,
                 bottom: None,
+                width: None,
+                height: None,
                 contain_label: false,
             })
             .collect()
@@ -656,8 +670,9 @@ mod tests {
             label_show: true,
             label_formatter: None,
             label_rotate: None,
-            axis_line_show: true,
-            split_line_show: true,
+            name_gap: None,
+            label_interval: None,
+            decor: crate::pipeline::types::AxisDecor::echant_defaults(),
             z: None,
         }
     }
@@ -709,8 +724,9 @@ mod tests {
             label_show: true,
             label_formatter: None,
             label_rotate: None,
-            axis_line_show: true,
-            split_line_show: true,
+            name_gap: None,
+            label_interval: None,
+            decor: crate::pipeline::types::AxisDecor::echant_defaults(),
             z: None,
         }];
         let planner = GridPlanner::new(800, 600, 60.0, &grids);
@@ -743,8 +759,9 @@ mod tests {
             label_show: true,
             label_formatter: None,
             label_rotate: None,
-            axis_line_show: true,
-            split_line_show: true,
+            name_gap: None,
+            label_interval: None,
+            decor: crate::pipeline::types::AxisDecor::echant_defaults(),
             z: None,
         }];
         let planner = GridPlanner::new(800, 600, 60.0, &grids);
@@ -779,8 +796,9 @@ mod tests {
             label_show: true,
             label_formatter: None,
             label_rotate: None,
-            axis_line_show: true,
-            split_line_show: true,
+            name_gap: None,
+            label_interval: None,
+            decor: crate::pipeline::types::AxisDecor::echant_defaults(),
             z: None,
         }];
         let planner = GridPlanner::new(800, 600, 60.0, &grids);
@@ -797,6 +815,8 @@ mod tests {
                 top: Some(GridEdge::Px(0.0)),
                 right: Some(GridEdge::Px(400.0)), // width = 800 - 400 - 0 = 400
                 bottom: Some(GridEdge::Px(0.0)),
+                width: None,
+                height: None,
                 contain_label: false,
             },
             GridSpec {
@@ -804,6 +824,8 @@ mod tests {
                 top: Some(GridEdge::Px(0.0)),
                 right: Some(GridEdge::Px(0.0)),
                 bottom: Some(GridEdge::Px(0.0)),
+                width: None,
+                height: None,
                 contain_label: false,
             },
         ];
@@ -857,8 +879,9 @@ mod tests {
                 label_show: true,
                 label_formatter: None,
                 label_rotate: None,
-                axis_line_show: true,
-                split_line_show: true,
+                name_gap: None,
+                label_interval: None,
+                decor: crate::pipeline::types::AxisDecor::echant_defaults(),
                 z: None,
             },
             AxisSpec {
@@ -876,8 +899,9 @@ mod tests {
                 label_show: true,
                 label_formatter: None,
                 label_rotate: None,
-                axis_line_show: true,
-                split_line_show: true,
+                name_gap: None,
+                label_interval: None,
+                decor: crate::pipeline::types::AxisDecor::echant_defaults(),
                 z: None,
             },
         ];
@@ -896,8 +920,9 @@ mod tests {
             label_show: true,
             label_formatter: None,
             label_rotate: None,
-            axis_line_show: true,
-            split_line_show: true,
+            name_gap: None,
+            label_interval: None,
+            decor: crate::pipeline::types::AxisDecor::echant_defaults(),
             z: None,
         }];
         let planner = GridPlanner::new(800, 600, 100.0, &grids);
@@ -916,6 +941,8 @@ mod tests {
             right: None,
             top: None,
             bottom: None,
+            width: None,
+            height: None,
             contain_label: true,
         }];
         let planner = GridPlanner::new(800, 600, 100.0, &grids);

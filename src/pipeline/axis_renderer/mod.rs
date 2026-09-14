@@ -90,13 +90,7 @@ pub fn axis_ticks_with_count(
     let count = count.max(1);
     match axis_type {
         crate::pipeline::types::AxisType::Log => log_ticks(min, max),
-        crate::pipeline::types::AxisType::Time => {
-            // 时间戳（秒/毫秒）仍按线性刻度，标签格式化为日期
-            let ticks = compute_nice_ticks(min, max, count);
-            let positions = normalize_ticks(&ticks, min, max);
-            let labels: Vec<String> = ticks.iter().map(|&v| format_time_label(v)).collect();
-            (positions, labels)
-        }
+        crate::pipeline::types::AxisType::Time => time_ticks(min, max, count),
         _ => {
             let ticks = compute_nice_ticks(min, max, count);
             let positions = normalize_ticks(&ticks, min, max);
@@ -177,6 +171,162 @@ fn format_log_label(v: f64) -> String {
     }
 }
 
+/// 时间轴刻度步长。
+///
+/// 时间轴的刻度必须落在**时间边界**上（整秒/分/时/日/周一/月初/年初）。
+/// 早期实现直接把 epoch 秒交给 `compute_nice_ticks` 做十进制取整，19 万秒的
+/// 跨度会取到 50000s（≈13.9h）的步长，刻度落在 02:06 / 16:00 / 05:53…，
+/// 舍入到「天」后变成 `08-01 / 08-01 / 08-02 / 08-02`——同一日期重复出现，
+/// 真实数据日期（08-03）反而没有刻度。
+#[derive(Clone, Copy)]
+enum TimeStep {
+    /// 固定秒数步长（秒/分/时/日/周），对齐到 epoch 整数倍（周对齐到周一）
+    Seconds(f64),
+    /// 日历月步长（刻度落在月初）
+    Months(i64),
+    /// 年份步长（刻度落在 1 月 1 日）
+    Years(i64),
+}
+
+impl TimeStep {
+    /// 步长的近似秒数（用于选择步长）
+    fn approx_secs(self) -> f64 {
+        match self {
+            TimeStep::Seconds(s) => s,
+            TimeStep::Months(m) => m as f64 * 2_592_000.0,
+            TimeStep::Years(y) => y as f64 * 31_536_000.0,
+        }
+    }
+
+    /// 不大于 `t`（epoch 秒）的最大时间边界
+    fn floor(self, t: f64) -> f64 {
+        match self {
+            // 周：对齐到周一（epoch 第 0 天是周四 ⇒ 周一的日序号 ≡ 4 mod 7）
+            TimeStep::Seconds(s) if s >= 604_800.0 => {
+                let weeks = ((t / 86400.0 - 4.0) / 7.0).floor();
+                (weeks * 7.0 + 4.0) * 86400.0
+            }
+            TimeStep::Seconds(s) => (t / s).floor() * s,
+            TimeStep::Months(m) => {
+                let (y, mo, _) = days_to_ymd((t / 86400.0).floor() as i64);
+                let idx = (y * 12 + mo - 1).div_euclid(m) * m;
+                ymd_to_days(idx.div_euclid(12), idx.rem_euclid(12) + 1, 1) as f64 * 86400.0
+            }
+            TimeStep::Years(y) => {
+                let (yr, _, _) = days_to_ymd((t / 86400.0).floor() as i64);
+                ymd_to_days(yr.div_euclid(y) * y, 1, 1) as f64 * 86400.0
+            }
+        }
+    }
+
+    /// 下一个时间边界
+    fn next(self, t: f64) -> f64 {
+        match self {
+            TimeStep::Seconds(s) => t + s,
+            TimeStep::Months(m) => {
+                let (y, mo, _) = days_to_ymd((t / 86400.0).floor() as i64);
+                let idx = y * 12 + mo - 1 + m;
+                ymd_to_days(idx.div_euclid(12), idx.rem_euclid(12) + 1, 1) as f64 * 86400.0
+            }
+            TimeStep::Years(y) => {
+                let (yr, _, _) = days_to_ymd((t / 86400.0).floor() as i64);
+                ymd_to_days(yr + y, 1, 1) as f64 * 86400.0
+            }
+        }
+    }
+
+    /// 刻度标签：按步长粒度决定是否带时分秒。
+    ///
+    /// 注意取日期必须用 `floor` 而非 `round`：`t` 恰好落在 12:00 时
+    /// `round(t/86400)` 会把日期进位一天，把 `08-01 12:00` 标成 `08-02 12:00`。
+    fn label(self, t: f64) -> String {
+        let days = (t / 86400.0).floor() as i64;
+        let (y, m, d) = days_to_ymd(days);
+        let sod = (t.round() as i64 - days * 86400).rem_euclid(86400);
+        match self {
+            TimeStep::Seconds(s) if s >= 86400.0 => format!("{y:04}-{m:02}-{d:02}"),
+            TimeStep::Seconds(s) if s >= 60.0 => format!(
+                "{y:04}-{m:02}-{d:02} {:02}:{:02}",
+                sod / 3600,
+                (sod % 3600) / 60
+            ),
+            TimeStep::Seconds(_) => format!(
+                "{y:04}-{m:02}-{d:02} {:02}:{:02}:{:02}",
+                sod / 3600,
+                (sod % 3600) / 60,
+                sod % 60
+            ),
+            TimeStep::Months(_) => format!("{y:04}-{m:02}"),
+            TimeStep::Years(_) => format!("{y:04}"),
+        }
+    }
+}
+
+/// 时间轴刻度：按时间边界（整分/整时/整日/周一/月初/年初）生成刻度。
+fn time_ticks(min: f64, max: f64, count: usize) -> (Vec<f64>, Vec<String>) {
+    const DAY: f64 = 86_400.0;
+    let steps = [
+        TimeStep::Seconds(1.0),
+        TimeStep::Seconds(5.0),
+        TimeStep::Seconds(10.0),
+        TimeStep::Seconds(30.0),
+        TimeStep::Seconds(60.0),
+        TimeStep::Seconds(300.0),
+        TimeStep::Seconds(900.0),
+        TimeStep::Seconds(1800.0),
+        TimeStep::Seconds(3600.0),
+        TimeStep::Seconds(3.0 * 3600.0),
+        TimeStep::Seconds(6.0 * 3600.0),
+        TimeStep::Seconds(12.0 * 3600.0),
+        TimeStep::Seconds(DAY),
+        TimeStep::Seconds(2.0 * DAY),
+        TimeStep::Seconds(7.0 * DAY),
+        TimeStep::Months(1),
+        TimeStep::Months(3),
+        TimeStep::Months(6),
+        TimeStep::Years(1),
+        TimeStep::Years(2),
+        TimeStep::Years(5),
+    ];
+
+    // 毫秒级时间戳（≥1e11）折算到秒做刻度生成；位置在秒空间计算，与单位无关
+    let scale = if min.abs() >= 1e11 || max.abs() >= 1e11 {
+        1000.0
+    } else {
+        1.0
+    };
+    let (lo, hi) = (min / scale, max / scale);
+    let span = hi - lo;
+
+    if !span.is_finite() || span <= 0.0 {
+        return (vec![0.0], vec![format_time_label(lo)]);
+    }
+
+    let want = count.max(2) as f64;
+    let step = steps
+        .iter()
+        .copied()
+        .find(|s| span / s.approx_secs() <= want)
+        .unwrap_or(TimeStep::Years(5));
+
+    let mut ticks = Vec::new();
+    let mut t = step.floor(lo);
+    while t < lo && ticks.len() < 200 {
+        t = step.next(t);
+    }
+    while t <= hi && ticks.len() < 200 {
+        ticks.push(t);
+        t = step.next(t);
+    }
+    if ticks.is_empty() {
+        ticks.push(lo);
+    }
+
+    let positions = normalize_ticks(&ticks, lo, hi);
+    let labels = ticks.iter().map(|&v| step.label(v)).collect();
+    (positions, labels)
+}
+
 /// 将时间戳（秒或毫秒）格式化为日期字符串。
 fn format_time_label(ts: f64) -> String {
     // 尝试解析为日期：毫秒级时间戳通常 > 10^11，秒级 > 10^9
@@ -203,6 +353,14 @@ fn days_to_ymd(days: i64) -> (i64, i64, i64) {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     (y, m, d)
+}
+
+/// 公历 `(年, 月, 日)` → 自 epoch 的天数（[`days_to_ymd`] 的逆运算，UTC）
+fn ymd_to_days(y: i64, m: i64, d: i64) -> i64 {
+    let a = (14 - m) / 12;
+    let y2 = y + 4800 - a;
+    let m2 = m + 12 * a - 3;
+    d + (153 * m2 + 2) / 5 + 365 * y2 + y2 / 4 - y2 / 100 + y2 / 400 - 32045 - 2440588
 }
 
 pub use cartesian::CartesianAxisRenderer;

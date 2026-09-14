@@ -185,17 +185,20 @@ impl CartesianAxisRenderer {
                 } else {
                     bounds.y1
                 };
-                Self::draw_axis_line(
-                    &mut elements,
-                    Point::new(bounds.x0, axis_y),
-                    Point::new(bounds.x1, axis_y),
-                    colors.axis_line_color,
-                );
+                if axis_cfg.decor.line_show {
+                    Self::draw_axis_line(
+                        &mut elements,
+                        Point::new(bounds.x0, axis_y),
+                        Point::new(bounds.x1, axis_y),
+                        axis_cfg.decor.line_color.unwrap_or(colors.axis_line_color),
+                        axis_cfg.decor.line_width,
+                    );
+                }
 
                 // X 轴刻度短线（ECharts 默认 axisTick.show = true）
                 Self::draw_x_ticks(&mut elements, bounds, axis_cfg, x_min, x_max, colors);
 
-                // X 轴网格线 (垂直方向)
+                // X 轴网格线 (垂直方向) + splitArea 色带
                 Self::draw_x_grid_lines(&mut elements, bounds, axis_cfg, x_min, x_max, colors);
 
                 // X 轴刻度标签
@@ -222,12 +225,15 @@ impl CartesianAxisRenderer {
                     .unwrap_or(false);
                 let axis_x = if is_right { bounds.x1 } else { bounds.x0 };
 
-                Self::draw_axis_line(
-                    &mut elements,
-                    Point::new(axis_x, bounds.y0),
-                    Point::new(axis_x, bounds.y1),
-                    colors.axis_line_color,
-                );
+                if axis_cfg.decor.line_show {
+                    Self::draw_axis_line(
+                        &mut elements,
+                        Point::new(axis_x, bounds.y0),
+                        Point::new(axis_x, bounds.y1),
+                        axis_cfg.decor.line_color.unwrap_or(colors.axis_line_color),
+                        axis_cfg.decor.line_width,
+                    );
+                }
 
                 // Y 轴刻度短线（ECharts 默认 axisTick.show = true）
                 Self::draw_y_ticks(
@@ -260,13 +266,88 @@ impl CartesianAxisRenderer {
         elements
     }
 
-    fn draw_axis_line(elements: &mut Vec<SceneNode>, start: Point, end: Point, color: Color) {
+    fn draw_axis_line(
+        elements: &mut Vec<SceneNode>,
+        start: Point,
+        end: Point,
+        color: Color,
+        width: f64,
+    ) {
         elements.push(crate::pipeline::builder::line(
             start,
             end,
-            Stroke::new(color, 1.0),
+            Stroke::new(color, width),
             Z_AXIS,
         ));
+    }
+
+    /// `splitArea` 交替色带的默认两色（对齐 ECharts 默认观感）。
+    const SPLIT_AREA_DEFAULT: [Color; 2] = [
+        Color {
+            r: 250,
+            g: 250,
+            b: 250,
+            a: 77,
+        },
+        Color {
+            r: 200,
+            g: 200,
+            b: 200,
+            a: 77,
+        },
+    ];
+
+    /// 沿轴绘制 `splitArea` 交替色带（填在相邻刻度之间，与 ECharts 一致）。
+    ///
+    /// `positions` 为像素坐标（升序或降序均可），`is_x` 决定色带方向。
+    fn draw_split_area(
+        elements: &mut Vec<SceneNode>,
+        bounds: Rect,
+        axis_cfg: &AxisSpec,
+        positions: &[f64],
+        is_x: bool,
+    ) {
+        if !axis_cfg.decor.split_area_show || positions.len() < 2 {
+            return;
+        }
+        let palette = if axis_cfg.decor.split_area_colors.is_empty() {
+            Self::SPLIT_AREA_DEFAULT.to_vec()
+        } else {
+            axis_cfg.decor.split_area_colors.clone()
+        };
+        for (i, w) in positions.windows(2).enumerate() {
+            let (a, b) = (w[0].min(w[1]), w[0].max(w[1]));
+            if b - a <= f64::EPSILON {
+                continue;
+            }
+            let color = palette[i % palette.len()];
+            let r = if is_x {
+                Rect::new(a, bounds.y0, b, bounds.y1)
+            } else {
+                Rect::new(bounds.x0, a, bounds.x1, b)
+            };
+            elements.push(crate::pipeline::builder::rect(
+                r,
+                lievisual::scene::FillStrokeStyle {
+                    fill: Some(lievisual::scene::Fill::Solid(color)),
+                    stroke: None,
+                },
+                Z_GRID - 1,
+            ));
+        }
+    }
+
+    /// 分隔线描边（`splitLine.lineStyle` 优先，否则主题色 + 0.5px 实线）
+    fn split_line_stroke(axis_cfg: &AxisSpec, colors: &ColorContext) -> Stroke {
+        let mut stroke = Stroke::new(
+            axis_cfg
+                .decor
+                .split_line_color
+                .unwrap_or(colors.grid_line_color),
+            0.5,
+        );
+        stroke.dash_array = axis_cfg.decor.split_line_dash.clone();
+        stroke
     }
 
     /// 绘制 X 轴刻度短线：从轴线向外延伸 5px，与刻度标签位置对齐。
@@ -278,7 +359,10 @@ impl CartesianAxisRenderer {
         x_max: f64,
         colors: &ColorContext,
     ) {
-        const TICK_LEN: f64 = 5.0;
+        if !axis_cfg.decor.tick_show {
+            return;
+        }
+        let tick_len = axis_cfg.decor.tick_length.max(0.0);
         let axis_y = if axis_cfg.position == AxisPosition::Top {
             bounds.y0
         } else {
@@ -286,14 +370,25 @@ impl CartesianAxisRenderer {
         };
         // 朝轴线外侧延伸：底部轴向下、顶部轴向上
         let (y1, y2) = if axis_cfg.position == AxisPosition::Top {
-            (axis_y - TICK_LEN, axis_y)
+            (axis_y - tick_len, axis_y)
         } else {
-            (axis_y, axis_y + TICK_LEN)
+            (axis_y, axis_y + tick_len)
         };
         let xs: Vec<f64> = if axis_cfg.axis_type == AxisType::Category {
-            (0..axis_cfg.category_count())
-                .map(|i| bounds.x0 + axis_cfg.category_norm(i) * bounds.width())
-                .collect()
+            let n = axis_cfg.category_count();
+            if n == 0 {
+                return;
+            }
+            if axis_cfg.decor.align_with_label || !axis_cfg.boundary_gap {
+                (0..n)
+                    .map(|i| bounds.x0 + axis_cfg.category_norm(i) * bounds.width())
+                    .collect()
+            } else {
+                // ECharts 默认：类目轴刻度对齐**带边界**（`alignWithLabel` 默认 false）
+                (0..=n)
+                    .map(|i| bounds.x0 + i as f64 / n as f64 * bounds.width())
+                    .collect()
+            }
         } else {
             let (positions, _) = axis_ticks_with_count(
                 axis_cfg.axis_type,
@@ -333,18 +428,31 @@ impl CartesianAxisRenderer {
         colors: &ColorContext,
         is_right: bool,
     ) {
-        const TICK_LEN: f64 = 5.0;
+        if !axis_cfg.decor.tick_show {
+            return;
+        }
+        let tick_len = axis_cfg.decor.tick_length.max(0.0);
         let axis_x = if is_right { bounds.x1 } else { bounds.x0 };
         // 朝轴线外侧延伸：左轴向左、右轴向右
         let (x1, x2) = if is_right {
-            (axis_x, axis_x + TICK_LEN)
+            (axis_x, axis_x + tick_len)
         } else {
-            (axis_x - TICK_LEN, axis_x)
+            (axis_x - tick_len, axis_x)
         };
         let ys: Vec<f64> = if axis_cfg.axis_type == AxisType::Category {
-            (0..axis_cfg.category_count())
-                .map(|i| bounds.y1 - axis_cfg.category_norm(i) * bounds.height())
-                .collect()
+            let n = axis_cfg.category_count();
+            if n == 0 {
+                return;
+            }
+            if axis_cfg.decor.align_with_label || !axis_cfg.boundary_gap {
+                (0..n)
+                    .map(|i| bounds.y1 - axis_cfg.category_norm(i) * bounds.height())
+                    .collect()
+            } else {
+                (0..=n)
+                    .map(|i| bounds.y1 - i as f64 / n as f64 * bounds.height())
+                    .collect()
+            }
         } else {
             let (positions, _) = axis_ticks_with_count(
                 axis_cfg.axis_type,
@@ -383,26 +491,23 @@ impl CartesianAxisRenderer {
         x_max: f64,
         colors: &ColorContext,
     ) {
-        if axis_cfg.axis_type == AxisType::Category {
+        // 分隔线位置（X 轴）：类目轴用带边界、数值轴用刻度位置
+        let xs: Vec<f64> = if axis_cfg.axis_type == AxisType::Category {
             let n = axis_cfg.category_count();
-            if n > 1 {
-                // 留白：网格线落在 n+1 条带边界上（inverse 时仍对称，方向不影响）
-                // 无留白：网格线与数据点对齐
-                for i in 0..if axis_cfg.boundary_gap { n + 1 } else { n } {
+            if n == 0 {
+                return;
+            }
+            // 留白：落在 n+1 条带边界上；无留白：与数据点对齐
+            (0..if axis_cfg.boundary_gap { n + 1 } else { n })
+                .map(|i| {
                     let t = if axis_cfg.boundary_gap {
                         i as f64 / n as f64
                     } else {
                         axis_cfg.category_norm(i)
                     };
-                    let x = bounds.x0 + t * bounds.width();
-                    elements.push(crate::pipeline::builder::line(
-                        Point::new(x, bounds.y0),
-                        Point::new(x, bounds.y1),
-                        Stroke::new(colors.grid_line_color, 0.5),
-                        Z_GRID,
-                    ));
-                }
-            }
+                    bounds.x0 + t * bounds.width()
+                })
+                .collect()
         } else {
             // Value / Time / Log 轴：网格线位置与刻度位置一致
             let (positions, _labels) = axis_ticks_with_count(
@@ -411,19 +516,31 @@ impl CartesianAxisRenderer {
                 x_max,
                 axis_cfg.split_number.unwrap_or(5),
             );
-            for t in positions {
-                let x = if axis_cfg.inverse {
-                    bounds.x1 - t * bounds.width()
-                } else {
-                    bounds.x0 + t * bounds.width()
-                };
-                elements.push(crate::pipeline::builder::line(
-                    Point::new(x, bounds.y0),
-                    Point::new(x, bounds.y1),
-                    Stroke::new(colors.grid_line_color, 0.5),
-                    Z_GRID,
-                ));
-            }
+            positions
+                .iter()
+                .map(|&t| {
+                    if axis_cfg.inverse {
+                        bounds.x1 - t * bounds.width()
+                    } else {
+                        bounds.x0 + t * bounds.width()
+                    }
+                })
+                .collect()
+        };
+
+        Self::draw_split_area(elements, bounds, axis_cfg, &xs, true);
+
+        if !axis_cfg.decor.split_line_show {
+            return;
+        }
+        let stroke = Self::split_line_stroke(axis_cfg, colors);
+        for x in xs {
+            elements.push(crate::pipeline::builder::line(
+                Point::new(x, bounds.y0),
+                Point::new(x, bounds.y1),
+                stroke.clone(),
+                Z_GRID,
+            ));
         }
     }
 
@@ -441,18 +558,30 @@ impl CartesianAxisRenderer {
             y_max,
             axis_cfg.split_number.unwrap_or(5),
         );
-        for t in positions {
-            // Y 轴自下而上：t=(v-min)/(max-min)，像素 y = y0 + (1-t)*height
-            // inverse：min 在顶部、max 在底部 → y = y0 + t*height
-            let y = if axis_cfg.inverse {
-                bounds.y0 + t * bounds.height()
-            } else {
-                bounds.y0 + (1.0 - t) * bounds.height()
-            };
+        // Y 轴自下而上：t=(v-min)/(max-min)，像素 y = y0 + (1-t)*height
+        // inverse：min 在顶部、max 在底部 → y = y0 + t*height
+        let ys: Vec<f64> = positions
+            .iter()
+            .map(|&t| {
+                if axis_cfg.inverse {
+                    bounds.y0 + t * bounds.height()
+                } else {
+                    bounds.y0 + (1.0 - t) * bounds.height()
+                }
+            })
+            .collect();
+
+        Self::draw_split_area(elements, bounds, axis_cfg, &ys, false);
+
+        if !axis_cfg.decor.split_line_show {
+            return;
+        }
+        let stroke = Self::split_line_stroke(axis_cfg, colors);
+        for y in ys {
             elements.push(crate::pipeline::builder::line(
                 Point::new(bounds.x0, y),
                 Point::new(bounds.x1, y),
-                Stroke::new(colors.grid_line_color, 0.5),
+                stroke.clone(),
                 Z_GRID,
             ));
         }
@@ -497,6 +626,12 @@ impl CartesianAxisRenderer {
                 text_measurer,
                 colors,
             );
+            // `axisLabel.interval` 显式抽稀优先于自动决策
+            let step = axis_cfg
+                .label_interval
+                .filter(|v| *v >= 1.0)
+                .map(|v| v as usize)
+                .unwrap_or(step);
 
             let mut last_rendered: Option<usize> = None;
             for i in (0..n).step_by(step) {
@@ -576,6 +711,12 @@ impl CartesianAxisRenderer {
                 text_measurer,
                 colors,
             );
+            // `axisLabel.interval` 显式抽稀优先于自动决策
+            let step = axis_cfg
+                .label_interval
+                .filter(|v| *v >= 1.0)
+                .map(|v| v as usize)
+                .unwrap_or(step);
 
             let mut last_rendered: Option<usize> = None;
             for i in (0..positions.len()).step_by(step) {
@@ -680,6 +821,11 @@ impl CartesianAxisRenderer {
                 text_measurer,
                 colors,
             );
+            let step = axis_cfg
+                .label_interval
+                .filter(|v| *v >= 1.0)
+                .map(|v| v as usize)
+                .unwrap_or(step);
             adjust_left_anchor(&labels, rotation, text_measurer, colors);
 
             // 与柱状图渲染保持一致：category 0 在底部，category n-1 在顶部
@@ -758,6 +904,11 @@ impl CartesianAxisRenderer {
             text_measurer,
             colors,
         );
+        let step = axis_cfg
+            .label_interval
+            .filter(|v| *v >= 1.0)
+            .map(|v| v as usize)
+            .unwrap_or(step);
         adjust_left_anchor(&labels, rotation, text_measurer, colors);
 
         for i in (0..positions.len()).step_by(step) {
@@ -818,8 +969,9 @@ mod tests {
             label_show: true,
             label_formatter: None,
             label_rotate: None,
-            axis_line_show: true,
-            split_line_show: true,
+            name_gap: None,
+            label_interval: None,
+            decor: crate::pipeline::types::AxisDecor::echant_defaults(),
             z: None,
         }
     }
@@ -1087,8 +1239,9 @@ mod tests {
             label_show: true,
             label_formatter: None,
             label_rotate,
-            axis_line_show: true,
-            split_line_show: true,
+            name_gap: None,
+            label_interval: None,
+            decor: crate::pipeline::types::AxisDecor::echant_defaults(),
             z: None,
         }
     }

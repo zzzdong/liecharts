@@ -634,8 +634,9 @@ mod tests {
             label_show: true,
             label_formatter: None,
             label_rotate: None,
-            axis_line_show: true,
-            split_line_show: true,
+            name_gap: None,
+            label_interval: None,
+            decor: crate::pipeline::types::AxisDecor::echant_defaults(),
             z: None,
         }
     }

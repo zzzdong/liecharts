@@ -1,8 +1,13 @@
-use serde::{Deserialize, Serialize};
+use std::fmt;
+
+use serde::{
+    Deserialize, Deserializer, Serialize,
+    de::{self, MapAccess, Visitor},
+};
 
 use crate::pipeline::dataframe::{DataFrame, Series};
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum SamplingType {
     Lttb,
@@ -11,12 +16,90 @@ pub enum SamplingType {
     Min,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// 宽松解析采样方式（未建模取值回退 `lttb`）。
+impl<'de> Deserialize<'de> for SamplingType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = SamplingType;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a sampling type name")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(match v.trim().to_ascii_lowercase().as_str() {
+                    "average" => SamplingType::Average,
+                    "max" => SamplingType::Max,
+                    "min" => SamplingType::Min,
+                    _ => SamplingType::Lttb,
+                })
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+        }
+        deserializer.deserialize_str(V)
+    }
+}
+
+/// 字符串形式 `sampling` 的缺省阈值。
+///
+/// ECharts 写成 `sampling:'lttb'` 时不带阈值（ECharts 按像素宽度动态决定目标点数）；
+/// liecharts 用固定阈值，取 1000——少于 1000 点的常规图表不受影响。
+const DEFAULT_SAMPLING_THRESHOLD: usize = 1000;
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SamplingOption {
     #[serde(rename = "type")]
     pub ty: SamplingType,
     pub threshold: usize,
+}
+
+/// 既接受 ECharts 的字符串简写 `"lttb"`，也接受对象 `{type, threshold}`。
+///
+/// 此前只接受对象，`sampling:"lttb"` 会让整图解析失败。
+impl<'de> Deserialize<'de> for SamplingOption {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = SamplingOption;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a sampling name or an object {type, threshold}")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                let ty = SamplingType::deserialize(de::value::StrDeserializer::new(v))?;
+                Ok(SamplingOption {
+                    ty,
+                    threshold: DEFAULT_SAMPLING_THRESHOLD,
+                })
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut ty = SamplingType::Lttb;
+                let mut threshold = DEFAULT_SAMPLING_THRESHOLD;
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.as_str() {
+                        "type" => ty = map.next_value()?,
+                        "threshold" => threshold = map.next_value()?,
+                        _ => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+                Ok(SamplingOption { ty, threshold })
+            }
+        }
+        deserializer.deserialize_any(V)
+    }
 }
 
 impl SamplingOption {

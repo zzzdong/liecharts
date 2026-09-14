@@ -60,22 +60,25 @@ impl SeriesBuilder<CandlestickSeries> for CandlestickBuilder {
                 Z_SERIES_LINE,
             ));
 
-            // 实体 — 阳线空心（仅描边），阴线实心（填充）
-            if candle.is_up {
+            // 实体 — 默认按 A 股惯例「阳线空心、阴线实心」；
+            // 用户显式给了 `itemStyle.color` / `color0` 时改为两者都实心填充
+            // （ECharts 默认语义）。
+            let up_stroke_color = series.border_color.unwrap_or(color);
+            if candle.is_up && !series.explicit_colors {
                 // 阳线：仅描边，空心
                 elements.push(rect(
                     candle.body_rect,
                     FillStrokeStyle {
                         fill: None,
-                        stroke: Some(Stroke::new(color, 1.5)),
+                        stroke: Some(Stroke::new(up_stroke_color, 1.5)),
                     },
                     Z_SERIES_FILL,
                 ));
             } else {
-                // 阴线：实心填充
+                // 阴线 / 显式配色：实心填充
                 elements.push(rect(
                     candle.body_rect,
-                    fill_stroke_style(color, color, 1.0),
+                    fill_stroke_style(color, up_stroke_color, 1.0),
                     Z_SERIES_FILL,
                 ));
             }

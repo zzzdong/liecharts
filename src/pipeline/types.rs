@@ -62,6 +62,10 @@ pub struct GridSpec {
     pub right: Option<GridEdge>,
     pub top: Option<GridEdge>,
     pub bottom: Option<GridEdge>,
+    /// 显式绘图区宽度（ECharts `grid.width`）。`Some` 时覆盖 `right`。
+    pub width: Option<GridEdge>,
+    /// 显式绘图区高度（ECharts `grid.height`）。`Some` 时覆盖 `bottom`。
+    pub height: Option<GridEdge>,
     pub contain_label: bool,
 }
 
@@ -83,6 +87,60 @@ pub enum AxisPosition {
     Right,
 }
 
+/// 坐标轴装饰样式（ECharts `axisLine` / `axisTick` / `splitLine` / `splitArea` 的子集）。
+///
+/// 默认值与 ECharts 默认语义一致：轴线/刻度/分隔线都在，但**类目轴的
+/// `splitLine` 默认关闭**（ECharts 文档：分隔线「默认数值轴显示，类目轴不显示」），
+/// 且类目刻度默认对齐**带边界**而非类目中心（`axisTick.alignWithLabel` 默认 false）。
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct AxisDecor {
+    /// `axisLine.show`
+    pub line_show: bool,
+    pub line_color: Option<Color>,
+    pub line_width: f64,
+    /// `axisTick.show`
+    pub tick_show: bool,
+    pub tick_length: f64,
+    /// `axisTick.alignWithLabel`：true 时刻度落在类目中心，false 落在带边界
+    pub align_with_label: bool,
+    /// `splitLine.show`
+    pub split_line_show: bool,
+    pub split_line_color: Option<Color>,
+    /// `splitLine.lineStyle.type` 展开的虚线段长（空 = 实线）
+    pub split_line_dash: Vec<f64>,
+    /// `splitArea.show`：沿轴绘制交替色带
+    pub split_area_show: bool,
+    pub split_area_colors: Vec<Color>,
+}
+
+impl AxisDecor {
+    /// ECharts 语义的默认值（不用 `derive(Default)`，因为布尔默认并非全 false）
+    pub fn echant_defaults() -> Self {
+        Self {
+            line_show: true,
+            line_color: None,
+            line_width: 1.0,
+            tick_show: true,
+            tick_length: 5.0,
+            align_with_label: false,
+            split_line_show: true,
+            split_line_color: None,
+            split_line_dash: Vec::new(),
+            split_area_show: false,
+            split_area_colors: Vec::new(),
+        }
+    }
+
+    /// 按轴类型套用 ECharts 默认显隐：类目轴默认不画分隔线。
+    pub fn for_axis_type(axis_type: AxisType) -> Self {
+        let mut d = Self::echant_defaults();
+        if axis_type == AxisType::Category {
+            d.split_line_show = false;
+        }
+        d
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct AxisSpec {
     pub axis_type: AxisType,
@@ -92,6 +150,8 @@ pub struct AxisSpec {
     pub max: Option<f64>,
     pub name: Option<String>,
     pub name_location: Option<String>,
+    /// `nameGap`：轴名与轴线的距离（None = 默认）
+    pub name_gap: Option<f64>,
     pub categories: Vec<String>, // Category 轴的标签
     pub boundary_gap: bool,
     pub inverse: bool,
@@ -99,8 +159,10 @@ pub struct AxisSpec {
     pub label_show: bool,
     pub label_formatter: Option<String>,
     pub label_rotate: Option<f64>,
-    pub axis_line_show: bool,
-    pub split_line_show: bool,
+    /// `axisLabel.interval`：显式刻度抽稀步长（None / 非正数 = 自动）
+    pub label_interval: Option<f64>,
+    /// 轴线 / 刻度 / 分隔线 / 色带的样式与显隐
+    pub decor: AxisDecor,
     pub z: Option<f64>,
 }
 
@@ -191,6 +253,23 @@ impl SeriesConfig {
             SeriesConfig::Table(_) => ChartType::Table,
         }
     }
+
+    /// 该系列在指定维度上承载「类目名」的列名（`is_x` = X 轴维度）。
+    ///
+    /// 用于类目轴缺 `xAxis.data` 时从系列数据反推类目名（ECharts 语义：
+    /// `xAxis:{type:'category'}` 配合 `dataset`/`series.data` 即可自动生成类目）。
+    pub fn axis_col(&self, is_x: bool) -> Option<&str> {
+        match self {
+            SeriesConfig::Line(c) => Some(if is_x { &c.x_col } else { &c.y_col }),
+            SeriesConfig::Bar(c) => Some(if is_x { &c.x_col } else { &c.y_col }),
+            SeriesConfig::Scatter(c) => Some(if is_x { &c.x_col } else { &c.y_col }),
+            SeriesConfig::Bubble(c) => Some(if is_x { &c.x_col } else { &c.y_col }),
+            SeriesConfig::Heatmap(c) => Some(if is_x { &c.x_col } else { &c.y_col }),
+            SeriesConfig::Candlestick(c) => Some(if is_x { &c.category_col } else { &c.close_col }),
+            SeriesConfig::Boxplot(c) => Some(if is_x { &c.category_col } else { &c.median_col }),
+            _ => None,
+        }
+    }
 }
 
 // ── StepType ──
@@ -223,6 +302,25 @@ pub struct MarkLineSpec {
     pub name: Option<String>,
 }
 
+// ── MarkPoint ──
+
+/// 标注点类型（ECharts `markPoint.data[].type`）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum MarkPointType {
+    Average,
+    Min,
+    Max,
+}
+
+/// 标注点配置（来自 `series.markPoint`）
+#[derive(Debug, Clone)]
+pub struct MarkPointSpec {
+    pub data_type: MarkPointType,
+    pub name: Option<String>,
+    /// 显式覆盖值（`markPoint.data[].value`），`None` 时按类型统计
+    pub value: Option<f64>,
+}
+
 // ── LineConfig ──
 
 #[derive(Debug, Clone)]
@@ -232,6 +330,13 @@ pub struct LineConfig {
     pub smooth: bool,
     pub step: Option<StepType>,
     pub line_width: f64,
+    /// 虚线段长（`lineStyle.type: dashed/dotted` 展开）。空 = 实线。
+    pub line_dash: Vec<f64>,
+    /// `lineStyle.color`：显式线色（优先于调色板）
+    pub line_color: Option<Color>,
+    /// `connectNulls`：true 时跨越 null 数据点连成一条线（ECharts 默认 **false**，
+    /// 即在 null 处断开）。
+    pub connect_nulls: bool,
     /// 是否显示面积填充
     pub area: bool,
     /// 面积填充颜色（None 时使用系列颜色）
@@ -250,9 +355,9 @@ pub struct LineConfig {
     pub label_color: Option<Color>,
     /// 标注线配置
     pub mark_line: Vec<MarkLineSpec>,
+    /// 标注点配置
+    pub mark_point: Vec<MarkPointSpec>,
 }
-
-/// 笛卡尔系列（line/bar）的值标签位置（ECharts label.position 子集）
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ValueLabelPos {
     /// 数据点/柱顶外侧（默认）
@@ -272,6 +377,9 @@ impl Default for LineConfig {
             smooth: false,
             step: None,
             line_width: 2.0,
+            line_dash: Vec::new(),
+            line_color: None,
+            connect_nulls: false,
             area: false,
             area_color: None,
             area_opacity: 0.5,
@@ -283,17 +391,107 @@ impl Default for LineConfig {
             label_position: None,
             label_color: None,
             mark_line: Vec::new(),
+            mark_point: Vec::new(),
         }
     }
 }
 
 // ── BarConfig ──
 
+/// 柱宽尺寸：比例（相对类目槽宽）或绝对像素。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum BarSize {
+    /// 相对类目槽宽的比例（`"60%"`）
+    Ratio(f64),
+    /// 绝对像素（`60`）
+    Px(f64),
+}
+
+/// 柱状图几何布局（ECharts `barWidth` / `barGap` / `barCategoryGap` / `barMaxWidth` / `barMinWidth`）。
+///
+/// ECharts 默认：`barCategoryGap:'20%'`（整组占槽宽 80%）、`barGap:'30%'`（组内柱间距
+/// 为柱宽的 30%）。此前 liecharts 固定「带宽 60% 且组内紧贴」，与 ECharts 输出不一致。
+#[derive(Debug, Clone, PartialEq)]
+pub struct BarLayout {
+    /// 显式 `barWidth`；None = 由 `category_gap` 推导
+    pub width: Option<BarSize>,
+    /// `barGap`：组内相邻柱间距
+    pub gap: BarSize,
+    /// `barCategoryGap`：类目槽两侧的总留白
+    pub category_gap: BarSize,
+    pub max_width: Option<BarSize>,
+    pub min_width: Option<BarSize>,
+    /// `barMinHeight`：值方向的像素下限（保证极小值也可见）
+    pub min_height: Option<f64>,
+    /// `showBackground` 时的背景柱颜色（None = 不画）
+    pub background: Option<Color>,
+}
+
+impl Default for BarLayout {
+    fn default() -> Self {
+        Self {
+            width: None,
+            gap: BarSize::Ratio(0.3),
+            category_gap: BarSize::Ratio(0.2),
+            max_width: None,
+            min_width: None,
+            min_height: None,
+            background: None,
+        }
+    }
+}
+
+impl BarLayout {
+    /// 计算单根柱的像素宽度与组内间距。
+    ///
+    /// `slot` 为类目槽宽（像素），`series_count` 为**同组并排**柱数（堆叠视为 1）。
+    pub fn band(&self, slot: f64, series_count: usize) -> (f64, f64) {
+        let n = series_count.max(1) as f64;
+        let gap_of = |w: f64| match self.gap {
+            BarSize::Ratio(r) => w * r.max(0.0),
+            BarSize::Px(px) => px.max(0.0),
+        };
+
+        let mut w = if let Some(width) = self.width {
+            match width {
+                BarSize::Ratio(r) => slot * r,
+                BarSize::Px(px) => px,
+            }
+        } else {
+            let total = match self.category_gap {
+                BarSize::Ratio(r) => slot * (1.0 - r.clamp(0.0, 1.0)),
+                BarSize::Px(px) => (slot - px).max(0.0),
+            };
+            match self.gap {
+                BarSize::Ratio(r) => total / (n + (n - 1.0) * r.max(0.0)),
+                BarSize::Px(px) => ((total - (n - 1.0) * px) / n).max(0.0),
+            }
+        };
+
+        if let Some(mx) = self.max_width {
+            let v = match mx {
+                BarSize::Ratio(r) => slot * r,
+                BarSize::Px(px) => px,
+            };
+            w = w.min(v);
+        }
+        if let Some(mn) = self.min_width {
+            let v = match mn {
+                BarSize::Ratio(r) => slot * r,
+                BarSize::Px(px) => px,
+            };
+            w = w.max(v);
+        }
+        (w, gap_of(w))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct BarConfig {
     pub x_col: String,
     pub y_col: String,
-    pub bar_width: f64, // 0.0~1.0 ratio
+    /// 柱体几何（ECharts barWidth/barGap/barCategoryGap/…）
+    pub layout: BarLayout,
     /// 是否显示值标签
     pub label_show: bool,
     pub label_font_size: f64,
@@ -305,6 +503,8 @@ pub struct BarConfig {
     pub label_color: Option<Color>,
     /// 标注线配置
     pub mark_line: Vec<MarkLineSpec>,
+    /// 标注点配置
+    pub mark_point: Vec<MarkPointSpec>,
 }
 
 impl Default for BarConfig {
@@ -312,18 +512,28 @@ impl Default for BarConfig {
         Self {
             x_col: "x".into(),
             y_col: "y".into(),
-            bar_width: 0.6,
+            layout: BarLayout::default(),
             label_show: false,
             label_font_size: 12.0,
             label_formatter: None,
             label_position: None,
             label_color: None,
             mark_line: Vec::new(),
+            mark_point: Vec::new(),
         }
     }
 }
 
 // ── PieConfig ──
+
+/// 玫瑰图模式（ECharts `series-pie.roseType`）
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PieRoseType {
+    /// 半径映射数值
+    Radius,
+    /// 面积（半径按 √value）映射数值
+    Area,
+}
 
 #[derive(Debug, Clone)]
 pub struct PieConfig {
@@ -342,6 +552,14 @@ pub struct PieConfig {
     pub label_font_size: f64,
     /// 标签格式化模板，支持 `{b}`（名称）、`{c}`（数值）、`{d}`（百分比）
     pub label_formatter: Option<String>,
+    /// `labelLine.show`：外部标签的引导线（默认 true）
+    pub label_line_show: bool,
+    /// `clockwise`：扇区按顺时针排布（ECharts 默认 true）
+    pub clockwise: bool,
+    /// `roseType`：玫瑰图模式
+    pub rose_type: Option<PieRoseType>,
+    /// `padAngle`：扇区之间的间隔角（弧度）
+    pub pad_angle: f64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -363,6 +581,10 @@ impl Default for PieConfig {
             label_position: LabelPosition::Outside,
             label_font_size: 12.0,
             label_formatter: None,
+            label_line_show: true,
+            clockwise: true,
+            rose_type: None,
+            pad_angle: 0.0,
         }
     }
 }
@@ -418,6 +640,12 @@ pub struct CandlestickConfig {
     pub close_col: String,
     pub low_col: String,
     pub high_col: String,
+    /// `itemStyle.color`：阳线（涨）颜色。None = 主题色
+    pub up_color: Option<Color>,
+    /// `itemStyle.color0`：阴线（跌）颜色。None = 主题色
+    pub down_color: Option<Color>,
+    /// `itemStyle.border_color`：阳线描边色。None = 主题色
+    pub border_color: Option<Color>,
 }
 
 impl Default for CandlestickConfig {
@@ -428,6 +656,9 @@ impl Default for CandlestickConfig {
             close_col: "close".into(),
             low_col: "low".into(),
             high_col: "high".into(),
+            up_color: None,
+            down_color: None,
+            border_color: None,
         }
     }
 }
@@ -506,6 +737,12 @@ impl Default for HeatmapConfig {
 pub struct RadarConfig {
     pub value_col: String,
     pub indicators: Vec<String>,
+    /// 每个指标的最大值（`radar.indicator[].max`，缺省 100）。
+    /// 顶点半径 = `radius × value / max`，与雷达网格口径一致。
+    pub maxes: Vec<f64>,
+    /// 是否显示各顶点的数值标签（`series[].label.show`）
+    pub label_show: bool,
+    pub label_font_size: f64,
 }
 
 impl Default for RadarConfig {
@@ -513,6 +750,9 @@ impl Default for RadarConfig {
         Self {
             value_col: "value".into(),
             indicators: vec![],
+            maxes: vec![],
+            label_show: false,
+            label_font_size: 12.0,
         }
     }
 }
@@ -756,6 +996,8 @@ pub struct ItemStyleSpec {
     pub color: Option<Color>,
     pub border_color: Option<Color>,
     pub border_width: Option<f64>,
+    /// 圆角半径（柱状图生效）
+    pub border_radius: Option<f64>,
     pub opacity: Option<f64>,
 }
 
@@ -767,6 +1009,37 @@ pub struct TitleSpec {
     pub subfont_size: Option<f64>,
     pub color: Option<Color>,
     pub subcolor: Option<Color>,
+    /// `title.show`（false 时不渲染）
+    pub show: bool,
+    /// `left`：`"center"` / `"left"` / `"right"` / `"20%"` / `20`（原始字符串，渲染期解析）
+    pub left: Option<String>,
+    /// `right`：同 `left` 的取值形式
+    pub right: Option<String>,
+    /// `top`：`"top"` / `"middle"` / `"bottom"` / `"20%"` / `20`
+    pub top: Option<String>,
+    /// `textAlign`：`"auto" | "left" | "center" | "right"`
+    pub text_align: Option<String>,
+    /// `itemGap`：主/副标题间距
+    pub item_gap: Option<f64>,
+}
+
+impl Default for TitleSpec {
+    fn default() -> Self {
+        Self {
+            text: None,
+            subtext: None,
+            font_size: None,
+            subfont_size: None,
+            color: None,
+            subcolor: None,
+            show: true,
+            left: None,
+            right: None,
+            top: None,
+            text_align: None,
+            item_gap: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

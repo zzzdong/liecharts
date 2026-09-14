@@ -27,8 +27,17 @@ impl SeriesBuilder<BarSeries> for BarBuilder {
         let mut elements = Vec::with_capacity(series.bars.len());
 
         for bar in &series.bars {
-            elements.push(crate::pipeline::builder::rect(
+            // `showBackground`：先铺值轴全幅背景柱（在柱体之下）
+            if let (Some(bg), Some(color)) = (bar.background, series.background_color) {
+                elements.push(crate::pipeline::builder::rect(
+                    bg,
+                    fill_style(color),
+                    Z_SERIES_FILL - 1,
+                ));
+            }
+            elements.push(crate::pipeline::builder::rounded_rect(
                 bar.rect,
+                series.border_radius,
                 fill_style(series.color),
                 Z_SERIES_FILL,
             ));
@@ -87,8 +96,9 @@ impl SeriesBuilder<BarSeries> for BarBuilder {
             }
         }
 
-        // 标注线（markLine）
+        // 标注线（markLine）与标注点（markPoint）
         render_mark_lines(&mut elements, &series.mark_lines, ctx.bounds);
+        crate::pipeline::builder::render_mark_points(&mut elements, &series.mark_points);
 
         Ok(elements)
     }

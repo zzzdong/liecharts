@@ -58,11 +58,25 @@ impl SeriesMaterializer for RadarMaterializer {
             }
         }
 
+        let label = if cfg.label_show {
+            Some(crate::pipeline::typed_series::SeriesLabelConfig {
+                show: true,
+                position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
+                color: None,
+                font_size: cfg.label_font_size,
+                formatter: None,
+            })
+        } else {
+            None
+        };
+
         Ok(TypedSeries::Radar(RadarSeries {
             name: spec.name.clone(),
             color,
             indicators: cfg.indicators.clone(),
             values,
+            maxes: cfg.maxes.clone(),
+            label,
         }))
     }
 }

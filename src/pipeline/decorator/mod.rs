@@ -76,7 +76,7 @@ pub fn render_all_decorators(
     let mut all_elements = Vec::new();
 
     // 1. 标题
-    let (title_elems, title_height) = render_title(spec, width, theme, colors);
+    let (title_elems, title_height) = render_title(spec, width, height, theme, colors);
     all_elements.extend(title_elems);
 
     // 2. 图例（依赖标题高度确定 Y 位置）

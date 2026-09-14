@@ -88,6 +88,12 @@ impl SeriesMaterializer for LineMaterializer {
             let y = y_vals.as_f64(i);
 
             if let (Some(x), Some(y)) = (x, y) {
+                // null 数据点在 DataFrame 里是 NaN（历史：被当成 0 画出一个点）。
+                // - `connectNulls: true` → 直接剔除，折线跨越该点连成一条；
+                // - 默认 false → 保留 NaN 坐标，由 Builder 在此处断开折线。
+                if !y.is_finite() && cfg.connect_nulls {
+                    continue;
+                }
                 let px = map_x_to_pixel(x, x_range, bounds);
                 let py = map_y_to_pixel(y, y_range, bounds);
                 points.push(Point::new(px, py));
@@ -115,11 +121,19 @@ impl SeriesMaterializer for LineMaterializer {
             y_range,
             bounds,
         );
+        let mark_points = crate::pipeline::materializer::compute_mark_points(
+            &cfg.mark_point,
+            &points,
+            &values,
+            false,
+            |v| map_y_to_pixel(v, y_range, bounds),
+        );
 
         Ok(TypedSeries::Line(LineSeries {
             name: spec.name.clone(),
             color,
             line_width: cfg.line_width,
+            line_dash: cfg.line_dash.clone(),
             smooth: cfg.smooth,
             step: cfg.step.map(|s| match s {
                 crate::pipeline::types::StepType::Start => {
@@ -142,6 +156,7 @@ impl SeriesMaterializer for LineMaterializer {
             baseline_points: None,
             label: crate::pipeline::materializer::line_label_config(cfg),
             mark_lines,
+            mark_points,
         }))
     }
 }

@@ -10,7 +10,7 @@ use vello_cpu::kurbo::Point;
 use crate::{
     error::Result,
     pipeline::{
-        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style, rect},
+        builder::{SeriesBuilder, Z_SERIES_FILL, Z_SERIES_LABEL, fill_style},
         typed_series::{GroupedBarSeries, RenderContext, SeriesLabelPosition},
     },
 };
@@ -27,7 +27,20 @@ impl SeriesBuilder<GroupedBarSeries> for GroupedBarBuilder {
         let mut elements = Vec::with_capacity(series.rows.len());
 
         for row in &series.rows {
-            elements.push(rect(row.bar_rect, fill_style(row.color), Z_SERIES_FILL));
+            // `showBackground`：先铺值轴全幅背景柱（在柱体之下）
+            if let (Some(bg), Some(color)) = (row.background, series.background_color) {
+                elements.push(crate::pipeline::builder::rect(
+                    bg,
+                    fill_style(color),
+                    Z_SERIES_FILL - 1,
+                ));
+            }
+            elements.push(crate::pipeline::builder::rounded_rect(
+                row.bar_rect,
+                series.border_radius,
+                fill_style(row.color),
+                Z_SERIES_FILL,
+            ));
 
             // 值标签
             if let Some(ref label_cfg) = series.label

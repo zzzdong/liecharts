@@ -56,21 +56,14 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
 
         // 2. 线条（单个数据点画不出线，跳过）
         if series.points.len() >= 2 {
-            let p = if let Some(step) = series.step {
-                build_step_path(&series.points, step)
-            } else if series.smooth {
-                build_smooth_path(&series.points)
-            } else {
-                build_polyline_path(&series.points)
-            };
+            let p = build_line_path(&series.points, series.smooth, series.step);
+            let mut stroke = lievisual::scene::Stroke::new(series.color, series.line_width);
+            stroke.dash_array = series.line_dash.clone();
             elements.push(path(
                 p,
                 lievisual::scene::FillStrokeStyle {
                     fill: None,
-                    stroke: Some(lievisual::scene::Stroke::new(
-                        series.color,
-                        series.line_width,
-                    )),
+                    stroke: Some(stroke),
                 },
                 false,
                 Z_SERIES_LINE,
@@ -80,6 +73,10 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
         // 3. 数据点符号（单个数据点也要渲染，否则完全看不到）
         if series.symbol_type != SymbolType::None {
             for point in &series.points {
+                // null 数据点（NaN 坐标）不画符号（历史：会画在 y=0 附近）
+                if !is_finite_point(point) {
+                    continue;
+                }
                 let symbol_elements =
                     build_symbol(point, series.symbol_type, series.symbol_size, series.color);
                 elements.extend(symbol_elements);
@@ -91,6 +88,10 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
             && label_cfg.show
         {
             for (point, value) in series.points.iter().zip(series.values.iter()) {
+                // null 数据点不画标签
+                if !is_finite_point(point) || !value.is_finite() {
+                    continue;
+                }
                 let text = crate::pipeline::template::render_template(
                     label_cfg.formatter.as_deref(),
                     &crate::pipeline::template::TemplateContext {
@@ -128,8 +129,9 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
             }
         }
 
-        // 5. 标注线（markLine）
+        // 5. 标注线（markLine）与标注点（markPoint）
         render_mark_lines(&mut elements, &series.mark_lines, ctx.bounds);
+        crate::pipeline::builder::render_mark_points(&mut elements, &series.mark_points);
 
         Ok(elements)
     }
@@ -143,8 +145,71 @@ fn format_value(v: f64) -> String {
     }
 }
 
+/// 点是否为可绘制的有限坐标（null 数据点会被映射成 NaN）
+fn is_finite_point(p: &Point) -> bool {
+    p.x.is_finite() && p.y.is_finite()
+}
+
+/// 按「非有限坐标」把点序列切成若干连续段。
+///
+/// ECharts 的 `connectNulls` 默认为 false：null 数据点处折线必须断开。
+/// 管线的做法是——`connectNulls` 为 true 时 materialize 阶段就剔除了 NaN 点，
+/// 这里只会得到一整段；为 false 时保留 NaN 坐标，由本函数切出多段。
+fn finite_runs(points: &[Point]) -> Vec<&[Point]> {
+    let mut runs = Vec::new();
+    let mut start = 0usize;
+    for (i, p) in points.iter().enumerate() {
+        if !is_finite_point(p) {
+            if i > start {
+                runs.push(&points[start..i]);
+            }
+            start = i + 1;
+        }
+    }
+    if start < points.len() {
+        runs.push(&points[start..]);
+    }
+    runs
+}
+
+/// 按段构建折线路径（段与段之间不连，实现 null 处断开）
+fn build_line_path(points: &[Point], smooth: bool, step: Option<StepType>) -> BezPath {
+    let mut path = BezPath::new();
+    for run in finite_runs(points) {
+        if run.len() < 2 {
+            continue;
+        }
+        let seg = match step {
+            Some(s) => build_step_path(run, s),
+            None if smooth => build_smooth_path(run),
+            None => build_polyline_path(run),
+        };
+        path.extend(seg);
+    }
+    path
+}
+
 /// 构建堆叠面积填充路径（顶部和底部都是轮廓线）
 fn build_stacked_area_path(
+    top_points: &[Point],
+    bottom_points: &[Point],
+    smooth: bool,
+    step: Option<StepType>,
+) -> BezPath {
+    let mut out = BezPath::new();
+    // 与 `build_area_path` 同口径：null 断点处分段填充
+    for run in finite_runs(top_points) {
+        if run.len() < 2 || bottom_points.len() != top_points.len() {
+            continue;
+        }
+        let lo = run.as_ptr() as usize - top_points.as_ptr() as usize;
+        let bottom = &bottom_points[lo..lo + run.len()];
+        out.extend(build_stacked_area_path_single(run, bottom, smooth, step));
+    }
+    out
+}
+
+fn build_stacked_area_path_single(
     top_points: &[Point],
     bottom_points: &[Point],
     smooth: bool,
@@ -181,6 +246,23 @@ fn build_stacked_area_path(
 
 /// 构建面积填充路径
 fn build_area_path(
+    points: &[Point],
+    baseline_y: f64,
+    smooth: bool,
+    step: Option<StepType>,
+) -> BezPath {
+    let mut out = BezPath::new();
+    // null 断点：每段各自闭合到基线，避免把断开的两段连成一块面积
+    for run in finite_runs(points) {
+        if run.len() < 2 {
+            continue;
+        }
+        out.extend(build_area_path_single(run, baseline_y, smooth, step));
+    }
+    out
+}
+
+fn build_area_path_single(
     points: &[Point],
     baseline_y: f64,
     smooth: bool,
@@ -382,6 +464,7 @@ mod tests {
             name: "test".into(),
             color: Color::rgb(80, 112, 221),
             line_width: 2.0,
+            line_dash: Vec::new(),
             smooth: true,
             step: None,
             area_color: None,
@@ -394,6 +477,7 @@ mod tests {
             values: vec![70840845.0],
             label: None,
             mark_lines: Vec::new(),
+            mark_points: Vec::new(),
         }
     }
 

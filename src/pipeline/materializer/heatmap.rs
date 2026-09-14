@@ -57,6 +57,7 @@ impl SeriesMaterializer for HeatmapMaterializer {
             return Ok(TypedSeries::Heatmap(HeatmapSeries {
                 name: spec.name.clone(),
                 cells: Vec::new(),
+                label: None,
             }));
         }
 
@@ -113,9 +114,23 @@ impl SeriesMaterializer for HeatmapMaterializer {
             });
         }
 
+        // `series[].label.show`：热力图的数值标签（ECharts 默认 false）
+        let label = if cfg.label_show {
+            Some(crate::pipeline::typed_series::SeriesLabelConfig {
+                show: true,
+                position: crate::pipeline::typed_series::SeriesLabelPosition::Inside,
+                color: None,
+                font_size: cfg.label_font_size,
+                formatter: None,
+            })
+        } else {
+            None
+        };
+
         Ok(TypedSeries::Heatmap(HeatmapSeries {
             name: spec.name.clone(),
             cells,
+            label,
         }))
     }
 }

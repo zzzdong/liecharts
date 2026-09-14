@@ -65,14 +65,38 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
         // 第一遍：绘制扇形，并收集外部标签几何（供碰撞避让）
         let mut outside_labels: Vec<PieLabelGeometry> = Vec::new();
 
+        // 玫瑰图：外径按数值缩放（`radius` 线性、`area` 按面积即 √）
+        let rose_max = series
+            .slices
+            .iter()
+            .map(|s| s.value.abs())
+            .fold(0.0_f64, f64::max)
+            .max(1e-9);
+        let span = outer_radius - inner_radius;
+
         for slice in &series.slices {
             let sweep_angle = slice.percent * 2.0 * PI;
-            let end_angle = start_angle + sweep_angle;
-            let mid_angle = start_angle + sweep_angle * 0.5;
+            // `padAngle`：扇区两端各内缩 pad/2（不越过扇区中线）
+            let pad = (series.pad_angle * 0.5).min(sweep_angle * 0.5).max(0.0);
+            // `clockwise: false` 时整圈镜像（角度取负），标签中线同步取负
+            let dir = if series.clockwise { 1.0 } else { -1.0 };
+            let a0 = dir * (start_angle + pad);
+            let a1 = dir * (start_angle + sweep_angle - pad);
+            let mid_angle = dir * (start_angle + sweep_angle * 0.5);
+
+            // 玫瑰图扇区外径
+            let slice_outer = match series.rose_type {
+                Some(crate::pipeline::types::PieRoseType::Radius) => {
+                    inner_radius + span * (slice.value.abs() / rose_max).clamp(0.0, 1.0)
+                }
+                Some(crate::pipeline::types::PieRoseType::Area) => {
+                    inner_radius + span * (slice.value.abs() / rose_max).clamp(0.0, 1.0).sqrt()
+                }
+                None => outer_radius,
+            };
 
             // 绘制扇形
-            let arc_path =
-                build_arc_path(center, inner_radius, outer_radius, start_angle, end_angle);
+            let arc_path = build_arc_path(center, inner_radius, slice_outer, a0, a1);
 
             elements.push(path(arc_path, fill_style(slice.color), true, Z_SERIES_FILL));
 
@@ -82,7 +106,7 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
                     LabelPosition::Inside => {
                         let label_elements = build_inside_label(
                             center,
-                            outer_radius,
+                            slice_outer,
                             mid_angle,
                             slice,
                             series.label_formatter.as_deref(),
@@ -93,7 +117,7 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
                     LabelPosition::Outside => {
                         let text = format_label_text(slice, series.label_formatter.as_deref());
                         if let Some(geo) =
-                            compute_label_geometry(center, outer_radius, mid_angle, &text)
+                            compute_label_geometry(center, slice_outer, mid_angle, &text)
                         {
                             outside_labels.push(geo);
                         }
@@ -101,7 +125,7 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
                 }
             }
 
-            start_angle = end_angle;
+            start_angle += sweep_angle;
         }
 
         // 碰撞避让：对相邻标签做避让，避免重叠
@@ -116,7 +140,7 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
 
         // 第二遍：用避让后的几何生成引导线 + 文本
         for geo in resolved {
-            elements.extend(emit_label_elements(&geo, ctx));
+            elements.extend(emit_label_elements(&geo, ctx, series.label_line_show));
         }
 
         Ok(elements)
@@ -415,7 +439,11 @@ fn compute_label_geometry(
 }
 
 /// 用最终几何生成引导线 + 文本元素。
-fn emit_label_elements(geo: &PieLabelGeometry, ctx: &RenderContext) -> Vec<SceneNode> {
+fn emit_label_elements(
+    geo: &PieLabelGeometry,
+    ctx: &RenderContext,
+    show_guide_line: bool,
+) -> Vec<SceneNode> {
     let mut elements = Vec::new();
 
     // 引导线第 3 段终点：指向文本侧边/顶底端点中心
@@ -429,20 +457,23 @@ fn emit_label_elements(geo: &PieLabelGeometry, ctx: &RenderContext) -> Vec<Scene
     // 绘制引导线（两段折线，第 1 段「圆心->扇形边缘」隐含不显示）：
     // 第 2 段（径向）：扇形边缘(line_start) -> 折点(line_kink)
     // 第 3 段（水平）：折点 -> 文本侧边中点(line_end)
-    let mut guide_path = BezPath::new();
-    guide_path.move_to(geo.line_start);
-    guide_path.line_to(geo.line_kink);
-    guide_path.line_to(line_end);
+    // `labelLine.show: false` 时不画引导线（ECharts 语义）
+    if show_guide_line {
+        let mut guide_path = BezPath::new();
+        guide_path.move_to(geo.line_start);
+        guide_path.line_to(geo.line_kink);
+        guide_path.line_to(line_end);
 
-    elements.push(path(
-        guide_path,
-        FillStrokeStyle {
-            fill: None,
-            stroke: Some(Stroke::new(ctx.colors.text_secondary_color, 1.0)),
-        },
-        false,
-        Z_SERIES_FILL + 1,
-    ));
+        elements.push(path(
+            guide_path,
+            FillStrokeStyle {
+                fill: None,
+                stroke: Some(Stroke::new(ctx.colors.text_secondary_color, 1.0)),
+            },
+            false,
+            Z_SERIES_FILL + 1,
+        ));
+    }
 
     // 文本对齐：Left/Right 文本侧对齐；Top/Bottom 文本顶/底对齐且水平居中
     let (align, baseline) = match geo.region {
@@ -613,9 +644,13 @@ fn add_arc_eliptical(
         let a2 = start_angle + segment_angle * (i + 1) as f64;
 
         // 计算这段圆弧的贝塞尔曲线控制点
-        // 使用常数 k = 4/3 * tan(θ/4) 来近似圆弧
+        // 使用常数 k = 4/3 * tan(θ/4) 来近似圆弧。
+        // 注意：k 必须**带符号**（即取决于 segment_angle 的符号）。环形图的内弧
+        // 是反向绘制的（end -> start，segment_angle < 0），若对 θ 取绝对值，
+        // 控制点会落在切线反方向：内弧大幅变形、路径自交，圆环渲染错乱。
+        // 详见回归测试 `annular_arc_inner_edge_stays_on_inner_radius`。
         let theta = segment_angle;
-        let k = (theta.abs() / 4.0).tan() * 4.0 / 3.0;
+        let k = (theta / 4.0).tan() * 4.0 / 3.0;
 
         // 点相对于圆心的坐标
         let _p1 = Point::new(radius * a1.cos(), radius * a1.sin());
@@ -642,7 +677,7 @@ fn add_arc_eliptical(
 
 #[cfg(test)]
 mod tests {
-    use vello_cpu::kurbo::Point;
+    use vello_cpu::kurbo::{PathEl, Point};
 
     use super::*;
 
@@ -655,6 +690,50 @@ mod tests {
             line_kink: Point::new(text_x, text_y),
             region: PieRegion::Right,
         }
+    }
+
+    /// 环形扇区的内弧必须贴合内半径。
+    ///
+    /// 回归：内弧是反向绘制的（end -> start），贝塞尔近似常数 k=4/3·tan(θ/4)
+    /// 必须带符号；曾因对 θ 取 `abs` 使内弧控制点落到切线反方向，内弧朝错误
+    /// 方向鼓出、路径自交（甜甜圈图形状扭曲）。
+    #[test]
+    fn annular_arc_inner_edge_stays_on_inner_radius() {
+        let center = Point::new(0.0, 0.0);
+        let inner = 50.0;
+        let outer = 100.0;
+        // 90° 扇区（单段贝塞尔）
+        let path = build_arc_path(center, inner, outer, 0.0, PI / 2.0);
+
+        let mut prev = center;
+        let mut inner_curves = 0usize;
+        for el in path.elements() {
+            match *el {
+                PathEl::MoveTo(p) | PathEl::LineTo(p) => prev = p,
+                PathEl::CurveTo(c1, c2, p) => {
+                    // 起点在内半径上 => 这段是内弧（外弧起点在外半径上）
+                    let d0 = (prev - center).hypot();
+                    if (d0 - inner).abs() < 1e-6 {
+                        inner_curves += 1;
+                        // 三次贝塞尔在 t=0.5 处：B = (P0 + 3·C1 + 3·C2 + P3) / 8
+                        // （全部以圆心为原点用 Vec2 计算，Point 不支持这些运算）
+                        let mid = ((prev - center)
+                            + (c1 - center) * 3.0
+                            + (c2 - center) * 3.0
+                            + (p - center))
+                            / 8.0;
+                        let dm = mid.hypot();
+                        assert!(
+                            (dm - inner).abs() < inner * 0.02,
+                            "内弧中点半径应≈{inner}，实际 {dm}"
+                        );
+                    }
+                    prev = p;
+                }
+                _ => {}
+            }
+        }
+        assert!(inner_curves > 0, "未在路径中找到内弧段");
     }
 
     #[test]

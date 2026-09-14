@@ -54,6 +54,8 @@ pub struct LineSeries {
     /// 样式（已解析）
     pub color: Color,
     pub line_width: f64,
+    /// 虚线段长（空 = 实线）
+    pub line_dash: Vec<f64>,
     pub smooth: bool,
     pub step: Option<StepType>,
     pub area_color: Option<Color>,
@@ -74,6 +76,8 @@ pub struct LineSeries {
     pub label: Option<SeriesLabelConfig>,
     /// 标注线（像素空间，横向贯穿整个绘图区）
     pub mark_lines: Vec<MarkLineRender>,
+    /// 标注点（像素空间）
+    pub mark_points: Vec<MarkPointRender>,
 }
 
 /// 渲染用标注线
@@ -87,6 +91,17 @@ pub struct MarkLineRender {
     pub color: Color,
 }
 
+/// 渲染用标注点（`series.markPoint`）
+#[derive(Debug, Clone)]
+pub struct MarkPointRender {
+    /// 标注点像素坐标
+    pub point: Point,
+    /// 标注文本
+    pub label: String,
+    /// 颜色
+    pub color: Color,
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // BarSeries
 // ═══════════════════════════════════════════════════════════════════
@@ -96,12 +111,18 @@ pub struct BarSeries {
     pub name: String,
     /// 样式
     pub color: Color,
+    /// 柱体圆角半径（`itemStyle.borderRadius`）
+    pub border_radius: f64,
+    /// `showBackground` 的背景柱颜色（None = 不画）
+    pub background_color: Option<Color>,
     /// 数据点（像素空间：每个条目已经算好了像素矩形）
     pub bars: Vec<BarRect>,
     /// 标签配置
     pub label: Option<SeriesLabelConfig>,
     /// 标注线（像素空间，横向贯穿整个绘图区）
     pub mark_lines: Vec<MarkLineRender>,
+    /// 标注点（像素空间）
+    pub mark_points: Vec<MarkPointRender>,
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +130,8 @@ pub struct BarRect {
     pub rect: Rect,       // 像素空间的矩形
     pub category: String, // 类别名（用于 label）
     pub value: f64,       // 原始值（用于 label）
+    /// `showBackground` 的背景柱（值轴全幅，同 band）
+    pub background: Option<Rect>,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -130,6 +153,10 @@ pub struct GroupedBarSeries {
     pub rows: Vec<GroupedBarRow>,
     /// 标签配置（None 时不渲染数据标签）
     pub label: Option<SeriesLabelConfig>,
+    /// 柱体圆角半径（取组内第一个系列的 `itemStyle.borderRadius`）
+    pub border_radius: f64,
+    /// `showBackground` 的背景柱颜色（None = 不画）
+    pub background_color: Option<Color>,
 }
 
 #[derive(Debug, Clone)]
@@ -145,6 +172,8 @@ pub struct GroupedBarRow {
     pub color: Color,          // 子系列颜色
     pub category: String,      // 类别名（用于 label）
     pub value: f64,            // 原始值（用于 label）
+    /// `showBackground` 的背景柱（值轴全幅，同 band）
+    pub background: Option<Rect>,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -186,6 +215,13 @@ pub struct CandlestickSeries {
     pub name: String,
     pub up_color: Color,
     pub down_color: Color,
+    /// 阳线描边色（`itemStyle.borderColor`）
+    pub border_color: Option<Color>,
+    /// 用户是否显式指定了涨/跌颜色。
+    ///
+    /// 未指定时阳线按 A 股惯例画成**空心**（仅描边）；显式指定 `itemStyle.color`
+    /// 后按用户色实心填充（ECharts 默认两张都实心）。
+    pub explicit_colors: bool,
     pub candles: Vec<CandleRect>,
 }
 
@@ -235,6 +271,8 @@ pub struct HeatmapSeries {
     pub name: String,
     /// 单元格（像素空间矩形 + 已解析的映射颜色）
     pub cells: Vec<HeatmapCell>,
+    /// 单元格数值标签配置（`series[].label`，ECharts 默认关闭）
+    pub label: Option<SeriesLabelConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -261,6 +299,14 @@ pub struct PieSeries {
     pub label_font_size: f64,
     /// 标签格式化模板，支持 `{b}`（名称）、`{c}`（数值）、`{d}`（百分比）
     pub label_formatter: Option<String>,
+    /// `labelLine.show`：外部标签引导线
+    pub label_line_show: bool,
+    /// `clockwise`：扇区排布方向
+    pub clockwise: bool,
+    /// `roseType`：玫瑰图模式
+    pub rose_type: Option<crate::pipeline::types::PieRoseType>,
+    /// `padAngle`：扇区间隔角（弧度）
+    pub pad_angle: f64,
     /// 扇区数据
     pub slices: Vec<PieSlice>,
 }
@@ -289,6 +335,10 @@ pub struct RadarSeries {
     pub color: Color,
     pub indicators: Vec<String>,
     pub values: Vec<f64>,
+    /// 各指标的最大值（用于换算雷达顶点半径）
+    pub maxes: Vec<f64>,
+    /// 数值标签配置（`series[].label`）
+    pub label: Option<SeriesLabelConfig>,
 }
 
 // ═══════════════════════════════════════════════════════════════════

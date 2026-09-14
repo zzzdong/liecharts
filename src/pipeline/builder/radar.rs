@@ -44,14 +44,22 @@ impl SeriesBuilder<RadarSeries> for RadarBuilder {
         let min_dim = width.min(height);
         let radius = min_dim * 0.5 * 0.75;
 
-        // 计算多边形顶点
+        // 计算多边形顶点。
+        // 每个维度按**该指标自己的 max** 归一化（ECharts `radar.indicator[].max`），
+        // 而非全局最大值——否则各维度量纲不同（如 100 分制与 1000 次）时小量纲
+        // 维度会被压扁到圆心附近。缺省 max = 100。
         let mut points = Vec::with_capacity(indicator_count);
-        let max_value = series.values.iter().cloned().fold(0.0, f64::max).max(1.0);
 
         for i in 0..indicator_count {
             let angle = -PI / 2.0 + 2.0 * PI * i as f64 / indicator_count as f64;
             let value = series.values.get(i).copied().unwrap_or(0.0);
-            let r = radius * (value / max_value);
+            let max = series
+                .maxes
+                .get(i)
+                .copied()
+                .filter(|m| *m > 0.0)
+                .unwrap_or(100.0);
+            let r = radius * (value / max).clamp(0.0, 1.0);
 
             let x = center.x + r * angle.cos();
             let y = center.y + r * angle.sin();
@@ -104,6 +112,45 @@ impl SeriesBuilder<RadarSeries> for RadarBuilder {
                 },
                 Z_SERIES_POINT,
             ));
+        }
+
+        // 数值标签（`series[].label.show`）：贴顶点沿径向朝外偏移
+        if let Some(label) = &series.label
+            && label.show
+        {
+            const LABEL_GAP: f64 = 6.0;
+            for (i, point) in points.iter().enumerate() {
+                let value = series.values.get(i).copied().unwrap_or(0.0);
+                let text = crate::pipeline::template::render_template(
+                    label.formatter.as_deref(),
+                    &crate::pipeline::template::TemplateContext {
+                        series_name: Some(&series.name),
+                        name: series.indicators.get(i).map(|s| s.as_str()),
+                        value: Some(value),
+                        percent: None,
+                    },
+                    &format_value(value),
+                );
+                // 径向朝外：顶点相对圆心的单位向量
+                let dx = point.x - center.x;
+                let dy = point.y - center.y;
+                let len = (dx * dx + dy * dy).sqrt().max(1e-6);
+                let (ux, uy) = (dx / len, dy / len);
+
+                let color = label.color.unwrap_or(series.color);
+                let mut style = TextStyle::new(color, label.font_size, "sans-serif");
+                style.align = TextAlign::Center;
+                style.baseline = TextBaseline::Middle;
+                elements.push(
+                    SceneNode::new(Element::Text {
+                        spans: vec![RichSpan::new(text, style.clone())],
+                        position: Point::new(point.x + ux * LABEL_GAP, point.y + uy * LABEL_GAP),
+                        style,
+                        layout: None,
+                    })
+                    .with_z(crate::pipeline::builder::Z_SERIES_LABEL),
+                );
+            }
         }
 
         // Indicator 标签由 build_radar_indicators 在 subplot 级别调用一次，
@@ -167,4 +214,12 @@ pub fn build_radar_indicators(series: &RadarSeries, bounds: Rect) -> Vec<SceneNo
     }
 
     elements
+}
+
+fn format_value(v: f64) -> String {
+    if v.fract() == 0.0 {
+        format!("{:.0}", v)
+    } else {
+        format!("{:.1}", v)
+    }
 }

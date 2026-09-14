@@ -541,6 +541,86 @@ impl<'de> Deserialize<'de> for LenientPadding {
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct LenientBool(pub bool);
 
+/// 容错 `bool | number`：ECharts 中不少字段同时接受两种类型。
+///
+/// 例：`labelLine.smooth` 可以是 `true`，也可以是 `0.3`（张度）。
+/// 此前声明为 `bool`，`smooth: 0.3` 会直接导致整图解析失败。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LenientBoolOrNumber {
+    Bool(bool),
+    Number(f64),
+}
+
+impl LenientBoolOrNumber {
+    /// 取布尔语义：数值 `0` 视为 false，其余 non-zero 视为 true
+    pub fn as_bool(&self) -> bool {
+        match self {
+            LenientBoolOrNumber::Bool(b) => *b,
+            LenientBoolOrNumber::Number(n) => *n != 0.0,
+        }
+    }
+}
+
+impl Default for LenientBoolOrNumber {
+    fn default() -> Self {
+        LenientBoolOrNumber::Bool(false)
+    }
+}
+
+impl Serialize for LenientBoolOrNumber {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            LenientBoolOrNumber::Bool(b) => serializer.serialize_bool(*b),
+            LenientBoolOrNumber::Number(n) => serializer.serialize_f64(*n),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for LenientBoolOrNumber {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = LenientBoolOrNumber;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a boolean or a number")
+            }
+
+            fn visit_bool<E: de::Error>(self, v: bool) -> Result<Self::Value, E> {
+                Ok(LenientBoolOrNumber::Bool(v))
+            }
+
+            fn visit_f64<E: de::Error>(self, v: f64) -> Result<Self::Value, E> {
+                Ok(LenientBoolOrNumber::Number(v))
+            }
+
+            fn visit_i64<E: de::Error>(self, v: i64) -> Result<Self::Value, E> {
+                Ok(LenientBoolOrNumber::Number(v as f64))
+            }
+
+            fn visit_u64<E: de::Error>(self, v: u64) -> Result<Self::Value, E> {
+                Ok(LenientBoolOrNumber::Number(v as f64))
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                match v.trim().to_ascii_lowercase().as_str() {
+                    "true" => Ok(LenientBoolOrNumber::Bool(true)),
+                    "false" => Ok(LenientBoolOrNumber::Bool(false)),
+                    other => other
+                        .parse::<f64>()
+                        .map(LenientBoolOrNumber::Number)
+                        .map_err(|_| E::custom(format!("invalid boolean/number: {other}"))),
+                }
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+        }
+        deserializer.deserialize_any(V)
+    }
+}
+
 /// 支持单个值或数组的灵活类型。
 ///
 /// 用于 ECharts 中的 `radius` 等字段，可以是：
@@ -1199,7 +1279,10 @@ pub struct HandleOption {
 #[derive(Default)]
 pub struct DatasetOption {
     pub id: Option<String>,
-    pub source: Option<Vec<Vec<serde_json::Value>>>,
+    /// 数据源。ECharts 允许**二维数组**（`[["a",1],["b",2]]`）或**对象数组**
+    /// （`[{"x":"a","y":1}]`），故逐行存为 `Value` 由转换层按形状分派。
+    pub source: Option<Vec<serde_json::Value>>,
+    /// 首行是否为维度名。`None` = 自动判断（首行全为字符串才视为表头）。
     pub source_header: Option<bool>,
     pub dimensions: Option<Vec<String>>,
     pub from_dataset_index: Option<usize>,
@@ -1210,7 +1293,7 @@ pub struct DatasetOption {
 // Animation — 动画配置
 // ═══════════════════════════════════════════════════════════════════
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]
 pub enum EasingFunction {
@@ -1234,6 +1317,49 @@ pub enum EasingFunction {
     BackIn,
     BackOut,
     BackInOut,
+}
+
+/// 宽松解析缓动函数名（未建模的取值回退 `linear`，动画在静态渲染中不影响输出）。
+impl<'de> Deserialize<'de> for EasingFunction {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = EasingFunction;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("an easing function name")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(match v.trim() {
+                    "quadIn" => EasingFunction::QuadIn,
+                    "quadOut" => EasingFunction::QuadOut,
+                    "quadInOut" => EasingFunction::QuadInOut,
+                    "cubicIn" => EasingFunction::CubicIn,
+                    "cubicOut" => EasingFunction::CubicOut,
+                    "cubicInOut" => EasingFunction::CubicInOut,
+                    "sinIn" => EasingFunction::SinIn,
+                    "sinOut" => EasingFunction::SinOut,
+                    "sinInOut" => EasingFunction::SinInOut,
+                    "bounceIn" => EasingFunction::BounceIn,
+                    "bounceOut" => EasingFunction::BounceOut,
+                    "bounceInOut" => EasingFunction::BounceInOut,
+                    "elasticIn" => EasingFunction::ElasticIn,
+                    "elasticOut" => EasingFunction::ElasticOut,
+                    "elasticInOut" => EasingFunction::ElasticInOut,
+                    "backIn" => EasingFunction::BackIn,
+                    "backOut" => EasingFunction::BackOut,
+                    "backInOut" => EasingFunction::BackInOut,
+                    _ => EasingFunction::Linear,
+                })
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+        }
+        deserializer.deserialize_str(V)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1608,7 +1734,8 @@ pub struct MarkPointDataOption {
 pub struct MarkLineOption {
     pub data: Option<Vec<OneOrMany<MarkLineDataOption>>>,
     pub symbol: Option<OneOrMany<SymbolType>>,
-    pub symbol_size: Option<Vec<f64>>,
+    /// ECharts 允许单个数值或 `[w, h]` 数组（如 `symbolSize: 8`）。
+    pub symbol_size: Option<SingleOrArray<LenientNumber>>,
     pub line_style: Option<LineStyleOption>,
     pub label: Option<LabelOption>,
     pub animation: Option<LenientBool>,
@@ -1636,7 +1763,8 @@ pub struct MarkLineDataOption {
     pub line_style: Option<LineStyleOption>,
     pub label: Option<LabelOption>,
     pub symbol: Option<OneOrMany<SymbolType>>,
-    pub symbol_size: Option<Vec<f64>>,
+    /// ECharts 允许单个数值或 `[w, h]` 数组。
+    pub symbol_size: Option<SingleOrArray<LenientNumber>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1669,6 +1797,47 @@ pub struct MarkAreaDataOption {
     pub value: Option<f64>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// 极坐标轴（angleAxis / radiusAxis）
+// ═══════════════════════════════════════════════════════════════════
+
+/// 极坐标轴（ECharts `angleAxis` / `radiusAxis`）。
+///
+/// `data` 逐项存为 `Value`：ECharts 允许字符串，也允许 `{value, textStyle}` 对象。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[derive(Default)]
+pub struct AngleAxisOption {
+    #[serde(rename = "type")]
+    pub axis_type: Option<AxisType>,
+    pub data: Option<Vec<serde_json::Value>>,
+    pub start_angle: Option<f64>,
+    pub name: Option<String>,
+}
+
+impl AngleAxisOption {
+    /// 类目名列表（字符串直接取用，对象取 `value`/`name` 字段）
+    pub fn category_names(&self) -> Vec<String> {
+        self.data
+            .as_ref()
+            .map(|d| {
+                d.iter()
+                    .filter_map(|v| match v {
+                        serde_json::Value::String(s) => Some(s.clone()),
+                        serde_json::Value::Object(o) => {
+                            o.get("value").or_else(|| o.get("name")).map(|x| match x {
+                                serde_json::Value::String(s) => s.clone(),
+                                other => format!("{other}"),
+                            })
+                        }
+                        other => Some(format!("{other}")),
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1705,6 +1874,13 @@ pub struct ChartOption {
     #[serde(default)]
     pub grid: GridConfig,
     pub radar: Option<RadarOption>,
+    /// 极坐标角度轴（ECharts `angleAxis`）。
+    ///
+    /// 目前仅消费 `data`（类目名）——此前该字段完全未解析，极坐标类目全部退化成
+    /// `Item 0 / Item 1 / …`。`type`/`min`/`max`/`startAngle` 留待后续完善。
+    pub angle_axis: Option<AngleAxisOption>,
+    /// 极坐标半径轴（ECharts `radiusAxis`），为 `angleAxis` 的镜像，暂未消费。
+    pub radius_axis: Option<AngleAxisOption>,
     #[serde(default)]
     pub x_axis: AxisConfig,
     #[serde(default)]
@@ -1916,6 +2092,10 @@ pub struct GridOption {
     pub right: Option<PositionOption>,
     pub top: Option<PositionOption>,
     pub bottom: Option<PositionOption>,
+    /// 绘图区宽度（ECharts `grid.width`）。与 `right` 二选一，优先 `width`。
+    pub width: Option<PositionOption>,
+    /// 绘图区高度（ECharts `grid.height`）。与 `bottom` 二选一，优先 `height`。
+    pub height: Option<PositionOption>,
     pub contain_label: Option<bool>,
     pub background_color: Option<ColorOption>,
     pub border_color: Option<ColorOption>,
@@ -1937,6 +2117,8 @@ impl Default for GridOption {
             right: Some(PositionOption::percent(10.0)),
             top: Some(PositionOption::percent(15.0)),
             bottom: Some(PositionOption::percent(15.0)),
+            width: None,
+            height: None,
             contain_label: Some(true),
             background_color: None,
             border_color: None,
@@ -2858,6 +3040,8 @@ pub struct BarSeriesOption {
     pub bar_min_width: Option<LenientBarSize>,
     pub bar_gap: Option<LenientBarSize>,
     pub bar_category_gap: Option<LenientBarSize>,
+    /// 柱体在值方向的像素下限（保证极小值可见）
+    pub bar_min_height: Option<f64>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
     /// 分组索引，自动分组时无需设置
@@ -3220,6 +3404,8 @@ pub struct PieSeriesOption {
     pub clockwise: Option<bool>,
     pub start_angle: Option<f64>,
     pub min_angle: Option<f64>,
+    /// 扇区之间的间隔角（**度**）
+    pub pad_angle: Option<f64>,
     pub avoid_label_overlap: Option<bool>,
     pub still_show_zero_sum: Option<bool>,
     pub percent_precision: Option<usize>,
@@ -3262,6 +3448,7 @@ impl Default for PieSeriesOption {
             clockwise: Some(true),
             start_angle: Some(90.0),
             min_angle: None,
+            pad_angle: None,
             avoid_label_overlap: Some(true),
             still_show_zero_sum: Some(true),
             percent_precision: None,
@@ -3303,7 +3490,8 @@ pub struct LabelLineOption {
     pub show: Option<bool>,
     pub length: Option<f64>,
     pub length2: Option<f64>,
-    pub smooth: Option<bool>,
+    /// ECharts 允许 `true` 或数值（0~1 的张度）。
+    pub smooth: Option<LenientBoolOrNumber>,
     pub min_turn_angle: Option<f64>,
     pub line_style: Option<LineStyleOption>,
 }
@@ -4443,7 +4631,8 @@ pub struct LabelOption {
     pub color: Option<ColorOption>,
     pub font_size: Option<f64>,
     pub font_family: Option<String>,
-    pub font_weight: Option<String>,
+    /// ECharts 允许 `"bold"` 等关键字，也允许 `500` 这类数字权重。
+    pub font_weight: Option<FontWeight>,
     pub font_style: Option<String>,
     pub rotate: Option<f64>,
     pub distance: Option<f64>,
@@ -4483,6 +4672,11 @@ pub struct ItemStyleOption {
     pub border_color: Option<ColorOption>,
     pub border_width: Option<LenientNumber>,
     pub border_type: Option<LineType>,
+    /// 圆角半径（ECharts `itemStyle.borderRadius`），柱状图生效。
+    ///
+    /// ECharts 允许单值或 `[tl, tr, br, bl]` 四角数组；本实现按「四角取最大」
+    /// 近似（当前绘制层只有统一的 `radius`）。
+    pub border_radius: Option<SingleOrArray<LenientNumber>>,
     pub shadow_blur: Option<f64>,
     pub shadow_color: Option<ColorOption>,
     pub shadow_offset_x: Option<f64>,
@@ -4498,6 +4692,7 @@ impl Default for ItemStyleOption {
             border_color: None,
             border_width: None,
             border_type: None,
+            border_radius: None,
             shadow_blur: None,
             shadow_color: None,
             shadow_offset_x: None,
@@ -4955,7 +5150,7 @@ pub enum Orient {
 // LineType 枚举
 // ============================================================
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]
 pub enum LineType {
@@ -4963,6 +5158,55 @@ pub enum LineType {
     Solid,
     Dashed,
     Dotted,
+}
+
+/// 宽松解析线型。
+///
+/// ECharts 的 `lineStyle.type` 除了 `'solid'|'dashed'|'dotted'`，还允许
+/// 数字（线宽倍数）与 `[实长, 虚长]` 数组，均按虚线处理。
+impl<'de> Deserialize<'de> for LineType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = LineType;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a line type name, a number, or a dash array")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(match v.trim().to_ascii_lowercase().as_str() {
+                    "dashed" => LineType::Dashed,
+                    "dotted" => LineType::Dotted,
+                    // "solid" 及一切未建模取值
+                    _ => LineType::Solid,
+                })
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+
+            // `type: [5, 5]` / `type: 5` → 虚线
+            fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+                while seq.next_element::<serde_json::Value>()?.is_some() {}
+                Ok(LineType::Dashed)
+            }
+
+            fn visit_f64<E: de::Error>(self, _v: f64) -> Result<Self::Value, E> {
+                Ok(LineType::Dashed)
+            }
+
+            fn visit_i64<E: de::Error>(self, _v: i64) -> Result<Self::Value, E> {
+                Ok(LineType::Dashed)
+            }
+
+            fn visit_u64<E: de::Error>(self, _v: u64) -> Result<Self::Value, E> {
+                Ok(LineType::Dashed)
+            }
+        }
+        deserializer.deserialize_any(V)
+    }
 }
 
 // ============================================================
@@ -4995,7 +5239,7 @@ impl Default for FontWeight {
 // SymbolType 枚举
 // ============================================================
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]
 pub enum SymbolType {
@@ -5011,11 +5255,49 @@ pub enum SymbolType {
     None,
 }
 
+/// 宽松解析标记形状。
+///
+/// ECharts 的 `symbol` 取值远不止内置几种：还有 `image://…`、`path://…`、
+/// `inherit` 以及自定义 SVG 路径。此前未建模的取值会**直接导致整图解析失败**，
+/// 这里统一回退为默认的 `circle`（图形绘制层只支持内置形状）。
+impl<'de> Deserialize<'de> for SymbolType {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = SymbolType;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a symbol name")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                Ok(match v.trim().to_ascii_lowercase().as_str() {
+                    "emptycircle" => SymbolType::EmptyCircle,
+                    "rect" => SymbolType::Rect,
+                    "roundrect" => SymbolType::RoundRect,
+                    "triangle" => SymbolType::Triangle,
+                    "diamond" => SymbolType::Diamond,
+                    "pin" => SymbolType::Pin,
+                    "arrow" => SymbolType::Arrow,
+                    "none" => SymbolType::None,
+                    // 内置 `circle` 及一切未建模取值（image://… / path://… / inherit / 自定义）
+                    _ => SymbolType::Circle,
+                })
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+        }
+        deserializer.deserialize_str(V)
+    }
+}
+
 // ============================================================
 // LabelPosition 枚举
 // ============================================================
 
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[derive(Default)]
 pub enum LabelPosition {
@@ -5030,6 +5312,52 @@ pub enum LabelPosition {
     Start,
     Middle,
     End,
+}
+
+/// 宽松解析标签位置。
+///
+/// ECharts 的位置集合包含 `insideTop`、`insideTopLeft`、`insideBottomRight`…
+/// 等 12 种组合，此前未建模的取值会让**整图解析失败**。
+/// 这里按前缀归类到 liecharts 支持的四种语义：
+/// `inside*` → `Inside`、`outside*` → `Outside`、`bottom*` → `Bottom`、其余 `top`。
+impl<'de> Deserialize<'de> for LabelPosition {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = LabelPosition;
+
+            fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                f.write_str("a label position")
+            }
+
+            fn visit_str<E: de::Error>(self, v: &str) -> Result<Self::Value, E> {
+                let s = v.trim().to_ascii_lowercase();
+                Ok(match s.as_str() {
+                    "top" => LabelPosition::Top,
+                    "left" => LabelPosition::Left,
+                    "right" => LabelPosition::Right,
+                    "bottom" => LabelPosition::Bottom,
+                    "inside" => LabelPosition::Inside,
+                    "outside" => LabelPosition::Outside,
+                    "center" | "middle" => LabelPosition::Center,
+                    "start" => LabelPosition::Start,
+                    "end" => LabelPosition::End,
+                    other if other.starts_with("inside") => LabelPosition::Inside,
+                    other if other.starts_with("outside") => LabelPosition::Outside,
+                    other if other.starts_with("bottom") => LabelPosition::Bottom,
+                    other if other.starts_with("top") => LabelPosition::Top,
+                    other if other.starts_with("left") => LabelPosition::Left,
+                    other if other.starts_with("right") => LabelPosition::Right,
+                    _ => LabelPosition::Top,
+                })
+            }
+
+            fn visit_string<E: de::Error>(self, v: String) -> Result<Self::Value, E> {
+                self.visit_str(&v)
+            }
+        }
+        deserializer.deserialize_str(V)
+    }
 }
 
 // ============================================================

@@ -39,6 +39,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 right,
                 top,
                 bottom,
+                width: g.width.as_ref().map(position_option_to_edge),
+                height: g.height.as_ref().map(position_option_to_edge),
                 contain_label: g.contain_label.unwrap_or(false),
             }
         })
@@ -61,6 +63,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
             right: Some(crate::pipeline::types::GridEdge::Px(60.0)),
             top: Some(crate::pipeline::types::GridEdge::Px(60.0)),
             bottom: Some(crate::pipeline::types::GridEdge::Px(60.0)),
+            width: None,
+            height: None,
             contain_label: false,
         }]
     } else {
@@ -68,7 +72,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
     };
 
     // X Axes
-    let x_axes: Vec<AxisSpec> = option
+    let mut x_axes: Vec<AxisSpec> = option
         .x_axis
         .iter()
         .map(|a| {
@@ -98,6 +102,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 }),
                 name: a.name.clone(),
                 name_location: a.name_location.as_ref().map(|l| format!("{:?}", l)),
+                name_gap: a.name_gap,
                 categories: a.data.as_ref().map(|d| d.0.clone()).unwrap_or_default(),
                 boundary_gap: a.boundary_gap.as_ref().is_none_or(|bg| match bg {
                     crate::option::LenientBoundaryGap::Bool(b) => *b,
@@ -112,16 +117,11 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     .unwrap_or(true),
                 label_formatter: a.axis_label.as_ref().and_then(|l| l.formatter.clone()),
                 label_rotate: a.axis_label.as_ref().and_then(|l| l.rotate),
-                axis_line_show: a
-                    .axis_line
-                    .as_ref()
-                    .map(|l| l.show.unwrap_or(true))
-                    .unwrap_or(true),
-                split_line_show: a
-                    .split_line
-                    .as_ref()
-                    .map(|l| l.show.unwrap_or(true))
-                    .unwrap_or(true),
+                label_interval: a.axis_label.as_ref().and_then(|l| match l.interval {
+                    Some(crate::option::IntervalOption::Fixed(n)) => Some(n),
+                    _ => None,
+                }),
+                decor: parse_axis_decor(a, new_axis_type),
                 z: a.z.or(a.zlevel),
             }
         })
@@ -165,6 +165,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 }),
                 name: a.name.clone(),
                 name_location: a.name_location.as_ref().map(|l| format!("{:?}", l)),
+                name_gap: a.name_gap,
                 categories: a.data.as_ref().map(|d| d.0.clone()).unwrap_or_default(),
                 boundary_gap: a.boundary_gap.as_ref().is_none_or(|bg| match bg {
                     crate::option::LenientBoundaryGap::Bool(b) => *b,
@@ -179,16 +180,11 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     .unwrap_or(true),
                 label_formatter: a.axis_label.as_ref().and_then(|l| l.formatter.clone()),
                 label_rotate: a.axis_label.as_ref().and_then(|l| l.rotate),
-                axis_line_show: a
-                    .axis_line
-                    .as_ref()
-                    .map(|l| l.show.unwrap_or(true))
-                    .unwrap_or(true),
-                split_line_show: a
-                    .split_line
-                    .as_ref()
-                    .map(|l| l.show.unwrap_or(true))
-                    .unwrap_or(true),
+                label_interval: a.axis_label.as_ref().and_then(|l| match l.interval {
+                    Some(crate::option::IntervalOption::Fixed(n)) => Some(n),
+                    _ => None,
+                }),
+                decor: parse_axis_decor(a, new_axis_type),
                 z: a.z.or(a.zlevel),
             }
         })
@@ -219,16 +215,24 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
     fn resolve_series_data<'a>(
         s: &'a SeriesOption,
         datasets: &'a [crate::pipeline::dataframe::DataFrame],
+        has_own_data: bool,
         fallback_data: impl FnOnce() -> crate::pipeline::dataframe::DataFrame,
         x_col: &str,
         y_col: &str,
     ) -> crate::pipeline::dataframe::DataFrame {
         let (ds_idx, encode) = get_series_dataset_info(s);
-        if let Some(idx) = ds_idx
+        // ECharts 语义：`datasetIndex` 缺省为 0，因此只要系列自身没有 data，
+        // 就默认读第 0 个 dataset（历史实现要求显式 datasetIndex，
+        // 于是常见的 `dataset + series{encode}` 写法直接 Missing column 报错）。
+        if let Some(idx) = resolve_dataset_index(ds_idx, has_own_data)
             && let Some(ds_df) = datasets.get(idx)
         {
             if let Some(enc) = &encode {
-                return extract_encoded_columns(ds_df, enc).0;
+                let (df, _, _) = extract_encoded_columns(ds_df, enc);
+                // encode 未命中任何列名时不认账，继续走位置映射
+                if df.get_column("x").is_some() && df.get_column("y").is_some() {
+                    return df;
+                }
             }
             if ds_df.get_column("x").is_some() && ds_df.get_column("y").is_some() {
                 return ds_df.clone();
@@ -300,10 +304,18 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
 
             let spec = match s {
                 SeriesOption::Line(ls) => {
-                    let x_is_time = axis_is_time(&x_axes, ls.x_axis_index.unwrap_or(0));
+                    let (grid_idx, x_axis_idx, y_axis_idx) = resolve_series_axes(
+                        ls.grid_index,
+                        ls.x_axis_index,
+                        ls.y_axis_index,
+                        &x_axes,
+                        &y_axes,
+                    );
+                    let x_is_time = axis_is_time(&x_axes, x_axis_idx);
                     let data = resolve_series_data(
                         s,
                         &datasets,
+                        !ls.data.is_empty(),
                         || datapoints_to_dataframe(&ls.data, "x", "y", x_is_time),
                         "x",
                         "y",
@@ -323,6 +335,11 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .as_ref()
                             .and_then(|l| l.width.as_ref().and_then(|w| w.as_number()))
                             .unwrap_or(2.0),
+                        line_dash: dash_array(ls.line_style.as_ref().and_then(|l| l.line_type)),
+                        line_color: lenient_line_color(
+                            ls.line_style.as_ref().and_then(|l| l.color.as_ref()),
+                        ),
+                        connect_nulls: ls.connect_nulls.unwrap_or(false),
                         area: ls.area_style.is_some(),
                         area_color: ls
                             .area_style
@@ -367,18 +384,19 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         label_position: parse_value_label_position(ls.label.as_ref()),
                         label_color: parse_label_color(ls.label.as_ref()),
                         mark_line: parse_mark_line(ls.mark_line.as_ref()),
+                        mark_point: parse_mark_point(ls.mark_point.as_ref()),
                     };
                     SeriesSpec {
                         name,
 
                         data,
-                        grid_index: ls.grid_index.unwrap_or(0),
-                        x_axis_index: 0,
-                        y_axis_index: ls.y_axis_index.unwrap_or(0),
+                        grid_index: grid_idx,
+                        x_axis_index: x_axis_idx,
+                        y_axis_index: y_axis_idx,
                         stack: ls.stack.clone(),
                         group_index: 0,
                         sampling,
-                        item_style: ItemStyleSpec::default(),
+                        item_style: parse_item_style(ls.item_style.as_ref()),
                         config: SeriesConfig::Line(config),
                     }
                 }
@@ -390,11 +408,18 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         .map(|cs| cs.eq_ignore_ascii_case("polar"))
                         .unwrap_or(false)
                     {
-                        let data = polar_datapoints_to_dataframe(&bs.data, "angle", "radius");
+                        let mut data = polar_datapoints_to_dataframe(&bs.data, "angle", "radius");
+                        // 类目名取自 `angleAxis.data`（极坐标类目轴的唯一声明处）
+                        let polar_cats = option
+                            .angle_axis
+                            .as_ref()
+                            .map(|a| a.category_names())
+                            .unwrap_or_default();
+                        attach_polar_categories(&mut data, &bs.data, &polar_cats);
                         let config = crate::pipeline::types::PolarBarConfig {
                             angle_col: "angle".into(),
                             radius_col: "radius".into(),
-                            category_col: None,
+                            category_col: Some("category".into()),
                             pad_angle: 2.0,
                             start_angle: 0.0,
                         };
@@ -411,46 +436,41 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             config: SeriesConfig::PolarBar(config),
                         }
                     } else {
-                        let y_axis_idx = bs.y_axis_index.unwrap_or(0);
-                        let x_axis_idx = 0;
+                        let (grid_idx, x_axis_idx, y_axis_idx) = resolve_series_axes(
+                            bs.grid_index,
+                            bs.x_axis_index,
+                            bs.y_axis_index,
+                            &x_axes,
+                            &y_axes,
+                        );
                         let is_horizontal = y_axes
                             .get(y_axis_idx)
                             .map(|a| matches!(a.axis_type, NewAxisType::Category))
                             .unwrap_or(false);
 
-                        let (data, x_col, y_col) = if bs.dataset_index.is_some() {
-                            let df = resolve_series_data(
-                                s,
-                                &datasets,
-                                || datapoints_to_dataframe(&bs.data, "x", "y", false),
-                                "x",
-                                "y",
-                            );
-                            (df, "x".into(), "y".into())
-                        } else if is_horizontal {
-                            let df = datapoints_to_dataframe_horizontal(&bs.data);
-                            (df, "x".into(), "y".into())
-                        } else {
-                            let df = datapoints_to_dataframe(&bs.data, "x", "y", false);
-                            (df, "x".into(), "y".into())
-                        };
-
-                        let bar_width = bs
-                            .bar_width
-                            .as_ref()
-                            .map(|bw| &bw.0)
-                            .and_then(|bw| {
-                                if let Some(pct) = bw.strip_suffix('%') {
-                                    pct.parse::<f64>().ok().map(|v| v / 100.0)
+                        // dataset 优先（缺省 datasetIndex = 0），否则按 series.data +
+                        // 轴朝向选择横/纵数据布局
+                        let has_own_data = !bs.data.is_empty();
+                        let data = resolve_series_data(
+                            s,
+                            &datasets,
+                            has_own_data,
+                            || {
+                                if is_horizontal {
+                                    datapoints_to_dataframe_horizontal(&bs.data)
                                 } else {
-                                    bw.parse::<f64>().ok().map(|v| v / 100.0)
+                                    datapoints_to_dataframe(&bs.data, "x", "y", false)
                                 }
-                            })
-                            .unwrap_or(0.6);
+                            },
+                            "x",
+                            "y",
+                        );
+                        let (x_col, y_col): (String, String) = ("x".into(), "y".into());
+
                         let config = BarConfig {
                             x_col,
                             y_col,
-                            bar_width,
+                            layout: parse_bar_layout(bs),
                             label_show: bs.label.as_ref().and_then(|l| l.show).unwrap_or(false),
                             label_font_size: bs
                                 .label
@@ -461,17 +481,18 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             label_position: parse_value_label_position(bs.label.as_ref()),
                             label_color: parse_label_color(bs.label.as_ref()),
                             mark_line: parse_mark_line(bs.mark_line.as_ref()),
+                            mark_point: parse_mark_point(bs.mark_point.as_ref()),
                         };
                         SeriesSpec {
                             name,
                             data,
-                            grid_index: bs.grid_index.unwrap_or(0),
+                            grid_index: grid_idx,
                             x_axis_index: x_axis_idx,
                             y_axis_index: y_axis_idx,
                             stack: bs.stack.clone(),
                             group_index: bs.group_index.unwrap_or(0),
                             sampling,
-                            item_style: ItemStyleSpec::default(),
+                            item_style: parse_item_style(bs.item_style.as_ref()),
                             config: SeriesConfig::Bar(config),
                         }
                     }
@@ -480,6 +501,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     let data = resolve_series_data(
                         s,
                         &datasets,
+                        !ps.data.is_empty(),
                         || datapoints_to_dataframe(&ps.data, "name", "value", false),
                         "name",
                         "value",
@@ -509,7 +531,9 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         value_col: "value".into(),
                         center,
                         radius,
-                        label_show: label.and_then(|l| l.show).unwrap_or(false),
+                        // ECharts 饼图 `label.show` 默认 **true**（不写配置也显示标签），
+                        // 与 line/bar（默认 false）不同。
+                        label_show: label.and_then(|l| l.show).unwrap_or(true),
                         label_position: label
                             .and_then(|l| l.position)
                             .map(|p| match p {
@@ -524,6 +548,23 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .unwrap_or(crate::pipeline::types::LabelPosition::Outside),
                         label_font_size: label.and_then(|l| l.font_size).unwrap_or(12.0),
                         label_formatter: label.and_then(|l| l.formatter.clone()),
+                        label_line_show: ps
+                            .label_line
+                            .as_ref()
+                            .and_then(|l| l.show)
+                            .unwrap_or(true),
+                        clockwise: ps.clockwise.unwrap_or(true),
+                        rose_type: match ps.rose_type.as_deref() {
+                            Some(t) if t.eq_ignore_ascii_case("radius") => {
+                                Some(crate::pipeline::types::PieRoseType::Radius)
+                            }
+                            Some(t) if t.eq_ignore_ascii_case("area") => {
+                                Some(crate::pipeline::types::PieRoseType::Area)
+                            }
+                            _ => None,
+                        },
+                        // ECharts `padAngle` 单位是**度**
+                        pad_angle: ps.pad_angle.unwrap_or(0.0).to_radians(),
                     };
                     SeriesSpec {
                         name,
@@ -534,7 +575,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         stack: None,
                         group_index: 0,
                         sampling,
-                        item_style: ItemStyleSpec::default(),
+                        item_style: parse_item_style(ps.item_style.as_ref()),
                         config: SeriesConfig::Pie(config),
                     }
                 }
@@ -565,9 +606,17 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             config: SeriesConfig::PolarScatter(config),
                         }
                     } else {
+                        let (grid_idx, x_axis_idx, y_axis_idx) = resolve_series_axes(
+                            ss.grid_index,
+                            ss.x_axis_index,
+                            ss.y_axis_index,
+                            &x_axes,
+                            &y_axes,
+                        );
                         let data = resolve_series_data(
                             s,
                             &datasets,
+                            !ss.data.is_empty(),
                             || datapoints_to_dataframe(&ss.data, "x", "y", false),
                             "x",
                             "y",
@@ -580,13 +629,13 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         SeriesSpec {
                             name,
                             data,
-                            grid_index: ss.grid_index.unwrap_or(0),
-                            x_axis_index: 0,
-                            y_axis_index: ss.y_axis_index.unwrap_or(0),
+                            grid_index: grid_idx,
+                            x_axis_index: x_axis_idx,
+                            y_axis_index: y_axis_idx,
                             stack: None,
                             group_index: 0,
                             sampling,
-                            item_style: ItemStyleSpec::default(),
+                            item_style: parse_item_style(ss.item_style.as_ref()),
                             config: SeriesConfig::Scatter(config),
                         }
                     }
@@ -609,7 +658,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         stack: None,
                         group_index: 0,
                         sampling: None,
-                        item_style: ItemStyleSpec::default(),
+                        item_style: parse_item_style(bs.item_style.as_ref()),
                         config: SeriesConfig::Bubble(config),
                     }
                 }
@@ -658,13 +707,37 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         close_col: "close".into(),
                         low_col: "low".into(),
                         high_col: "high".into(),
+                        // `itemStyle.color` / `color0` / `borderColor`：
+                        // 此前完全被忽略，K 线颜色只能取主题色。
+                        up_color: cs
+                            .item_style
+                            .as_ref()
+                            .and_then(|is| is.color.as_ref())
+                            .map(|c| Color::rgb(c.r, c.g, c.b)),
+                        down_color: cs
+                            .item_style
+                            .as_ref()
+                            .and_then(|is| is.color0.as_ref())
+                            .map(|c| Color::rgb(c.r, c.g, c.b)),
+                        border_color: cs
+                            .item_style
+                            .as_ref()
+                            .and_then(|is| is.border_color.as_ref())
+                            .map(|c| Color::rgb(c.r, c.g, c.b)),
                     };
+                    let (grid_idx, x_axis_idx, y_axis_idx) = resolve_series_axes(
+                        cs.grid_index,
+                        cs.x_axis_index,
+                        cs.y_axis_index,
+                        &x_axes,
+                        &y_axes,
+                    );
                     SeriesSpec {
                         name,
                         data,
-                        grid_index: cs.grid_index.unwrap_or(0),
-                        x_axis_index: cs.x_axis_index.unwrap_or(0),
-                        y_axis_index: cs.y_axis_index.unwrap_or(0),
+                        grid_index: grid_idx,
+                        x_axis_index: x_axis_idx,
+                        y_axis_index: y_axis_idx,
                         stack: None,
                         group_index: 0,
                         sampling: None,
@@ -737,14 +810,22 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             border_width: bs.item_style.as_ref().and_then(|is| {
                                 is.border_width.as_ref().and_then(|v| v.as_number())
                             }),
+                            border_radius: None,
                             opacity: None,
                         };
+                    let (grid_idx, x_axis_idx, y_axis_idx) = resolve_series_axes(
+                        bs.grid_index,
+                        bs.x_axis_index,
+                        bs.y_axis_index,
+                        &x_axes,
+                        &y_axes,
+                    );
                     SeriesSpec {
                         name,
                         data,
-                        grid_index: bs.grid_index.unwrap_or(0),
-                        x_axis_index: bs.x_axis_index.unwrap_or(0),
-                        y_axis_index: bs.y_axis_index.unwrap_or(0),
+                        grid_index: grid_idx,
+                        x_axis_index: x_axis_idx,
+                        y_axis_index: y_axis_idx,
                         stack: None,
                         group_index: 0,
                         sampling: None,
@@ -753,6 +834,16 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     }
                 }
                 SeriesOption::Heatmap(hs) => {
+                    // 非笛卡尔坐标系（`calendar` / `geo` 等）暂不支持：
+                    // 此前会走到轴绑定 → `Invalid axis binding: X axis not found` 整图报错，
+                    // 这里改为静默跳过（与不支持的 series type 一致）。
+                    if hs
+                        .coordinate_system
+                        .as_deref()
+                        .is_some_and(|cs| !cs.eq_ignore_ascii_case("cartesian2d"))
+                    {
+                        return None;
+                    }
                     // 优先 dataset + datasetIndex；否则用 series.data
                     let ds_idx = resolve_dataset_index(hs.dataset_index, !hs.data.is_empty());
                     let data = match heatmap_dataset_df(ds_idx, &hs.encode, &datasets) {
@@ -790,6 +881,7 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .item_style
                             .as_ref()
                             .and_then(|is| is.border_width.as_ref().and_then(|v| v.as_number())),
+                        border_radius: None,
                         opacity: hs.item_style.as_ref().and_then(|is| is.opacity),
                     };
                     let config = HeatmapConfig {
@@ -842,9 +934,27 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                                 .unwrap_or_default()
                         })
                         .unwrap_or_default();
+                    // 指标最大值：缺省 100（ECharts `radar.indicator.max`）
+                    let maxes: Vec<f64> = option
+                        .radar
+                        .as_ref()
+                        .map(|r| {
+                            r.indicator
+                                .as_ref()
+                                .map(|v| v.iter().map(|i| i.max.unwrap_or(100.0)).collect())
+                                .unwrap_or_default()
+                        })
+                        .unwrap_or_default();
                     let config = crate::pipeline::types::RadarConfig {
                         value_col: "value".into(),
                         indicators,
+                        maxes,
+                        label_show: rs.label.as_ref().and_then(|l| l.show).unwrap_or(false),
+                        label_font_size: rs
+                            .label
+                            .as_ref()
+                            .and_then(|l| l.font_size)
+                            .unwrap_or(12.0),
                     };
                     let grid_index = 0;
                     SeriesSpec {
@@ -861,11 +971,17 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     }
                 }
                 SeriesOption::PolarBar(pb) => {
-                    let data = polar_datapoints_to_dataframe(&pb.data, "angle", "radius");
+                    let mut data = polar_datapoints_to_dataframe(&pb.data, "angle", "radius");
+                    let polar_cats = option
+                        .angle_axis
+                        .as_ref()
+                        .map(|a| a.category_names())
+                        .unwrap_or_default();
+                    attach_polar_categories(&mut data, &pb.data, &polar_cats);
                     let config = crate::pipeline::types::PolarBarConfig {
                         angle_col: "angle".into(),
                         radius_col: "radius".into(),
-                        category_col: None,
+                        category_col: Some("category".into()),
                         pad_angle: 2.0,
                         start_angle: 0.0,
                     };
@@ -967,6 +1083,35 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         })
         .collect();
 
+    // 类目轴缺 `data` 时从系列数据反推类目名（必须在 dataZoom 之前，窗口依赖类目数）
+    let mut y_axes = y_axes;
+    fill_missing_categories(&mut x_axes, &series, true);
+    fill_missing_categories(&mut y_axes, &series, false);
+
+    // dataZoom：裁剪 x 类目轴的可见窗口（返回每个轴的行窗口）
+    let x_windows = compute_x_windows(option, &mut x_axes);
+
+    // dataZoom：裁剪绑定到「有可见窗口的 x 类目轴」且行数吻合的笛卡尔系列
+    let mut series = series;
+    for s in series.iter_mut() {
+        if !matches!(
+            s.chart_type(),
+            crate::pipeline::types::ChartType::Line
+                | crate::pipeline::types::ChartType::Bar
+                | crate::pipeline::types::ChartType::Scatter
+                | crate::pipeline::types::ChartType::Bubble
+                | crate::pipeline::types::ChartType::Candlestick
+                | crate::pipeline::types::ChartType::Boxplot
+        ) {
+            continue;
+        }
+        if let Some((start, end, n)) = x_windows.get(s.x_axis_index).copied().flatten()
+            && s.data.row_count() == n
+        {
+            trim_series_window(s, start, end);
+        }
+    }
+
     // 预计算自动图例名（在 series 被 move 进 ChartSpec 之前）
     let auto_legend_names = collect_legend_names(&series);
 
@@ -992,6 +1137,12 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                 .as_ref()
                 .and_then(|s| s.color.as_ref())
                 .map(|c| Color::rgb(c.r, c.g, c.b)),
+            show: t.show.unwrap_or(true),
+            left: t.left.as_ref().map(position_option_to_string),
+            right: t.right.as_ref().map(position_option_to_string),
+            top: t.top.as_ref().map(position_option_to_string),
+            text_align: t.text_align.clone(),
+            item_gap: t.item_gap,
         }),
         legend: option.legend.as_ref().map(|l| LegendSpec {
             show: l.show.unwrap_or(true),
@@ -1101,6 +1252,361 @@ fn parse_gauge_radius(
     let values = radius?.to_vec();
     let v = values.last()?;
     radius_num_to_percent(v)
+}
+
+/// 类目轴缺 `data` 时，从绑定到该轴的系列数据中推导类目名。
+///
+/// ECharts 允许只声明 `xAxis: {type:'category'}`，类目由 `series.data` /
+/// `dataset` 决定；此前这类写法会渲染成「没有任何类目标签、只有数值刻度」的轴。
+///
+/// 只接受**字符串**列：横向柱的类目列是数值索引（真正类目名在 `yAxis.data`），
+/// 从数据反推只会得到 `"0"/"1"` 这类噪声。
+fn fill_missing_categories(
+    axes: &mut [crate::pipeline::types::AxisSpec],
+    series: &[crate::pipeline::types::SeriesSpec],
+    is_x: bool,
+) {
+    use crate::pipeline::types::AxisType;
+
+    for (axis_idx, axis) in axes.iter_mut().enumerate() {
+        if axis.axis_type != AxisType::Category || !axis.categories.is_empty() {
+            continue;
+        }
+        for s in series {
+            let bound = if is_x {
+                s.x_axis_index == axis_idx
+            } else {
+                s.y_axis_index == axis_idx
+            };
+            if !bound {
+                continue;
+            }
+            let Some(col) = s
+                .config
+                .axis_col(is_x)
+                .and_then(|name| s.data.get_column(name))
+            else {
+                continue;
+            };
+            let n = s.data.row_count();
+            if n == 0 || (0..n).all(|i| col.as_string(i).is_none()) {
+                continue;
+            }
+            // 逐行取字符串，缺失行用序号兜底，保证「类目下标 == 数据行号」
+            axis.categories = (0..n)
+                .map(|i| col.as_string(i).unwrap_or_else(|| format!("{i}")))
+                .collect();
+            break;
+        }
+    }
+}
+
+/// 解析 `dataZoom` 并把受影响的 x 类目轴 `categories` **就地裁剪**到可见窗口。
+///
+/// 返回与 `x_axes` 下标对齐的 `Option<(start_idx, end_idx, 原始类目数)>`，
+/// 调用方据此裁剪绑定到该轴、且行数与原始类目数吻合的系列数据。
+///
+/// 为什么必须在解析期真的删数据：轴范围被压缩而窗口外数据仍留在 DataFrame 里时，
+/// 那些点会被映射到绘图区之外（静态渲染无裁剪），表现为「线条/柱子冲出画布」。
+fn compute_x_windows(
+    option: &ChartOption,
+    x_axes: &mut [crate::pipeline::types::AxisSpec],
+) -> Vec<Option<(usize, usize, usize)>> {
+    let mut windows: Vec<Option<(usize, usize, usize)>> = vec![None; x_axes.len()];
+    let Some(dz_list) = option.data_zoom.as_ref() else {
+        return windows;
+    };
+
+    for dz in dz_list.as_slice() {
+        if dz.show == Some(false) {
+            continue;
+        }
+        // ECharts `start`/`end` 为百分比，缺省 0 / 100
+        let start = dz.start.unwrap_or(0.0).clamp(0.0, 100.0) / 100.0;
+        let end = dz.end.unwrap_or(100.0).clamp(0.0, 100.0) / 100.0;
+        if end <= start {
+            continue;
+        }
+        // 未指定 xAxisIndex 时作用于全部 x 轴（ECharts 语义）
+        let targets: Vec<usize> = match &dz.x_axis_index {
+            Some(v) => v.as_vec(),
+            None => (0..x_axes.len()).collect(),
+        };
+        for i in targets {
+            let Some(axis) = x_axes.get_mut(i) else {
+                continue;
+            };
+            if axis.axis_type != crate::pipeline::types::AxisType::Category {
+                continue;
+            }
+            let n = axis.categories.len();
+            if n == 0 {
+                continue;
+            }
+            let s_idx = ((start * n as f64).floor() as usize).min(n - 1);
+            let e_idx = (((end * n as f64).ceil() as usize).clamp(s_idx + 1, n)) - 1;
+            axis.categories = axis.categories[s_idx..=e_idx].to_vec();
+            windows[i] = Some((s_idx, e_idx, n));
+        }
+    }
+    windows
+}
+
+/// 把系列数据裁剪到 `dataZoom` 窗口 `[start, end]`（闭区间），并把类目列重写为
+/// 窗口内的 `0..k-1`——与 `datapoints_to_dataframe` 对类目轴的行号语义一致
+/// （柱状图直接读 x 列作为类目下标，不重写会越界）。
+fn trim_series_window(spec: &mut crate::pipeline::types::SeriesSpec, start: usize, end: usize) {
+    use crate::pipeline::dataframe::{DataFrame, DataValue, Series as DfSeries};
+
+    let k = end - start + 1;
+    let mut df = DataFrame::new();
+    for name in spec.data.column_names().to_vec() {
+        let Some(col) = spec.data.get_column(&name) else {
+            continue;
+        };
+        df.add_column(DfSeries::new(name, col.data[start..=end].to_vec()));
+    }
+    let x_col = spec.config.x_col_name().to_string();
+    if !x_col.is_empty() && df.get_column(&x_col).is_some() {
+        df.add_column(DfSeries::new(
+            x_col,
+            (0..k).map(|i| DataValue::Float(i as f64)).collect(),
+        ));
+    }
+    spec.data = df;
+}
+
+/// 解析系列归属的 `(subplot, x 轴, y 轴)` 索引。
+///
+/// ECharts 允许三种写法（优先级从高到低）：
+/// 1. 显式 `gridIndex` → 取该 subplot 的第一个 x / y 轴；
+/// 2. 只给 `xAxisIndex` / `yAxisIndex` → 由被引用的轴反推其 `gridIndex`；
+/// 3. 都不给 → 第一个 subplot 的第一个轴。
+///
+/// 历史坑：`x_axis_index` 在 line / bar / scatter 里被**硬编码为 0**，
+/// 于是 `xAxisIndex: 1` 的系列被画到第一个 subplot——多子图布局时两个子图的
+/// 系列会重叠在同一处（静默错误，比报错更难发现）。
+fn resolve_series_axes(
+    grid_index: Option<usize>,
+    x_axis_index: Option<usize>,
+    y_axis_index: Option<usize>,
+    x_axes: &[crate::pipeline::types::AxisSpec],
+    y_axes: &[crate::pipeline::types::AxisSpec],
+) -> (usize, usize, usize) {
+    let grid = grid_index
+        .or_else(|| {
+            x_axis_index
+                .and_then(|i| x_axes.get(i))
+                .map(|a| a.grid_index)
+        })
+        .or_else(|| {
+            y_axis_index
+                .and_then(|i| y_axes.get(i))
+                .map(|a| a.grid_index)
+        })
+        .unwrap_or(0);
+    let x = x_axis_index
+        .or_else(|| x_axes.iter().position(|a| a.grid_index == grid))
+        .unwrap_or(0);
+    let y = y_axis_index
+        .or_else(|| y_axes.iter().position(|a| a.grid_index == grid))
+        .unwrap_or(0);
+    (grid, x, y)
+}
+
+/// 由 `itemStyle` 构造管线用的 `ItemStyleSpec`（颜色 / 描边 / 圆角）。
+fn parse_item_style(
+    is: Option<&crate::option::ItemStyleOption>,
+) -> crate::pipeline::types::ItemStyleSpec {
+    crate::pipeline::types::ItemStyleSpec {
+        color: is.and_then(|is| is.color.as_ref().map(|c| Color::rgb(c.r, c.g, c.b))),
+        border_color: is.and_then(|is| is.border_color.as_ref().map(|c| Color::rgb(c.r, c.g, c.b))),
+        border_width: is.and_then(|is| is.border_width.as_ref().and_then(|v| v.as_number())),
+        // ECharts 允许 `borderRadius: 4` 或 `borderRadius: [4,4,0,0]`：
+        // 绘制层只有统一圆角，取四角最大值近似（[4,4,0,0] → 4）。
+        border_radius: is
+            .and_then(|is| is.border_radius.as_ref())
+            .map(|v| {
+                v.to_vec()
+                    .iter()
+                    .filter_map(|n| n.as_number())
+                    .fold(0.0_f64, f64::max)
+            })
+            .filter(|v| *v > 0.0),
+        opacity: is.and_then(|is| is.opacity),
+    }
+}
+
+/// `PositionOption` → 原始字符串，交给渲染期按 ECharts 语义解析
+/// （`"center"` / `"left"` / `"20%"` / `20` 等，语义随字段而异）。
+fn position_option_to_string(p: &PositionOption) -> String {
+    match p {
+        PositionOption::Pixel(v) => format!("{v}"),
+        PositionOption::Percent(v) => format!("{v}%"),
+        PositionOption::Preset(preset) => match preset {
+            PositionPreset::Auto => "auto".to_string(),
+            PositionPreset::Center => "center".to_string(),
+            PositionPreset::Left => "left".to_string(),
+            PositionPreset::Right => "right".to_string(),
+            PositionPreset::Top => "top".to_string(),
+            PositionPreset::Bottom => "bottom".to_string(),
+        },
+    }
+}
+
+/// `LenientBarSize` → `BarSize`：带 `%` 视为**槽宽比例**，纯数字视为**像素**。
+///
+/// 历史坑：数字形式被当成百分比除以 100（`barWidth: 30` 变 30%），
+/// 而 ECharts 里数字就是像素值。
+fn parse_bar_size(v: &crate::option::LenientBarSize) -> Option<crate::pipeline::types::BarSize> {
+    use crate::pipeline::types::BarSize;
+    let s = v.0.trim();
+    if let Some(pct) = s.strip_suffix('%') {
+        pct.trim()
+            .parse::<f64>()
+            .ok()
+            .map(|p| BarSize::Ratio(p / 100.0))
+    } else {
+        s.parse::<f64>().ok().map(BarSize::Px)
+    }
+}
+
+/// 解析柱体几何配置（`barWidth` / `barGap` / `barCategoryGap` / `barMax/MinWidth` /
+/// `barMinHeight` / `showBackground`）。
+fn parse_bar_layout(bs: &crate::option::BarSeriesOption) -> crate::pipeline::types::BarLayout {
+    use crate::pipeline::types::{BarLayout, BarSize};
+
+    let size = |v: Option<&crate::option::LenientBarSize>| v.and_then(parse_bar_size);
+    BarLayout {
+        width: size(bs.bar_width.as_ref()),
+        // ECharts 默认 barGap:'30%'（相对柱宽）、barCategoryGap:'20%'（相对槽宽）
+        gap: size(bs.bar_gap.as_ref()).unwrap_or(BarSize::Ratio(0.3)),
+        category_gap: size(bs.bar_category_gap.as_ref()).unwrap_or(BarSize::Ratio(0.2)),
+        max_width: size(bs.bar_max_width.as_ref()),
+        min_width: size(bs.bar_min_width.as_ref()),
+        min_height: bs.bar_min_height,
+        background: bs.show_background.unwrap_or(false).then(|| {
+            bs.background_style
+                .as_ref()
+                .and_then(|s| s.color.as_ref())
+                .map(|c| Color::rgb(c.r, c.g, c.b))
+                // ECharts `backgroundStyle.color` 默认 rgba(180,180,180,0.2)
+                .unwrap_or(Color {
+                    r: 180,
+                    g: 180,
+                    b: 180,
+                    a: 51,
+                })
+        }),
+    }
+}
+
+/// 从 `lineStyle.color` 取单色（`LenientLineColor::Segments` 取首段）。
+fn lenient_line_color(c: Option<&crate::option::LenientLineColor>) -> Option<Color> {
+    match c? {
+        crate::option::LenientLineColor::Single(c) => Some(Color::rgb(c.r, c.g, c.b)),
+        crate::option::LenientLineColor::Segments(segs) => {
+            segs.first().map(|(_, c)| Color::rgb(c.r, c.g, c.b))
+        }
+    }
+}
+
+/// 由 ECharts 的轴装饰配置构造 [`AxisDecor`]。
+///
+/// 此前 `axisLine.show` / `axisTick.show` / `splitLine.show` / `splitArea.show`
+/// 以及各自的 `lineStyle` 全部被静默忽略（`AxisSpec` 里存了但渲染器从不读）。
+fn parse_axis_decor(
+    a: &crate::option::AxisOption,
+    axis_type: crate::pipeline::types::AxisType,
+) -> crate::pipeline::types::AxisDecor {
+    use crate::pipeline::types::AxisDecor;
+
+    let mut d = AxisDecor::for_axis_type(axis_type);
+
+    if let Some(al) = &a.axis_line {
+        d.line_show = al.show.unwrap_or(true);
+        if let Some(ls) = &al.line_style {
+            d.line_color = lenient_line_color(ls.color.as_ref());
+            d.line_width = ls
+                .width
+                .as_ref()
+                .and_then(|w| w.as_number())
+                .unwrap_or(d.line_width);
+        }
+    }
+
+    if let Some(at) = &a.axis_tick {
+        d.tick_show = at.show.unwrap_or(true);
+        d.tick_length = at.length.unwrap_or(d.tick_length);
+        d.align_with_label = at.align_with_label.unwrap_or(false);
+    }
+
+    if let Some(sl) = &a.split_line {
+        // `show` 缺省时沿用轴类型默认（类目轴关闭）
+        d.split_line_show = sl.show.unwrap_or(d.split_line_show);
+        if let Some(ls) = &sl.line_style {
+            d.split_line_color = lenient_line_color(ls.color.as_ref());
+            d.split_line_dash = dash_array(ls.line_type);
+        }
+    }
+
+    if let Some(sa) = &a.split_area {
+        d.split_area_show = sa.show.unwrap_or(false);
+        d.split_area_colors = sa
+            .color
+            .as_ref()
+            .map(|cs| cs.iter().map(|c| Color::rgb(c.r, c.g, c.b)).collect())
+            .unwrap_or_default();
+    }
+
+    d
+}
+
+/// 把 ECharts `lineStyle.type` / `itemStyle.borderType` 展开为虚线段长。
+///
+/// ECharts 的虚线 `dashed` 为 `[4w, 2w]` 量级、`dotted` 为 `[1w, 2w]`，
+/// 这里按线宽等比放大，保证细线与粗线的观感一致。`None`/`Solid` 返回空
+/// （空 = 实线，两个后端都按实线绘制）。
+fn dash_array(ty: Option<crate::option::LineType>) -> Vec<f64> {
+    use crate::option::LineType;
+    match ty {
+        Some(LineType::Dashed) => vec![6.0, 4.0],
+        Some(LineType::Dotted) => vec![1.5, 3.0],
+        _ => Vec::new(),
+    }
+}
+
+/// 解析 `series.markPoint.data` 为标注点配置列表。
+///
+/// 支持 `type: average / min / max` 三类统计点（静态渲染最常用）；
+/// `name` 作为标签前缀、`value` 可显式覆盖统计值。其余类型（自定义 `coord`、
+/// 图片符号等）暂不支持，静默跳过。
+fn parse_mark_point(
+    mark_point: Option<&crate::option::MarkPointOption>,
+) -> Vec<crate::pipeline::types::MarkPointSpec> {
+    use crate::pipeline::types::{MarkPointSpec, MarkPointType};
+
+    let Some(mp) = mark_point else {
+        return Vec::new();
+    };
+    let Some(data) = &mp.data else {
+        return Vec::new();
+    };
+    let mut specs = Vec::new();
+    for d in data {
+        let data_type = match d.data_type.as_deref() {
+            Some("average") => MarkPointType::Average,
+            Some("min") => MarkPointType::Min,
+            Some("max") => MarkPointType::Max,
+            _ => continue,
+        };
+        specs.push(MarkPointSpec {
+            data_type,
+            name: d.name.clone(),
+            value: d.value,
+        });
+    }
+    specs
 }
 
 /// 解析 `series.markLine.data` 为标注线配置列表。
@@ -1297,6 +1803,33 @@ fn position_option_to_edge(pos: &PositionOption) -> crate::pipeline::types::Grid
 /// - `XY(angle, radius)`：使用显式的角度/半径
 ///
 /// 角度使用 ECharts 极坐标语义：`0°` 在顶部，顺时针增加。
+/// 给极坐标数据框补一列 `category`（`angleAxis.data` 优先，其次数据项自带名称）。
+///
+/// 极坐标类目名此前完全丢失（`polar_datapoints_to_dataframe` 只产出
+/// angle/radius），渲染出来是 `Item 0 / Item 1 / …` 这类无意义标签。
+fn attach_polar_categories(
+    df: &mut crate::pipeline::dataframe::DataFrame,
+    points: &[option::DataPoint],
+    categories: &[String],
+) {
+    use crate::pipeline::dataframe::{DataValue, Series as DfSeries};
+
+    let names: Vec<DataValue> = (0..df.row_count())
+        .map(|i| {
+            categories
+                .get(i)
+                .cloned()
+                .or_else(|| match points.get(i) {
+                    Some(option::DataPoint::Named(name, _)) => Some(name.clone()),
+                    _ => None,
+                })
+                .unwrap_or_else(|| format!("Item {i}"))
+                .into()
+        })
+        .collect();
+    df.add_column(DfSeries::new("category", names));
+}
+
 fn polar_datapoints_to_dataframe(
     points: &[option::DataPoint],
     angle_col: &str,
@@ -1624,7 +2157,16 @@ fn serde_value_to_data_value(v: &serde_json::Value) -> DataValue {
     }
 }
 
-/// 将 DatasetOption.source 转换为 DataFrame
+/// 将 `DatasetOption.source` 转换为 DataFrame。
+///
+/// 支持三种 ECharts 写法：
+/// 1. **二维数组 + 表头行**：`source: [["product","count"],["A",10],…]`
+/// 2. **二维数组 + 无表头**：`sourceHeader: false`，列名取 `dimensions` 或 `column{i}`
+/// 3. **对象数组**：`source: [{"product":"A","count":10}, …]`
+///
+/// `sourceHeader` 缺省时按 ECharts 规则**自动判断**：只有首行**全部**单元格都是
+/// 字符串才视为表头。历史实现一律当表头，于是 `[["a",10],["b",20]]` 会把首行
+/// 吃掉当列名，数据凭空少一行且列名变成 `"a"`/`"10"`。
 fn dataset_to_dataframe(dataset: &option::DatasetOption) -> crate::pipeline::dataframe::DataFrame {
     use crate::pipeline::dataframe::{DataFrame, Series as DfSeries};
 
@@ -1632,75 +2174,81 @@ fn dataset_to_dataframe(dataset: &option::DatasetOption) -> crate::pipeline::dat
         Some(s) => s,
         None => return DataFrame::new(),
     };
-
     if source.is_empty() {
         return DataFrame::new();
     }
 
-    let has_header = dataset.source_header.unwrap_or(true);
-    let data_start = if has_header && !source.is_empty() {
-        1
-    } else {
-        0
-    };
+    // ── 写法 3：对象数组（键即列名，取首行键的顺序） ──
+    if let serde_json::Value::Object(first) = &source[0] {
+        let names: Vec<String> = first.keys().cloned().collect();
+        let mut cols: Vec<Vec<DataValue>> = vec![Vec::new(); names.len()];
+        for row in source {
+            let obj = match row {
+                serde_json::Value::Object(o) => Some(o),
+                _ => None,
+            };
+            for (i, name) in names.iter().enumerate() {
+                cols[i].push(
+                    obj.and_then(|o| o.get(name))
+                        .map(serde_value_to_data_value)
+                        .unwrap_or(DataValue::Null),
+                );
+            }
+        }
+        let mut df = DataFrame::new();
+        for (name, data) in names.into_iter().zip(cols) {
+            df.add_column(DfSeries::new(name, data));
+        }
+        return df;
+    }
 
-    let mut df = DataFrame::new();
+    // ── 写法 1/2：二维数组（非数组行忽略） ──
+    let rows: Vec<&Vec<serde_json::Value>> = source.iter().filter_map(|v| v.as_array()).collect();
+    if rows.is_empty() {
+        return DataFrame::new();
+    }
 
-    if data_start > 0 {
-        let header_row = &source[0];
-        let col_names: Vec<String> = header_row
+    let has_header = dataset.source_header.unwrap_or_else(|| {
+        rows[0]
             .iter()
-            .map(|v| match v {
-                serde_json::Value::String(s) => s.clone(),
-                other => format!("{}", other),
-            })
-            .collect();
+            .all(|v| matches!(v, serde_json::Value::String(_)))
+    });
+    let data_start = usize::from(has_header);
 
-        let num_cols = col_names.len();
-        let mut col_data: Vec<Vec<DataValue>> = vec![Vec::new(); num_cols];
+    // 列名优先级：dimensions > 表头行 > column{i}
+    let col_names: Vec<String> =
+        if let Some(dims) = dataset.dimensions.as_ref().filter(|d| !d.is_empty()) {
+            dims.clone()
+        } else if has_header {
+            rows[0]
+                .iter()
+                .map(|v| match v {
+                    serde_json::Value::String(s) => s.clone(),
+                    other => format!("{other}"),
+                })
+                .collect()
+        } else {
+            (0..rows[0].len()).map(|i| format!("column{i}")).collect()
+        };
 
-        for row in source.iter().skip(data_start) {
-            for (i, val) in row.iter().enumerate() {
-                if i < num_cols {
-                    col_data[i].push(serde_value_to_data_value(val));
-                }
-            }
-        }
-
-        for row_data in col_data.iter_mut() {
-            while row_data.len() < source.len() - data_start {
-                row_data.push(DataValue::Null);
-            }
-        }
-
-        for (i, name) in col_names.iter().enumerate() {
-            df.add_column(DfSeries::new(name.clone(), col_data[i].clone()));
-        }
-    } else {
-        let num_cols = source[0].len();
-        let mut col_data: Vec<Vec<DataValue>> = vec![Vec::new(); num_cols];
-
-        for row in source.iter() {
-            for (i, val) in row.iter().enumerate() {
-                if i < num_cols {
-                    col_data[i].push(serde_value_to_data_value(val));
-                }
-            }
-        }
-
-        // 行不齐（某行比首行短）时用 Null 补齐，保证各列等长——
-        // 与有表头分支一致，否则 DataFrame::add_column 会对长度不一的列 panic。
-        for row_data in col_data.iter_mut() {
-            while row_data.len() < source.len() {
-                row_data.push(DataValue::Null);
-            }
-        }
-
-        for (i, data) in col_data.iter().enumerate() {
-            df.add_column(DfSeries::new(format!("column{}", i), data.clone()));
+    let num_cols = col_names.len();
+    let mut col_data: Vec<Vec<DataValue>> = vec![Vec::new(); num_cols];
+    // 行不齐（某行比首行短）时补 Null，保证各列等长——否则
+    // `DataFrame::add_column` 会对长度不一的列 panic。
+    for row in rows.iter().skip(data_start) {
+        for (i, col) in col_data.iter_mut().enumerate() {
+            col.push(
+                row.get(i)
+                    .map(serde_value_to_data_value)
+                    .unwrap_or(DataValue::Null),
+            );
         }
     }
 
+    let mut df = DataFrame::new();
+    for (name, data) in col_names.into_iter().zip(col_data) {
+        df.add_column(DfSeries::new(name, data));
+    }
     df
 }
 

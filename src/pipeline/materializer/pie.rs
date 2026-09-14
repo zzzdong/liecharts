@@ -78,6 +78,10 @@ impl SeriesMaterializer for PieMaterializer {
             label_position: map_label_position(cfg.label_position),
             label_font_size: cfg.label_font_size,
             label_formatter: cfg.label_formatter.clone(),
+            label_line_show: cfg.label_line_show,
+            clockwise: cfg.clockwise,
+            rose_type: cfg.rose_type,
+            pad_angle: cfg.pad_angle,
             slices,
         }))
     }
