@@ -11,7 +11,7 @@
   "legend": {
     "show": true,
     "data": ["系列1", "系列2"],
-    "top": "50px",
+    "top": "90px",
     "symbolSize": "15",
     "borderWidth": 1,
     "borderRadius": "3",

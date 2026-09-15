@@ -8,16 +8,28 @@
 
 mod common;
 use common::*;
-use liecharts::Fill;
+use liecharts::{Fill, SceneNode};
+use lievisual::scene::FillStrokeStyle;
+use vello_cpu::kurbo::Point;
 
 const W: f64 = 800.0;
 const H: f64 = 600.0;
+/// 画布底部图例带高度（ECharts v6 图例默认贴画布底部）
+const LEGEND_STRIP_H: f64 = 90.0;
+
+/// 数据点圆：排除底部图例的符号圆（散点图的图例符号也是圆）。
+fn scatter_circles(nodes: &[SceneNode]) -> Vec<(Point, f64, &FillStrokeStyle)> {
+    circles(nodes)
+        .into_iter()
+        .filter(|(c, _, _)| c.y < H - LEGEND_STRIP_H)
+        .collect()
+}
 
 /// 散点数量 = 各系列数据点之和（scatter.json: 10×2=20）。
 #[test]
 fn scatter_point_count_matches_data() {
     let nodes = render("scatter", 800, 600);
-    let pts = circles(&nodes);
+    let pts = scatter_circles(&nodes);
     assert_eq!(
         pts.len(),
         20,
@@ -30,7 +42,7 @@ fn scatter_point_count_matches_data() {
 #[test]
 fn scatter_series_colors() {
     let nodes = render("scatter", 800, 600);
-    let pts = circles(&nodes);
+    let pts = scatter_circles(&nodes);
     let mut colors: std::collections::BTreeMap<String, usize> = std::collections::BTreeMap::new();
     for (_, _, s) in &pts {
         if let Some(Fill::Solid(c)) = &s.fill {
@@ -53,7 +65,7 @@ fn scatter_series_colors() {
 #[test]
 fn scatter_radius_uniform() {
     let nodes = render("scatter", 800, 600);
-    let pts = circles(&nodes);
+    let pts = scatter_circles(&nodes);
     let r0 = pts[0].1;
     for (_, r, _) in &pts {
         assert!(
@@ -69,7 +81,10 @@ fn scatter_radius_uniform() {
 #[test]
 fn scatter_points_in_canvas() {
     let nodes = render("scatter", 800, 600);
-    let pts: Vec<(f64, f64)> = circles(&nodes).iter().map(|(c, _, _)| (c.x, c.y)).collect();
+    let pts: Vec<(f64, f64)> = scatter_circles(&nodes)
+        .iter()
+        .map(|(c, _, _)| (c.x, c.y))
+        .collect();
     assert_all_points_in_canvas(&pts, W, H, 2.0);
 }
 
@@ -77,7 +92,7 @@ fn scatter_points_in_canvas() {
 #[test]
 fn scatter_points_span_value_axis() {
     let nodes = render("scatter", 800, 600);
-    let pts = circles(&nodes);
+    let pts = scatter_circles(&nodes);
     // X 值范围应在绘图区内（约 60~720）
     for (c, _, _) in &pts {
         assert!(c.x > 50.0 && c.x < 740.0, "散点 X={} 应在数值轴范围内", c.x);

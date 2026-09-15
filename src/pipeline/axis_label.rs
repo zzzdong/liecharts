@@ -81,7 +81,7 @@ impl AxisLabelSet {
 ///
 /// 生成规则与 `CartesianAxisRenderer` 完全一致：
 /// - Category 轴：直接取 `axis.categories`
-/// - Value / Time / Log 轴：取 [`axis_ticks`] 的格式化结果
+/// - Value / Time / Log 轴：取 `axis_ticks` 的格式化结果
 ///
 /// 均经过 [`format_label`] 处理，确保与实绘文本逐字相同。
 pub fn collect_axis_labels(

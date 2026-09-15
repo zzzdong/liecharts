@@ -150,12 +150,13 @@ fn resolve_layout(
 
 /// 单轮布局：绑定 → 轴范围 → 轴标签文本 → 像素布局
 fn plan_once(spec: &ChartSpec, theme: &Theme, measurer: &mut TextMeasurer) -> Result<RoundOutput> {
-    // 0. 估计标题和图例的占用高度，用于 GridPlanner 计算 top margin
-    //    （图例按真实换行行数预留，见 estimate_header_height）
-    let header_height = decorator::estimate_header_height(spec, theme, spec.width as f64);
+    // 0. 估计装饰元素占用：头部（标题）与底部（图例，v6 默认贴底）
+    let header_height = decorator::estimate_header_height(spec, theme);
+    let footer_height = decorator::estimate_footer_height(spec, theme, spec.width as f64);
 
     // 1. 绑定（无像素）：series / axis → subplot
-    let planner = GridPlanner::new(spec.width, spec.height, header_height, &spec.grids);
+    let planner = GridPlanner::new(spec.width, spec.height, header_height, &spec.grids)
+        .with_footer_height(footer_height);
     let bindings = planner.bind(&spec.series, &spec.x_axes, &spec.y_axes);
 
     // 2. 解析轴范围（无像素，只依赖绑定关系）

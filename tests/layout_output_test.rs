@@ -101,3 +101,51 @@ fn stacked_bar_all_elements_in_canvas() {
     assert!(!pts.is_empty());
     assert_all_points_in_canvas(&pts, W, H, 2.0);
 }
+
+// ── Rust builder 入口（`Chart` API）──────────────────────────────────────
+
+/// 标题默认**水平居中**，且 `Title::left` 真的生效。
+///
+/// 回归：`to_chart_spec` 曾丢弃 `Title::left/top`，builder 入口的标题因此恒贴左——
+/// 连 `Position::Center`（`Title::new` 自带的默认值）都不生效。
+#[test]
+fn builder_title_position_is_honoured() {
+    use liecharts::api::{Axis, Chart, Line, Position, Title};
+
+    let x_of_title = |title: Title| -> f64 {
+        let nodes = Chart::new(800, 500)
+            .title(title)
+            .data(liecharts::dataframe!(
+                "cat" => ["a", "b", "c"],
+                "v" => [1.0, 2.0, 3.0],
+            ))
+            .x_axis(Axis::category().data(["a", "b", "c"]))
+            .y_axis(Axis::value())
+            .add_line(Line::new().name("v").x("cat").y("v"))
+            .build()
+            .expect("应可构建");
+        texts(&nodes)
+            .into_iter()
+            .find(|(t, _, _)| t == "T")
+            .map(|(_, x, _)| x)
+            .expect("应渲染标题")
+    };
+
+    let default_x = x_of_title(Title::new("T"));
+    let center_x = x_of_title(Title::new("T").left(Position::Center));
+    let left_x = x_of_title(Title::new("T").left(Position::Left));
+    let right_x = x_of_title(Title::new("T").left(Position::Right));
+    let px_x = x_of_title(Title::new("T").left(Position::px(30.0)));
+
+    assert!(
+        (default_x - center_x).abs() < 1.0,
+        "默认标题应与 Position::Center 同位置，实际 default={default_x} center={center_x}"
+    );
+    assert!(default_x > 200.0, "默认标题应居中，实际 x={default_x}");
+    assert!(left_x < 5.0, "Position::Left 应贴左，实际 x={left_x}");
+    assert!(right_x > 700.0, "Position::Right 应贴右，实际 x={right_x}");
+    assert!(
+        (px_x - 30.0).abs() < 1.0,
+        "Position::px 应生效，实际 x={px_x}"
+    );
+}

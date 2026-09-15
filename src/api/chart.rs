@@ -216,6 +216,8 @@ pub struct Legend {
     pub left: Position,
     pub top: Position,
     pub orient: Orient,
+    /// 图例符号框尺寸 `(宽, 高)`；`None` 用 ECharts v6 默认 25 × 14
+    pub item_size: Option<(f64, f64)>,
     /// 图例文本模板（支持 `{name}`/`{a}`/`{b}`）
     pub formatter: Option<String>,
 }
@@ -228,6 +230,7 @@ impl Default for Legend {
             left: Position::Center,
             top: Position::Auto,
             orient: Orient::Horizontal,
+            item_size: None,
             formatter: None,
         }
     }
@@ -251,6 +254,11 @@ impl Legend {
     }
     pub fn orient(mut self, orient: Orient) -> Self {
         self.orient = orient;
+        self
+    }
+    /// 图例符号框尺寸（等价 ECharts `legend.itemWidth` / `itemHeight`）
+    pub fn item_size(mut self, width: f64, height: f64) -> Self {
+        self.item_size = Some((width, height));
         self
     }
     pub fn formatter(mut self, formatter: impl Into<String>) -> Self {
@@ -593,7 +601,7 @@ impl Chart {
     /// Build the chart and collect visual elements.
     ///
     /// 注意：[`FitMode::Hug`] 下画布可能长大，本方法丢弃最终尺寸；
-    /// 需要尺寸的渲染路径走 [`Self::build_laid_out`]。
+    /// 需要尺寸的渲染路径走 `build_laid_out`（内部方法）。
     pub fn build(&self) -> Result<Vec<SceneNode>> {
         Ok(self.build_laid_out()?.elements)
     }
@@ -666,9 +674,9 @@ impl Chart {
     pub(crate) fn to_chart_spec(&self) -> crate::pipeline::types::ChartSpec {
         use crate::pipeline::types::{
             AxisSpec, BarConfig, BoxplotConfig, BubbleConfig, CandlestickConfig, ChartSpec,
-            GaugeConfig, GridSpec, HeatmapConfig, ItemStyleSpec, LegendSpec, LineConfig, PieConfig,
-            PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig, SeriesConfig,
-            SeriesSpec, SymbolType, TableConfig, TitleSpec,
+            GaugeConfig, GridSpec, HeatmapConfig, ItemStyleSpec, LegendOrient, LegendSpec,
+            LineConfig, PieConfig, PolarBarConfig, PolarScatterConfig, RadarConfig, ScatterConfig,
+            SeriesConfig, SeriesSpec, SymbolType, TableConfig, TitleSpec,
         };
 
         // Grids
@@ -1246,14 +1254,30 @@ impl Chart {
                 subfont_size: None,
                 color: None,
                 subcolor: None,
+                // 历史 bug：`Title::left/top` 从未透传，设置后毫无效果（且标题恒贴左）
+                left: h_position_literal(t.left),
+                top: title_top_literal(t.top),
                 ..Default::default()
             }),
             legend: self.legend.as_ref().map(|l| LegendSpec {
                 show: l.show,
                 data: l.data.clone(),
-                symbol_size: 10.0,
-                item_gap: 10.0,
+                // v6：符号框默认 25 × 14，`Legend::item_size` 可覆盖
+                item_width: l.item_size.map(|(w, _)| w).unwrap_or(25.0),
+                item_height: l.item_size.map(|(_, h)| h).unwrap_or(14.0),
+                symbol_size: None,
+                // v6 `legend.itemGap` 默认 8
+                item_gap: 8.0,
                 formatter: l.formatter.clone(),
+                orient: match l.orient {
+                    Orient::Horizontal => LegendOrient::Horizontal,
+                    Orient::Vertical => LegendOrient::Vertical,
+                },
+                // 位置：未指定时水平居中 + 贴画布底部（v6 默认）
+                left: h_position_literal(l.left),
+                right: None,
+                top: v_position_literal(l.top),
+                bottom: None,
             }),
             background: self.background_color.unwrap_or(Color::rgb(255, 255, 255)),
             palette: vec![],
@@ -1303,6 +1327,51 @@ fn position_to_grid_edge(p: Position) -> GridEdge {
         Position::Left | Position::Top => GridEdge::Px(0.0),
         // 贴边：占满对应维度（等价于旧的 `total`）
         Position::Right | Position::Bottom => GridEdge::Pct(100.0),
+    }
+}
+
+/// [`Position`] → 水平位置字面量（`left` / `center` / `right` / 像素 / 百分比）。
+///
+/// `Auto`（及纵向预设等不适用于水平方向的取值）返回 `None`，表示"未指定"，
+/// 由渲染期给出默认值（标题/图例均为**水平居中**，与 ECharts 一致）。
+fn h_position_literal(p: Position) -> Option<String> {
+    match p {
+        Position::Center => Some("center".to_string()),
+        Position::Left => Some("left".to_string()),
+        Position::Right => Some("right".to_string()),
+        Position::Pixel(v) => Some(format!("{v}")),
+        Position::Percent(v) => Some(format!("{v}%")),
+        Position::Auto | Position::Top | Position::Bottom => None,
+    }
+}
+
+/// [`Position`] → 垂直位置字面量（`top` / `middle` / `bottom` / 像素 / 百分比）。
+fn v_position_literal(p: Position) -> Option<String> {
+    match p {
+        Position::Top => Some("top".to_string()),
+        Position::Center => Some("middle".to_string()),
+        Position::Bottom => Some("bottom".to_string()),
+        Position::Pixel(v) => Some(format!("{v}")),
+        Position::Percent(v) => Some(format!("{v}%")),
+        Position::Auto | Position::Left | Position::Right => None,
+    }
+}
+
+/// [`Position`] → `TitleSpec.top` 字面量。
+///
+/// 渲染器目前只认像素/百分比与 `top`（→ 默认 24px 留白）；纵向预设
+/// （`middle`/`bottom`）尚未实现，故 [`Position::Center`] / [`Position::Bottom`]
+/// 返回 `None`，避免出现"设置了但没生效"的假象。
+fn title_top_literal(p: Position) -> Option<String> {
+    match p {
+        Position::Pixel(v) => Some(format!("{v}")),
+        Position::Percent(v) => Some(format!("{v}%")),
+        Position::Auto
+        | Position::Top
+        | Position::Center
+        | Position::Left
+        | Position::Right
+        | Position::Bottom => None,
     }
 }
 

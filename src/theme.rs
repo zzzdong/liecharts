@@ -23,7 +23,7 @@ pub struct DesignTokens {
 }
 
 /// 色彩令牌 - ECharts 6 默认配色方案
-/// 参考: https://github.com/apache/echarts/blob/master/src/core/tokens.ts
+/// 参考: <https://github.com/apache/echarts/blob/master/src/core/tokens.ts>
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColorTokens {
     /// 主色调色板（向后兼容，使用 theme）
@@ -178,7 +178,7 @@ pub struct ColorTokens {
     pub axis_minor_split_line: String,
 
     // === 状态颜色 ===
-    /// 强调色（向后兼容，使用 theme[0]）
+    /// 强调色（向后兼容，使用 `theme[0]`）
     pub accent: String,
     /// 成功色
     pub success: String,
@@ -260,7 +260,7 @@ impl Default for DesignTokens {
 
 impl DesignTokens {
     /// ECharts 6 默认设计令牌
-    /// 参考: https://github.com/apache/echarts/blob/master/src/core/tokens.ts
+    /// 参考: <https://github.com/apache/echarts/blob/master/src/core/tokens.ts>
     pub fn echarts_v6() -> Self {
         // ECharts 6 主题色板
         let theme_colors = vec![
@@ -341,7 +341,7 @@ impl DesignTokens {
                 // 边框颜色
                 border: "#b7b9be".to_string(),       // neutral30
                 border_tint: "#cfd2d7".to_string(),  // neutral20
-                border_shade: "#aaacb2".to_string(), // neutral35
+                border_shade: "#9ea0a5".to_string(), // neutral40（v6 borderShade）
 
                 // 背景颜色
                 background: "#f4f7fd".to_string(), // neutral05
@@ -370,12 +370,13 @@ impl DesignTokens {
                 error: "#fb628b".to_string(),   // 主题色7
             },
             text: TextTokens {
+                // v6 `title.textStyle`：18px / bold；`subtextStyle`：12px
                 title_size: 18.0,
-                subtitle_size: 14.0,
+                subtitle_size: 12.0,
                 body_size: 12.0,
                 caption_size: 10.0,
                 font_family: DEFAULT_FONT_STACK.to_string(),
-                title_weight: "normal".to_string(),
+                title_weight: "bold".to_string(),
             },
             spacing: SpacingTokens {
                 xs: 4.0,
@@ -587,7 +588,6 @@ impl Theme {
         let color = tokens.color.primary.clone();
         let bg = tokens.color.background.clone();
         let text_primary = tokens.color.text_primary.clone();
-        let text_secondary = tokens.color.text_secondary.clone();
         let font_family = tokens.text.font_family.clone();
         let title_size = tokens.text.title_size;
         let body_size = tokens.text.body_size;
@@ -666,6 +666,10 @@ impl Theme {
         );
 
         let subtitle_size = tokens.text.subtitle_size;
+        // v6 `title.subtextStyle.color` = `tokens.color.quaternary`
+        let subtitle_color = tokens.color.quaternary.clone();
+        // v6 `legend.textStyle.color` = `tokens.color.secondary`
+        let legend_text_color = tokens.color.secondary.clone();
 
         Self {
             name: name.to_string(),
@@ -679,14 +683,14 @@ impl Theme {
                     font_family: font_family.clone(),
                 },
                 subtext_style: TextStyleTheme {
-                    color: text_secondary.clone(),
+                    color: subtitle_color,
                     font_size: subtitle_size,
                     font_family: font_family.clone(),
                 },
             },
             legend: LegendTheme {
                 text_style: TextStyleTheme {
-                    color: text_primary.clone(),
+                    color: legend_text_color,
                     font_size: body_size,
                     font_family: font_family.clone(),
                 },
@@ -794,21 +798,21 @@ impl Theme {
         }
     }
 
-    /// 获取副标题文本样式
+    /// 获取副标题文本样式（v6 `title.subtextStyle`：`tokens.color.quaternary`）
     pub fn get_subtitle_text_style(&self) -> TextStyleTheme {
         let tokens = self.tokens();
         TextStyleTheme {
-            color: tokens.color.text_secondary.clone(),
+            color: tokens.color.quaternary.clone(),
             font_size: tokens.text.subtitle_size,
             font_family: tokens.text.font_family.clone(),
         }
     }
 
-    /// 获取图例文本样式
+    /// 获取图例文本样式（v6 `legend.textStyle`：`tokens.color.secondary`）
     pub fn get_legend_text_style(&self) -> TextStyleTheme {
         let tokens = self.tokens();
         TextStyleTheme {
-            color: tokens.color.text_primary.clone(),
+            color: tokens.color.secondary.clone(),
             font_size: tokens.text.body_size,
             font_family: tokens.text.font_family.clone(),
         }

@@ -58,11 +58,14 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
         )
     });
     let grids = if grids.is_empty() && has_cartesian_series {
+        // JSON 未给 `grid` 时套用 ECharts v6 默认边距：left `15%` / right `10%`；
+        // top/bottom 交给 `GridPlanner` 用「v6 默认值 65/80 与标题/图例实测占用
+        // 取 max」的口径解析（图例 v6 起贴画布底部）。
         vec![GridSpec {
-            left: Some(crate::pipeline::types::GridEdge::Px(60.0)),
-            right: Some(crate::pipeline::types::GridEdge::Px(60.0)),
-            top: Some(crate::pipeline::types::GridEdge::Px(60.0)),
-            bottom: Some(crate::pipeline::types::GridEdge::Px(60.0)),
+            left: Some(crate::pipeline::types::GridEdge::Pct(15.0)),
+            right: Some(crate::pipeline::types::GridEdge::Pct(10.0)),
+            top: None,
+            bottom: None,
             width: None,
             height: None,
             contain_label: false,
@@ -1161,13 +1164,25 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                     explicit
                 }
             },
-            symbol_size: l
-                .symbol_size
-                .as_ref()
-                .and_then(|v| v.as_number())
-                .unwrap_or(10.0),
-            item_gap: l.item_gap.unwrap_or(10.0),
+            // v6：`itemWidth` / `itemHeight` 默认 25 × 14；`symbolSize` 显式给出时
+            // 覆盖符号框尺寸（兼容旧字段）
+            item_width: l.item_width.unwrap_or(25.0),
+            item_height: l.item_height.unwrap_or(14.0),
+            symbol_size: l.symbol_size.as_ref().and_then(|v| v.as_number()),
+            // v6 `legend.itemGap` 默认 8
+            item_gap: l.item_gap.unwrap_or(8.0),
             formatter: l.formatter.clone(),
+            orient: match l.orient.unwrap_or(crate::option::Orient::Horizontal) {
+                crate::option::Orient::Horizontal => {
+                    crate::pipeline::types::LegendOrient::Horizontal
+                }
+                crate::option::Orient::Vertical => crate::pipeline::types::LegendOrient::Vertical,
+            },
+            // 位置：未指定时水平居中 + 贴画布底部（v6 默认）
+            left: l.left.as_ref().map(position_option_to_string),
+            right: l.right.as_ref().map(position_option_to_string),
+            top: l.top.as_ref().map(position_option_to_string),
+            bottom: l.bottom.as_ref().map(position_option_to_string),
         }),
         background: Color::rgb(255, 255, 255),
         palette: vec![],

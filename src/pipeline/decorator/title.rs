@@ -35,27 +35,56 @@ enum HAlign {
     Right,
 }
 
-/// 解析 ECharts 的长度字面量：`"20%"` 相对 `total`，`"20"` / `20` 为像素。
+/// 标题默认顶部留白（ECharts v6 `title.top` = `tokens.size.m` = 15px）。
+pub const TITLE_TOP_MARGIN: f64 = 15.0;
+
+/// 主/副标题默认间距（ECharts v6 `title.itemGap` 默认 10px）。
+pub const TITLE_ITEM_GAP: f64 = 10.0;
+
+/// 主题令牌 → lievisual 字重（v6 `title.textStyle.fontWeight` 默认 `bold`）。
+fn title_font_weight(theme: &Theme) -> FontWeight {
+    match theme
+        .tokens()
+        .text
+        .title_weight
+        .trim()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "bold" | "bolder" | "700" => FontWeight::Bold,
+        "lighter" | "light" | "300" => FontWeight::Light,
+        _ => FontWeight::Normal,
+    }
+}
+
+/// 解析 ECharts 的长度字面量：`"20%"` 相对 `total`，`"20"` / `"20px"` / `20` 为像素。
 fn parse_len(s: &str, total: f64) -> Option<f64> {
     let s = s.trim();
     if let Some(pct) = s.strip_suffix('%') {
         pct.trim().parse::<f64>().ok().map(|p| total * p / 100.0)
     } else {
-        s.parse::<f64>().ok()
+        // `"50px"` 也接受（ECharts 宽松数值写法）
+        s.strip_suffix("px").unwrap_or(s).trim().parse::<f64>().ok()
     }
 }
 
-/// 解析标题水平位置（ECharts `left` / `right`，缺省 `textAlign` 为 `left`）。
+/// 解析标题水平位置（ECharts `left` / `right`）。
+///
+/// 未指定（或显式 `auto`）时**水平居中**：这是 ECharts 6 起的默认值
+/// （`title.left: 'center'`；v5 为 `left: 0` 贴左），也是本库 builder 入口
+/// [`Title::new`](crate::api::Title::new) 声明的默认（`Position::Center`）。
 fn resolve_h_anchor(title: &crate::pipeline::types::TitleSpec, total: f64) -> HAnchor {
     if let Some(l) = title.left.as_deref() {
         let key = l.trim().to_ascii_lowercase();
         return match key.as_str() {
             "center" | "middle" => HAnchor::Center,
             "right" => HAnchor::Right(0.0),
-            "left" | "auto" => HAnchor::Left(0.0),
+            "left" => HAnchor::Left(0.0),
+            // `auto` 即"未指定"，走默认居中
+            "auto" => HAnchor::Center,
             other => parse_len(other, total)
                 .map(HAnchor::Left)
-                .unwrap_or(HAnchor::Left(0.0)),
+                .unwrap_or(HAnchor::Center),
         };
     }
     if let Some(r) = title.right.as_deref() {
@@ -63,14 +92,14 @@ fn resolve_h_anchor(title: &crate::pipeline::types::TitleSpec, total: f64) -> HA
         return match key.as_str() {
             "center" | "middle" => HAnchor::Center,
             "left" => HAnchor::Left(0.0),
-            "right" | "auto" => HAnchor::Right(0.0),
+            "right" => HAnchor::Right(0.0),
+            "auto" => HAnchor::Center,
             other => parse_len(other, total)
                 .map(HAnchor::Right)
-                .unwrap_or(HAnchor::Right(0.0)),
+                .unwrap_or(HAnchor::Center),
         };
     }
-    // 未指定 left/right：ECharts 的 `left` 默认 'auto' + `textAlign` 默认 'left' → 贴左
-    HAnchor::Left(0.0)
+    HAnchor::Center
 }
 
 /// 由锚点、文本宽度与 `textAlign` 求文本块左边缘 x。
@@ -125,22 +154,22 @@ pub fn render_title(
         // 水平锚点（`left` / `right` / `textAlign`）
         let h_anchor = resolve_h_anchor(title, width as f64);
 
-        // 垂直起点：显式 `top` 优先（像素或百分比），否则沿用既有 24px 留白
+        // 垂直起点：显式 `top` 优先（像素或百分比），否则用 v6 默认 15px
         let mut y_offset = match title.top.as_deref().map(str::trim) {
             Some(v) if !v.eq_ignore_ascii_case("auto") && !v.eq_ignore_ascii_case("top") => {
-                parse_len(v, height as f64).unwrap_or(24.0)
+                parse_len(v, height as f64).unwrap_or(TITLE_TOP_MARGIN)
             }
-            _ => 24.0,
+            _ => TITLE_TOP_MARGIN,
         };
 
         if let Some(text) = &title.text {
-            // 构建文本样式
+            // 构建文本样式（v6 `title.textStyle.fontWeight` 默认 bold）
             let mut main_text_style = TextStyle::new(
                 title_color,
                 title.font_size.unwrap_or(title_style.font_size),
                 title_style.font_family.clone(),
             );
-            main_text_style.font_weight = FontWeight::Normal;
+            main_text_style.font_weight = title_font_weight(theme);
 
             let mut lv_style = main_text_style.clone();
             if lv_style.font_family.trim().is_empty()
@@ -200,8 +229,8 @@ pub fn render_title(
                 width as f64,
                 layout.width,
             );
-            // `itemGap` 显式指定时按之，否则沿用既有 0.1 行高间距
-            let gap = title.item_gap.unwrap_or(layout.height * 0.1);
+            // `itemGap` 显式指定时按之，否则用 v6 默认 10px
+            let gap = title.item_gap.unwrap_or(TITLE_ITEM_GAP);
             let position_y = y_offset + gap;
             title_height += gap + layout.height;
             elements.push(

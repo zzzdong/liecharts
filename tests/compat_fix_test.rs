@@ -511,8 +511,8 @@ fn pie_label_defaults_to_shown_and_bar_to_hidden() {
     );
 }
 
-/// 标题默认**左对齐**（ECharts：`left:'auto'` + `textAlign:'left'`），
-/// `left:'center'` / `left:20` 生效，`show:false` 不渲染。
+/// 标题默认**水平居中**（ECharts 6 起 `title.left` 默认 `'center'`，v5 为贴左），
+/// `left:'left'` / `left:20` 生效，`show:false` 不渲染。
 #[test]
 fn title_position_and_show_are_honoured() {
     let tail = r#","xAxis":{"type":"category","data":["a"]},"yAxis":{"type":"value"},
@@ -531,11 +531,17 @@ fn title_position_and_show_are_honoured() {
         r#"{{"title":{{"text":"T","left":"center"}}{tail}"#
     ))
     .expect("应有标题");
+    let le =
+        x_of_title(&format!(r#"{{"title":{{"text":"T","left":"left"}}{tail}"#)).expect("应有标题");
     let l = x_of_title(&format!(r#"{{"title":{{"text":"T","left":20}}{tail}"#)).expect("应有标题");
     let hidden = x_of_title(&format!(r#"{{"title":{{"text":"T","show":false}}{tail}"#));
 
-    assert!(d < 5.0, "默认标题应贴左，实际 x={d}");
-    assert!(c > 200.0, "left:center 应居中，实际 x={c}");
+    assert!(
+        (d - c).abs() < 1.0,
+        "默认标题应与 left:center 同位置（居中），实际 default={d} center={c}"
+    );
+    assert!(d > 200.0, "默认标题应居中，实际 x={d}");
+    assert!(le < 5.0, "left:'left' 应贴左，实际 x={le}");
     assert!((l - 20.0).abs() < 1.0, "left:20 应生效，实际 x={l}");
     assert!(hidden.is_none(), "show:false 时不应渲染标题");
 }
@@ -592,6 +598,147 @@ fn category_axis_has_no_split_line_by_default() {
     );
 }
 
+/// 图例 `orient` / `itemWidth` / `itemHeight`：垂直排列成单列，符号框按配置尺寸。
+#[test]
+fn legend_orient_vertical_and_item_size() {
+    let json = r#"{"xAxis":{"type":"category","data":["x"]},"yAxis":{"type":"value"},
+        "legend":{"data":["a","b"],"orient":"vertical","itemWidth":40,"itemHeight":20},
+        "series":[{"name":"a","type":"bar","data":[1]},
+                  {"name":"b","type":"bar","data":[2]}]}"#;
+    let nodes = render_json(json, 800, 500);
+
+    // 柱状系列的图例符号 = 40×20 的矩形（`itemWidth` × `itemHeight`）
+    let boxes: Vec<Rect> = rects(&nodes)
+        .into_iter()
+        .filter(|(r, _)| (r.width() - 40.0).abs() < 0.1 && (r.height() - 20.0).abs() < 0.1)
+        .map(|(r, _)| r)
+        .collect();
+    assert_eq!(boxes.len(), 2, "两个系列应各有一个 40×20 的图例符号框");
+    assert!(
+        (boxes[0].x0 - boxes[1].x0).abs() < 0.1,
+        "垂直排列时各项左缘应对齐：{:?} vs {:?}",
+        boxes[0],
+        boxes[1]
+    );
+    assert!(
+        (boxes[0].y0 - boxes[1].y0).abs() > 20.0,
+        "垂直排列时各项应各占一行"
+    );
+
+    // 水平（默认）：同一行内 y 相同、x 递增
+    let horizontal = render_json(
+        r#"{"xAxis":{"type":"category","data":["x"]},"yAxis":{"type":"value"},
+            "legend":{"data":["a","b"]},
+            "series":[{"name":"a","type":"bar","data":[1]},
+                      {"name":"b","type":"bar","data":[2]}]}"#,
+        800,
+        500,
+    );
+    let h_boxes: Vec<Rect> = rects(&horizontal)
+        .into_iter()
+        .filter(|(r, _)| (r.width() - 25.0).abs() < 0.1 && (r.height() - 14.0).abs() < 0.1)
+        .map(|(r, _)| r)
+        .collect();
+    assert_eq!(h_boxes.len(), 2, "默认水平排列应有 2 个 25×14 符号框");
+    assert!(
+        (h_boxes[0].y0 - h_boxes[1].y0).abs() < 0.1,
+        "水平排列各项同一行"
+    );
+    assert!(h_boxes[1].x0 > h_boxes[0].x0, "水平排列各项 x 递增");
+}
+
+/// 图例符号形状跟随系列类型：折线 → 线段 + 中点标记，饼图 → 圆，散点 → 圆。
+#[test]
+fn legend_symbol_shape_follows_chart_type() {
+    let line = render_json(
+        r#"{"legend":{"data":["s1"]},
+            "xAxis":{"type":"category","data":["x"]},"yAxis":{"type":"value"},
+            "series":[{"name":"s1","type":"line","data":[1]}]}"#,
+        800,
+        500,
+    );
+    assert!(
+        rects(&line)
+            .iter()
+            .any(|(r, _)| (r.width() - 25.0).abs() < 0.1 && r.height() < 5.0),
+        "折线系列的图例符号应为线段（宽 itemWidth、细高）"
+    );
+    assert!(
+        circles(&line).iter().any(|(_, r, _)| *r > 1.0),
+        "折线系列的图例符号应带中点标记"
+    );
+
+    let pie = render_json(
+        r#"{"legend":{"data":["甲"]},
+            "series":[{"type":"pie","data":[{"name":"甲","value":1}]}]}"#,
+        800,
+        500,
+    );
+    // 饼图符号 = 圆，直径取符号框短边 `itemHeight`(14) → 半径 7
+    assert!(
+        circles(&pie).iter().any(|(_, r, _)| (*r - 7.0).abs() < 0.1),
+        "饼图系列的图例符号应为直径 14 的圆"
+    );
+}
+
+/// 图例色块必须与它标注的系列**同名匹配**。
+///
+/// 回归：图例曾按**项下标**取色，`legend.data` 重排（`["s3","s1"]`）或只列子集时，
+/// 色块与所标注的系列对不上（表现为图例颜色与实际线/柱颜色不一致）。
+#[test]
+fn legend_symbol_colors_follow_series_names() {
+    fn hex_norm(s: &str) -> String {
+        s.trim_start_matches('#').to_ascii_lowercase()
+    }
+
+    // 折线系列的图例符号 = 线段（`itemWidth` 25 × 线宽 2.5）+ 中点标记
+    let symbols = |json: &str| -> Vec<String> {
+        rects(&render_json(json, 800, 500))
+            .into_iter()
+            .filter(|(r, _)| (r.width() - 25.0).abs() < 0.1 && r.height() < 5.0)
+            .filter_map(|(_, s)| match s.fill.as_ref() {
+                Some(Fill::Solid(c)) => Some(solid_color(c)),
+                _ => None,
+            })
+            .collect()
+    };
+
+    let palette = liecharts::theme::Theme::echarts().color;
+    let got = symbols(
+        r#"{"xAxis":{"type":"category","data":["x"]},"yAxis":{"type":"value"},
+            "legend":{"data":["s3","s1"]},
+            "series":[{"name":"s1","type":"line","data":[1]},
+                      {"name":"s2","type":"line","data":[2]},
+                      {"name":"s3","type":"line","data":[3]}]}"#,
+    );
+    assert_eq!(got.len(), 2, "应有两个图例色块，实际 {got:?}");
+    assert_eq!(
+        hex_norm(&got[0]),
+        hex_norm(&palette[2]),
+        "s3 的图例色应等于第 3 个系列色"
+    );
+    assert_eq!(
+        hex_norm(&got[1]),
+        hex_norm(&palette[0]),
+        "s1 的图例色应等于第 1 个系列色"
+    );
+
+    // 只列子集（跳过 s2）同样按名称对齐
+    let subset = symbols(
+        r#"{"xAxis":{"type":"category","data":["x"]},"yAxis":{"type":"value"},
+            "legend":{"data":["s3"]},
+            "series":[{"name":"s1","type":"line","data":[1]},
+                      {"name":"s2","type":"line","data":[2]},
+                      {"name":"s3","type":"line","data":[3]}]}"#,
+    );
+    assert_eq!(subset.len(), 1);
+    assert_eq!(
+        hex_norm(&subset[0]),
+        hex_norm(&palette[2]),
+        "子集图例也应取 s3 的系列色"
+    );
+}
+
 /// `axisLabel.interval` 显式抽稀生效。
 #[test]
 fn axis_label_interval_is_honoured() {
@@ -626,11 +773,12 @@ fn bar_default_width_and_gap_match_echarts() {
             "series":[{"type":"bar","data":[10,20,30]}]}"#,
     );
     assert_eq!(one.len(), 3, "应有 3 根柱");
-    // 绘图区 x=[60,740]，3 个类目 → 槽宽 226.67；barCategoryGap 20% → 柱宽 181.33
+    // v6 默认 grid：left 15%(120) / right 10%(80) → 绘图区 x=[120,720]，
+    // 3 个类目 → 槽宽 200；barCategoryGap 20% → 柱宽 160
     let w = one[0].0.width();
     assert!(
-        (w - 181.33).abs() < 1.5,
-        "单系列默认柱宽应为槽宽 80%（≈181.3），实际 {w}"
+        (w - 160.0).abs() < 1.5,
+        "单系列默认柱宽应为槽宽 80%（≈160），实际 {w}"
     );
 
     let two = bar_rects(

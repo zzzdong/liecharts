@@ -2,6 +2,7 @@ use liecharts::prelude::*;
 
 #[path = "common/mod.rs"]
 mod common;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 测试 1: 基础柱状图
     let json_basic_bar = r##"

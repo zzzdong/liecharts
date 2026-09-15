@@ -84,7 +84,13 @@ fn grid_and_data_share_geometry() {
     assert_eq!(rings.len(), 5);
     assert!(!data.is_empty());
 
-    // 所有网格/数据多边形起点都在 -90°（顶部）维度方向上：x = 圆心 x
+    // 所有网格/数据多边形起点都在 -90°（顶部）维度方向上：x = 圆心 x。
+    // 圆心随画布/grid 边距变化，故用最内圈顶点推导而非硬编码画布中线。
+    let center_x = rings[0][0].0;
+    assert!(
+        center_x > 0.0 && center_x < 800.0,
+        "圆心 x 应落在画布内，实际 {center_x}"
+    );
     for (i, p) in paths.iter().enumerate() {
         assert_eq!(
             p.len(),
@@ -93,8 +99,9 @@ fn grid_and_data_share_geometry() {
             p.len()
         );
         assert!(
-            (p[0].0 - 400.0).abs() < 1e-6,
-            "path[{i}] 起点应位于顶部维度方向"
+            (p[0].0 - center_x).abs() < 1e-6,
+            "path[{i}] 起点应位于顶部维度方向且与网格同心，实际 x={} 圆心 x={center_x}",
+            p[0].0
         );
     }
 

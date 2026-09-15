@@ -17,16 +17,19 @@
 ### 3. 图例区域
 - [ ] 图例项数量与数据一致
 - [ ] 图例文本内容正确
-- [ ] 图例颜色与系列/扇区颜色匹配
-- [ ] 图例整体水平居中
+- [ ] 图例颜色与系列/扇区颜色匹配（按**名称**回查，`legend.data` 重排/取子集也不错位）
+- [ ] 图例默认贴画布**底部**居中（ECharts v6），`left/right/top/bottom` 可定位
+- [ ] 图例符号形状跟随系列类型：折线 = 线段 + 中点标记、柱状/热力 = 矩形、饼图/散点 = 圆、K 线 = 竖线 + 实体
 - [ ] symbol 和文本垂直对齐（以 y 为中心）
 - [ ] symbol 和文本间距合理（8px）
 
 **图例布局算法**：
 1. 使用 `create_text_layout` 测量每个文本的实际宽度
-2. 计算每个 item 宽度：`symbol_size + item_gap + text_width + padding * 2`
-3. 计算整体起始位置：`(width - total_width) / 2`
-4. 文本使用 Left 对齐，位置在 symbol 右侧
+2. 符号框默认 `25 × 14`（v6 `itemWidth`/`itemHeight`）；显式 `symbolSize` 时覆盖为正方形
+3. 计算每个 item 宽度：`itemWidth + symbol_text_gap + text_width + padding * 2`
+4. `orient: horizontal`（默认）按可用宽度贪心换行、逐行定位；`orient: vertical` 每项独占一行、左缘对齐
+5. 整块按 `left/right/top/bottom` 锚定（预设 / 像素 / 百分比），默认水平居中 + 贴底 15px
+6. 文本使用 Left 对齐，位置在 symbol 右侧
 
 ### 4. 坐标轴
 - [ ] X轴刻度数量和位置正确

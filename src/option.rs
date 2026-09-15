@@ -2113,10 +2113,11 @@ pub struct GridOption {
 impl Default for GridOption {
     fn default() -> Self {
         Self {
-            left: Some(PositionOption::percent(10.0)),
+            // ECharts v6 `grid` 默认边距：left `15%` / right `10%` / top 65 / bottom 80
+            left: Some(PositionOption::percent(15.0)),
             right: Some(PositionOption::percent(10.0)),
-            top: Some(PositionOption::percent(15.0)),
-            bottom: Some(PositionOption::percent(15.0)),
+            top: Some(PositionOption::Pixel(65.0)),
+            bottom: Some(PositionOption::Pixel(80.0)),
             width: None,
             height: None,
             contain_label: Some(true),

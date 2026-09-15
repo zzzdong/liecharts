@@ -10,11 +10,12 @@ mod legend;
 mod title;
 
 pub use axis_name::render_axis_name;
-use legend::LegendLayout;
+use legend::LegendVerticalZone;
 pub use legend::measure_legend_layout;
 pub use legend::render_legend;
 use lievisual::text::measure_text;
 pub use title::render_title;
+use title::{TITLE_ITEM_GAP, TITLE_TOP_MARGIN};
 
 use crate::{
     SceneNode,
@@ -79,8 +80,8 @@ pub fn render_all_decorators(
     let (title_elems, title_height) = render_title(spec, width, height, theme, colors);
     all_elements.extend(title_elems);
 
-    // 2. 图例（依赖标题高度确定 Y 位置）
-    all_elements.extend(render_legend(spec, width, colors, theme, title_height));
+    // 2. 图例（贴画布底部，与标题高度无关）
+    all_elements.extend(render_legend(spec, width, height, colors, theme));
 
     // 3. 轴名称
     all_elements.extend(render_axis_name(spec, width, height, specs, colors, theme));
@@ -88,68 +89,73 @@ pub fn render_all_decorators(
     (all_elements, title_height)
 }
 
-/// 估计标题和图例占用的顶部空间高度（像素）
+/// 估计**标题**占用的顶部空间高度（像素）
 ///
-/// 在 GridPlanner 之前调用，确保 subplot 的 top margin 足够容纳
-/// 标题和图例，避免重叠。
-///
-/// P1 起图例高度按**真实换行行数**计算（与 `render_legend` 共用
-/// `wrap_legend_rows` 分行逻辑与常量）：图例项总宽超出画布时换行，
-/// 行数计入顶部预留，避免图例与绘图区重叠。宽度过小无法度量时
-/// 按单行兜底。
-pub fn estimate_header_height(spec: &ChartSpec, theme: &Theme, width: f64) -> f64 {
+/// 在 GridPlanner 之前调用，确保 subplot 的 top margin 足够容纳标题，
+/// 避免重叠。v6 起图例默认贴画布底部，不再占用头部空间（见
+/// [`estimate_footer_height`]）。
+pub fn estimate_header_height(spec: &ChartSpec, theme: &Theme) -> f64 {
     let mut height = 0.0;
 
-    // 标题占用
+    // 标题占用（顶部留白与主/副标题间距均与 `render_title` 同源）
     if let Some(title) = &spec.title {
-        let title_style = theme.get_title_text_style();
+        let theme_title_style = theme.get_title_text_style();
         let subtitle_style = theme.get_subtitle_text_style();
 
-        // 标题顶部内边距 24px
-        height += 24.0;
+        // v6 `title.top` = tokens.size.m(15px)
+        height += TITLE_TOP_MARGIN;
 
         // 主标题高度（基于 font_size + 行距）
         if title.text.is_some() {
-            height += title_style.font_size * 1.4;
+            height += theme_title_style.font_size * 1.4;
         }
 
-        // 副标题高度
+        // 副标题高度（含 v6 `title.itemGap` 默认 10px 的间距）
         if title.subtext.is_some() {
-            height += subtitle_style.font_size * 1.4 + 2.0; // 2px 间距
+            height += title.item_gap.unwrap_or(TITLE_ITEM_GAP) + subtitle_style.font_size * 1.4;
         }
     }
 
-    // 图例占用（在标题下方，有 16px 间距）
-    let legend_layout =
-        legend::measure_legend_layout(spec, width as u32, theme).unwrap_or_else(|| {
-            // 无图例或 auto 单行兜底：保持旧行高估算
-            let legend_style = theme.get_legend_text_style();
-            let has_legend = spec
-                .legend
-                .as_ref()
-                .is_some_and(|l| l.show && !l.data.is_empty());
-            if has_legend {
-                LegendLayout {
-                    rows: 1,
-                    row_height: legend_style.font_size * 1.4 + 16.0,
-                    total_height: legend_style.font_size * 1.4 + 16.0,
-                }
-            } else {
-                LegendLayout {
-                    rows: 0,
-                    row_height: 0.0,
-                    total_height: 0.0,
-                }
-            }
-        });
-
-    if legend_layout.rows > 0 {
-        if height > 0.0 {
-            height += 16.0; // 标题和图例之间的间距
-        }
-        height += legend_layout.total_height;
+    // 图例被显式锚定在顶部时（`legend.top`）也占用头部空间，取两者下缘的较大值
+    if let Some(legend) = &spec.legend
+        && legend::legend_vertical_zone(legend) == LegendVerticalZone::Top
+        && let Some(layout) = legend::measure_legend_layout(spec, spec.width, theme)
+        && layout.rows > 0
+    {
+        let block_top = legend::legend_block_top(legend, layout.total_height, spec.height as f64);
+        height = height.max(block_top + layout.total_height);
     }
 
-    // 最小值为 0，空标题/图例时返回 0
+    // 最小值为 0，空标题时返回 0
     height
+}
+
+/// 图例块与绘图区之间的呼吸间距（图例贴底时计入底部预留）
+const LEGEND_PLOT_GAP: f64 = 8.0;
+
+/// 估计**图例**占用的底部空间高度（像素）
+///
+/// v6 起 `legend` 默认位于画布底部居中（`bottom: tokens.size.m`），因此它消耗的
+/// 是底部空间而非头部空间：这里返回「图例块高度 + 其下留白 + 与绘图区间距」。
+/// 单行图例时该值小于 v6 的 `grid.bottom`（80px）默认值，两者取 max 后默认输出
+/// 与 v6 一致；多行（换行）图例才会超过 80px，从而避免与绘图区重叠。
+///
+/// 图例被显式配置在顶部时改由 [`estimate_header_height`] 预留；配置在画布中部
+/// 时不做预留（与 ECharts 一致：中部图例允许与绘图区重叠）。
+pub fn estimate_footer_height(spec: &ChartSpec, theme: &Theme, width: f64) -> f64 {
+    let Some(legend) = &spec.legend else {
+        return 0.0;
+    };
+    if legend::legend_vertical_zone(legend) != LegendVerticalZone::Bottom {
+        return 0.0;
+    }
+    match legend::measure_legend_layout(spec, width as u32, theme) {
+        Some(layout) if layout.rows > 0 => {
+            let canvas_h = spec.height as f64;
+            let block_top = legend::legend_block_top(legend, layout.total_height, canvas_h);
+            let below = (canvas_h - block_top - layout.total_height).max(0.0);
+            layout.total_height + below + LEGEND_PLOT_GAP
+        }
+        _ => 0.0,
+    }
 }

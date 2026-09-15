@@ -113,9 +113,21 @@ pub struct PlanOutput {
 
 /// 绘图区顶部的最小留白（像素）。
 ///
-/// `default_bounds` 与 `resolve_position` 必须共用此下限：Hug 迭代写回默认
-/// `GridSpec` 时会从前者切到后者，口径不一致会让绘图区在两轮之间跳动。
-const HEADER_MIN_TOP: f64 = 40.0;
+/// ECharts v6 `grid.top` 默认 65；标题（`title.top` = 15）比它更靠上，因此该值
+/// 同时充当标题遮挡的下限。`default_bounds` 与 `resolve_position` 必须共用此
+/// 下限：Hug 迭代写回默认 `GridSpec` 时会从前者切到后者，口径不一致会让绘图区
+/// 在两轮之间跳动。
+const HEADER_MIN_TOP: f64 = 65.0;
+
+/// 绘图区底部的最小留白（像素）= ECharts v6 `grid.bottom` 默认值。
+///
+/// v6 起图例默认贴画布底部（`legend.bottom` = 15），图例高度由
+/// [`Self::footer_height`] 传入，与本文下限取 max（单行图例时即 80，与 v6 一致）。
+const GRID_BOTTOM_MIN: f64 = 80.0;
+
+/// 绘图区左右默认留白（ECharts v6 `grid.left` / `grid.right` 默认 `'15%'` / `'10%'`）。
+const GRID_LEFT_RATIO: f64 = 0.15;
+const GRID_RIGHT_RATIO: f64 = 0.10;
 
 /// 纯数学画布切分器
 ///
@@ -126,12 +138,13 @@ const HEADER_MIN_TOP: f64 = 40.0;
 /// 阶段 2 只依赖：画布尺寸、grid 配置、轴标签的实测尺寸。
 /// **不接触系列数据、刻度计算**。
 ///
-/// header_height 参数告诉 planner 顶部有多少空间被标题/图例占据，
-/// 确保 subplot 不会与这些装饰元素重叠。
+/// `header_height` / `footer_height` 告诉 planner 顶部（标题）与底部（图例，
+/// v6 默认贴底）各有多少空间被装饰元素占据，确保 subplot 不会与之重叠。
 pub struct GridPlanner<'a> {
     total_width: u32,
     total_height: u32,
     header_height: f64,
+    footer_height: f64,
     grids: &'a [GridSpec],
 }
 
@@ -141,7 +154,36 @@ impl<'a> GridPlanner<'a> {
             total_width: width,
             total_height: height,
             header_height: header_height.max(0.0),
+            footer_height: 0.0,
             grids,
+        }
+    }
+
+    /// 声明底部装饰元素（图例）占用的空间，默认 bottom 边距按需放大。
+    pub fn with_footer_height(mut self, footer_height: f64) -> Self {
+        self.footer_height = footer_height.max(0.0);
+        self
+    }
+
+    /// 默认顶部边距：标题占用与 v6 `grid.top` 下限取 max。
+    fn top_default(&self) -> f64 {
+        self.header_height.max(HEADER_MIN_TOP)
+    }
+
+    /// 默认底部边距：图例占用与 v6 `grid.bottom` 下限取 max。
+    fn bottom_default(&self) -> f64 {
+        self.footer_height.max(GRID_BOTTOM_MIN)
+    }
+
+    /// 该 subplot 的左右边距是否为相对值（`None` = 默认百分比，或显式 `Pct`）。
+    ///
+    /// 影响 Hug 加宽画布时的换算：相对边距下画布增量需按绘图区占比放大。
+    fn has_relative_h_margins(&self, idx: usize) -> bool {
+        let relative = |edge: Option<GridEdge>| !matches!(edge, Some(GridEdge::Px(_)));
+        match self.grids.get(idx) {
+            Some(grid) => relative(grid.left) && relative(grid.right),
+            // 无 GridSpec（默认单 subplot）：使用 v6 默认百分比边距
+            None => true,
         }
     }
 
@@ -302,12 +344,23 @@ impl<'a> GridPlanner<'a> {
                     let needed_width = n as f64 * max_w;
                     let current_width = spec.bounds.width();
                     if needed_width > current_width {
-                        let grow = needed_width - current_width;
+                        let gap = needed_width - current_width;
+                        // 左右边距为相对值（`None` = v6 默认 15%/10%，或显式 `Pct`）时，
+                        // 扩画布会让边距同比例变大、绘图区只增长 `plot/canvas` 的比例，
+                        // 因此画布增量需按该比例放大，否则每轮只补上一部分（历史上 4 轮
+                        // 迭代上限内无法收敛，标签仍被判为需要旋转）。绝对边距（`Px`）
+                        // 下比例恒为 1，行为不变。
+                        let canvas_grow = if self.has_relative_h_margins(si) {
+                            let ratio = (current_width / total_w).clamp(0.1, 1.0);
+                            (gap + 2.0) / ratio
+                        } else {
+                            gap
+                        };
                         // 只加宽画布、保持边距不变（grid_* 不写回）。
                         // 同一 subplot 的多个 X 轴共享同一绘图区宽度，需求相同
                         // → 取 max 而非累加，避免双 X 轴时画布被过度加宽。
-                        demand.grow_left = demand.grow_left.max(grow * 0.5);
-                        demand.grow_right = demand.grow_right.max(grow * 0.5);
+                        demand.grow_left = demand.grow_left.max(canvas_grow * 0.5);
+                        demand.grow_right = demand.grow_right.max(canvas_grow * 0.5);
                     }
                 }
 
@@ -426,30 +479,30 @@ impl<'a> GridPlanner<'a> {
         demands
     }
 
-    /// 无 grid 配置时的默认区域
+    /// 无 grid 配置时的默认区域（ECharts v6 `grid` 默认边距）
     ///
-    /// left/right/bottom: 留 60px 边距供轴标签和名称使用
-    /// top: 使用 header_height（下限 40px，与 [`Self::resolve_position`] 一致，
-    ///      避免 Hug 迭代过程中因补写默认 `GridSpec` 导致绘图区上下跳动）
+    /// left `15%` / right `10%` / top 65 / bottom 80；top 与 bottom 分别与
+    /// [`Self::top_default`]、[`Self::bottom_default`] 同口径，避免 Hug 迭代中
+    /// 因补写默认 `GridSpec` 导致绘图区上下跳动。
     fn default_bounds(&self) -> Rect {
         let total_w = self.total_width as f64;
         let total_h = self.total_height as f64;
-        let margin = 60.0;
-        let top = self.header_height.max(HEADER_MIN_TOP);
-        Rect::new(margin, top, total_w - margin, total_h - margin)
+        let left = total_w * GRID_LEFT_RATIO;
+        let right = total_w * GRID_RIGHT_RATIO;
+        let top = self.top_default();
+        let bottom = self.bottom_default();
+        Rect::new(left, top, total_w - right, total_h - bottom)
     }
 
     /// 根据 GridSpec 计算 subplot 像素边界
     ///
     /// - 当用户显式指定 left/right/top/bottom 时，直接使用
-    /// - 当值为 None（auto）时：
-    ///   - top 使用 header_height（标题/图例空间）
-    ///   - 若 contain_label=true，left/bottom 使用更大默认值以容纳轴标签
-    ///   - 否则使用标准边距
+    /// - 当值为 None（auto）时套用 ECharts v6 默认：left `15%` / right `10%` /
+    ///   top 65 / bottom 80（top 与标题占用、bottom 与图例占用取 max）
     ///
-    /// 注意：用户指定的 bottom 值被视为子图整体（含坐标轴标签）的底部边距，
-    /// 因此计算图表区域时会额外减去标签占用的空间（约 28px），
-    /// 确保坐标轴标签不会被画布底部截断。
+    /// `contain_label` 不再影响基础边距：v6 已废弃该字段（改由 `outerBounds`
+    /// 控制），本库等价语义由 [`Self::adjust_label_margins`] 按实测标签尺寸
+    /// 自动包含（溢出即收缩绘图区 / Hug 上报需求）。
     ///
     /// P2b：边距以 [`GridEdge`] 延迟解析（`Pct` 相对画布，随画布缩放跟随）；
     /// 移除了对显式边距叠加的 `LABEL_*_PADDING` —— 标签留白统一由
@@ -459,17 +512,18 @@ impl<'a> GridPlanner<'a> {
         let total_w = self.total_width as f64;
         let total_h = self.total_height as f64;
 
-        // 根据 contain_label 决定默认边距
-        // contain_label=true 时，边距需要足够容纳轴刻度标签
-        let default_left = if grid.contain_label { 70.0 } else { 60.0 };
-        let default_right = if grid.contain_label { 50.0 } else { 60.0 };
-        let default_bottom = 60.0;
+        // 默认边距 = ECharts v6 `grid` 默认值（left 15% / right 10% / top 65 /
+        // bottom 80）；轴标签放不下时由 [`Self::adjust_label_margins`] 按实测需求
+        // 继续放大（Fixed 收缩绘图区 / Hug 上报需求）。
+        let default_left = total_w * GRID_LEFT_RATIO;
+        let default_right = total_w * GRID_RIGHT_RATIO;
+        let default_bottom = self.bottom_default();
 
         let left = resolve_edge(grid.left, default_left, total_w);
-        // 顶部默认 = `header_height`（下限 [`HEADER_MIN_TOP`]）。注意这是绝大多数
-        // 图表的实际路径（`Chart` 未显式设 grid 时 `to_chart_spec` 会造一个四边全
-        // None 的 `GridSpec`），改动它会影响大量既有输出。
-        let top = resolve_edge(grid.top, self.header_height.max(HEADER_MIN_TOP), total_h);
+        // 顶部默认 = max(标题占用, 65px)（v6 `grid.top`）。注意这是绝大多数图表的
+        // 实际路径（`Chart` 未显式设 grid 时 `to_chart_spec` 会造一个四边全 None 的
+        // `GridSpec`），改动它会影响大量既有输出。
+        let top = resolve_edge(grid.top, self.top_default(), total_h);
 
         // ECharts 语义：显式 `width`/`height` 优先于由 `right`/`bottom` 推得的尺寸。
         // 未指定时保持原行为（`total - left - right`），既有输出逐字节不变。
@@ -610,21 +664,23 @@ mod tests {
         let planner = GridPlanner::new(300, 200, 40.0, &grids);
         let out = plan_with_mode(&planner, &[], &[], &y_axes, FitMode::Hug);
 
+        // 默认左边距 = v6 `grid.left` 15% × 300
+        const DEFAULT_LEFT: f64 = 45.0;
         let d = &out.demands[0];
         assert!(d.has_shortfall(), "Hug 应上报缺口");
         let GridEdge::Px(target_x0) = d.grid_left.expect("左侧应有目标边距") else {
             panic!("Hug 目标边距应为绝对像素");
         };
         assert!(
-            target_x0 > 60.0,
-            "目标左边距应大于默认 60，实际 {target_x0}"
+            target_x0 > DEFAULT_LEFT,
+            "目标左边距应大于默认 {DEFAULT_LEFT}，实际 {target_x0}"
         );
         assert!(
-            (d.grow_left - (target_x0 - 60.0)).abs() < 1e-6,
+            (d.grow_left - (target_x0 - DEFAULT_LEFT)).abs() < 1e-6,
             "grow_left 应等于目标边距与默认边距之差"
         );
         // Hug 不收缩绘图区：x0 保持默认边距
-        assert!((out.specs[0].bounds.x0 - 60.0).abs() < 1e-6);
+        assert!((out.specs[0].bounds.x0 - DEFAULT_LEFT).abs() < 1e-6);
     }
 
     #[test]
@@ -804,7 +860,11 @@ mod tests {
         let planner = GridPlanner::new(800, 600, 60.0, &grids);
         let specs = plan(&planner, &[], &x_axes, &[]);
 
-        assert!((specs[0].bounds.y1 - 540.0).abs() < 1e-6);
+        // 默认底边距 = v6 `grid.bottom`（80），故 y1 = 600 - 80
+        assert!((specs[0].bounds.y1 - 520.0).abs() < 1e-6);
+        // 默认左右边距 = v6 `grid.left` 15% / `grid.right` 10%
+        assert!((specs[0].bounds.x0 - 120.0).abs() < 1e-6);
+        assert!((specs[0].bounds.x1 - 720.0).abs() < 1e-6);
     }
 
     #[test]
@@ -935,24 +995,53 @@ mod tests {
     }
 
     #[test]
-    fn test_contain_label_increases_margins() {
-        let grids = vec![GridSpec {
-            left: None,
-            right: None,
-            top: None,
-            bottom: None,
-            width: None,
-            height: None,
-            contain_label: true,
-        }];
-        let planner = GridPlanner::new(800, 600, 100.0, &grids);
+    fn test_default_margins_follow_echarts_v6() {
+        // 边距默认值对齐 ECharts v6：left 15% / right 10% / top 65 / bottom 80；
+        // `contain_label` 在 v6 已废弃（改 `outerBounds`），不再改变基础边距
+        // ——标签包含由 `adjust_label_margins` 按实测尺寸完成。
+        let grids_for = |contain_label: bool| {
+            vec![GridSpec {
+                left: None,
+                right: None,
+                top: None,
+                bottom: None,
+                width: None,
+                height: None,
+                contain_label,
+            }]
+        };
+        let grids_true = grids_for(true);
+        let planner = GridPlanner::new(800, 600, 100.0, &grids_true);
         let specs = plan(&planner, &[], &[], &[]);
         let s = &specs[0];
 
-        // contain_label=true 时 left 默认 70，right 默认 50，bottom 默认 60
-        assert!((s.bounds.x0 - 70.0).abs() < 1.0);
-        assert!((s.bounds.x1 - 750.0).abs() < 1.0); // 800 - 50
-        assert!((s.bounds.y0 - 100.0).abs() < 1.0); // header_height
-        assert!((s.bounds.y1 - 540.0).abs() < 1.0); // 600 - 60
+        assert!((s.bounds.x0 - 120.0).abs() < 1.0); // 800 × 15%
+        assert!((s.bounds.x1 - 720.0).abs() < 1.0); // 800 - 800×10%
+        assert!((s.bounds.y0 - 100.0).abs() < 1.0); // max(header 100, v6 65)
+        assert!((s.bounds.y1 - 520.0).abs() < 1.0); // 600 - max(footer 0, v6 80)
+
+        let grids_false = grids_for(false);
+        let planner_false = GridPlanner::new(800, 600, 100.0, &grids_false);
+        let specs_false = plan(&planner_false, &[], &[], &[]);
+        assert_eq!(
+            s.bounds, specs_false[0].bounds,
+            "contain_label 应不影响基础边距"
+        );
+    }
+
+    #[test]
+    fn test_footer_reserves_bottom_space_for_bottom_legend() {
+        // v6 图例贴画布底部：图例占用高于 `grid.bottom`(80) 时（如换行的多行图例）
+        // 底部边距应随之放大，避免图例与绘图区重叠
+        let grids = make_grids(1);
+        let planner =
+            GridPlanner::new(800, 600, 0.0, &grids).with_footer_height(15.0 + 33.0 * 2.0 + 8.0);
+        let specs = plan(&planner, &[], &[], &[]);
+        assert!((specs[0].bounds.y1 - (600.0 - 89.0)).abs() < 1e-6);
+
+        // 单行图例（占用 < 80）时保持 v6 默认 80
+        let planner_single = GridPlanner::new(800, 600, 0.0, &grids).with_footer_height(56.0);
+        let specs_single = plan(&planner_single, &[], &[], &[]);
+        assert!((specs_single[0].bounds.y1 - 520.0).abs() < 1e-6);
     }
 }

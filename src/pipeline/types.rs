@@ -1042,14 +1042,40 @@ impl Default for TitleSpec {
     }
 }
 
+/// 图例排列方向（ECharts `legend.orient`）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LegendOrient {
+    /// 水平单行排列，超出可用宽度时自动换行（默认）
+    #[default]
+    Horizontal,
+    /// 垂直单列排列（每项一行）
+    Vertical,
+}
+
+/// 图例配置（ECharts `legend` 的可渲染子集）
 #[derive(Debug, Clone)]
 pub struct LegendSpec {
     pub show: bool,
     pub data: Vec<String>,
-    pub symbol_size: f64,
+    /// `legend.itemWidth`：图例符号框宽度（ECharts v6 默认 25）
+    pub item_width: f64,
+    /// `legend.itemHeight`：图例符号框高度（ECharts v6 默认 14）
+    pub item_height: f64,
+    /// `legend.symbolSize`：显式指定时覆盖符号框尺寸（正方形）；用于兼容旧字段
+    pub symbol_size: Option<f64>,
     pub item_gap: f64,
     /// 图例文本模板（支持 `{name}`/`{a}`/`{b}`），None 时直接显示名称
     pub formatter: Option<String>,
+    /// `legend.orient`：`horizontal`（默认）/ `vertical`
+    pub orient: LegendOrient,
+    /// `legend.left` / `legend.right`：`"left"` / `"center"` / `"right"` / 像素 / 百分比
+    /// （未指定时整块水平居中，ECharts 默认 `left: 'center'`）
+    pub left: Option<String>,
+    pub right: Option<String>,
+    /// `legend.top` / `legend.bottom`：`"top"` / `"middle"` / `"bottom"` / 像素 / 百分比
+    /// （未指定时贴画布底部，ECharts v6 默认 `bottom: tokens.size.m`）
+    pub top: Option<String>,
+    pub bottom: Option<String>,
 }
 
 // ═══════════════════════════════════════════════════════════════════

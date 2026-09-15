@@ -2,6 +2,7 @@ use liecharts::prelude::*;
 
 #[path = "common/mod.rs"]
 mod common;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let json_config = r#"
 {

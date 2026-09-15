@@ -114,22 +114,24 @@ fn has_rotated_text(svg: &str) -> bool {
         .any(|tag| tag.contains("rotate("))
 }
 
-/// 提取所有 `<text>` 的 (x, y)
-fn text_positions(svg: &str) -> Vec<(f64, f64)> {
+/// 提取所有 `<text>` 的 (内容, x, y)
+fn text_entries(svg: &str) -> Vec<(String, f64, f64)> {
     let mut out = Vec::new();
     for seg in svg.split("<text").skip(1) {
-        let x = seg
-            .split("x=\"")
-            .nth(1)
-            .and_then(|s| s.split('"').next())
-            .and_then(|s| s.parse().ok());
-        let y = seg
-            .split("y=\"")
-            .nth(1)
-            .and_then(|s| s.split('"').next())
-            .and_then(|s| s.parse().ok());
-        if let (Some(x), Some(y)) = (x, y) {
-            out.push((x, y));
+        let attr = |name: &str| -> Option<f64> {
+            let needle = format!("{name}=\"");
+            seg.split(needle.as_str())
+                .nth(1)
+                .and_then(|s| s.split('"').next())
+                .and_then(|s| s.parse().ok())
+        };
+        let content = seg
+            .split_once('>')
+            .and_then(|(_, rest)| rest.split("</text>").next())
+            .unwrap_or("")
+            .to_string();
+        if let (Some(x), Some(y)) = (attr("x"), attr("y")) {
+            out.push((content, x, y));
         }
     }
     out
@@ -167,7 +169,16 @@ fn hug_grows_canvas_for_multi_row_table() {
 #[test]
 fn legend_rows_stay_inside_canvas() {
     // 图例项总宽超出画布时换行（Fixed 与 Hug 都生效），且不得出现
-    // 负坐标 / 越出右边界（历史 bug：单行居中算出的 start_x 可为负）
+    // 负坐标 / 越出右边界（历史 bug：单行居中算出的 start_x 可为负）。
+    // v6 起图例贴画布**底部**居中，故这里同时校验它落在下半区。
+    let names = [
+        "营业收入",
+        "营业成本",
+        "毛利润",
+        "净利润",
+        "研发支出",
+        "管理费用",
+    ];
     let df = liecharts::dataframe!(
         "day" => ["周一", "周二", "周三", "周四", "周五"],
         "v1" => [1.0, 2.0, 3.0, 4.0, 5.0],
@@ -175,19 +186,27 @@ fn legend_rows_stay_inside_canvas() {
     let mut chart = Chart::new(320, 240)
         .title(Title::new("图例换行"))
         .data(df)
-        .add_line(Line::new().name("营业收入").x("day").y("v1"));
-    for name in ["营业成本", "毛利润", "净利润", "研发支出", "管理费用"] {
-        chart = chart.add_line(Line::new().name(name).x("day").y("v1"));
+        .add_line(Line::new().name(names[0]).x("day").y("v1"));
+    for name in &names[1..] {
+        chart = chart.add_line(Line::new().name(*name).x("day").y("v1"));
     }
 
     for fit in [FitMode::Fixed, FitMode::Hug] {
         let svg = chart.clone().fit(fit).render_svg().unwrap();
         let (w, h) = svg_size(&svg);
-        // 图例位于顶部：统计 y 明显小于画布中线且 x 分布在多行上的文本
-        let legend_texts: Vec<(f64, f64)> = text_positions(&svg)
+        // 只取图例文本（按系列名匹配），避免把 X 轴类目标签算进来
+        let legend_texts: Vec<(f64, f64)> = text_entries(&svg)
             .into_iter()
-            .filter(|(_, y)| *y < h * 0.35)
+            .filter(|(t, _, _)| names.contains(&t.as_str()))
+            .map(|(_, x, y)| (x, y))
             .collect();
+        assert_eq!(
+            legend_texts.len(),
+            names.len(),
+            "{fit:?} 下 6 个图例项都应渲染，实际 {}",
+            legend_texts.len()
+        );
+
         let rows = {
             let mut ys: Vec<f64> = legend_texts.iter().map(|(_, y)| *y).collect();
             ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
@@ -202,6 +221,10 @@ fn legend_rows_stay_inside_canvas() {
             assert!(x >= 0.0, "{fit:?} 下图例文本 x={x} 越出画布左缘");
             assert!(x <= w, "{fit:?} 下图例文本 x={x} 越出画布右缘");
             assert!(y >= 0.0, "{fit:?} 下图例文本 y={y} 越出画布上缘");
+            assert!(
+                y > h * 0.5,
+                "{fit:?} 下图例应位于画布底部（v6 默认），实际 y={y}, h={h}"
+            );
         }
     }
 }
