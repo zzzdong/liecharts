@@ -701,6 +701,7 @@ pub(crate) fn line_label_config(
         color: cfg.label_color,
         font_size: cfg.label_font_size,
         formatter: cfg.label_formatter.clone(),
+        hide_overlap: cfg.label_hide_overlap,
     })
 }
 
@@ -717,6 +718,7 @@ pub(crate) fn bar_label_config(
         color: cfg.label_color,
         font_size: cfg.label_font_size,
         formatter: cfg.label_formatter.clone(),
+        hide_overlap: cfg.label_hide_overlap,
     })
 }
 
@@ -1188,6 +1190,21 @@ fn materialize_one_stacked_line_group(
         // 面积颜色：使用系列颜色
         let area_color = Some(color);
 
+        // 符号抽稀（与 `line::LineMaterializer` 同口径，见其说明）
+        let is_category_axis = matches!(
+            x_range.axis_type,
+            crate::pipeline::types::AxisType::Category
+        );
+        let symbol_step = if !cfg.symbol_show {
+            0
+        } else if cfg.show_all_symbol == crate::pipeline::types::ShowAllSymbol::Auto
+            && is_category_axis
+        {
+            line::auto_symbol_step(cfg.symbol_size, points.len(), bounds.width())
+        } else {
+            1
+        };
+
         let line_series = LineSeries {
             name: s.name.clone(),
             color,
@@ -1209,6 +1226,7 @@ fn materialize_one_stacked_line_group(
             area_opacity: cfg.area_opacity,
             symbol_type: line::map_symbol_type(cfg.symbol_type),
             symbol_size: cfg.symbol_size,
+            symbol_step,
             points: points.clone(),
             values: values.clone(),
             baseline_y,

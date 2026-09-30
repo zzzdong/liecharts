@@ -122,6 +122,7 @@ impl SeriesMaterializer for HeatmapMaterializer {
                 color: None,
                 font_size: cfg.label_font_size,
                 formatter: None,
+                hide_overlap: false,
             })
         } else {
             None

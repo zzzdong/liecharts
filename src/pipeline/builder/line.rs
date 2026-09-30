@@ -71,8 +71,13 @@ impl SeriesBuilder<LineSeries> for LineBuilder {
         }
 
         // 3. 数据点符号（单个数据点也要渲染，否则完全看不到）
-        if series.symbol_type != SymbolType::None {
-            for point in &series.points {
+        //    `symbol_step`：0 = 不画（`showSymbol:false`）；n > 1 = 抽稀
+        //    （`showAllSymbol:'auto'` 在类目轴上按像素槽宽决定）。
+        if series.symbol_type != SymbolType::None && series.symbol_step > 0 {
+            for (i, point) in series.points.iter().enumerate() {
+                if i % series.symbol_step != 0 {
+                    continue;
+                }
                 // null 数据点（NaN 坐标）不画符号（历史：会画在 y=0 附近）
                 if !is_finite_point(point) {
                     continue;
@@ -471,6 +476,7 @@ mod tests {
             area_opacity: 0.5,
             symbol_type: SymbolType::EmptyCircle,
             symbol_size: 4.0,
+            symbol_step: 1,
             points: vec![Point::new(405.0, 60.0)],
             baseline_y: 300.0,
             baseline_points: None,

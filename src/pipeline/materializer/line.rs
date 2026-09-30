@@ -115,6 +115,21 @@ impl SeriesMaterializer for LineMaterializer {
             None
         };
 
+        // 符号抽稀（ECharts `showAllSymbol`）：
+        // - `showSymbol: false` → 完全不画符号；
+        // - `showAllSymbol: 'auto'`（默认）且主轴为**类目轴** → 按像素槽宽抽稀，
+        //   避免稠密数据点画成一串重叠的小圆（ECharts 只在类目轴生效）；
+        // - 其余情况（value/time 轴，或显式 `true`）→ 全部显示。
+        let symbol_step = if !cfg.symbol_show {
+            0
+        } else if cfg.show_all_symbol == crate::pipeline::types::ShowAllSymbol::Auto
+            && is_category_axis
+        {
+            auto_symbol_step(cfg.symbol_size, points.len(), bounds.width())
+        } else {
+            1
+        };
+
         let mark_lines = crate::pipeline::materializer::compute_mark_lines(
             &cfg.mark_line,
             &values,
@@ -150,6 +165,7 @@ impl SeriesMaterializer for LineMaterializer {
             area_opacity: cfg.area_opacity,
             symbol_type: map_symbol_type(cfg.symbol_type),
             symbol_size: cfg.symbol_size,
+            symbol_step,
             points,
             values,
             baseline_y,
@@ -159,6 +175,22 @@ impl SeriesMaterializer for LineMaterializer {
             mark_points,
         }))
     }
+}
+
+/// `showAllSymbol: 'auto'` 的符号抽稀步长：保证相邻符号中心间距 ≥ 符号直径 + 2px。
+///
+/// `symbol_size` 在本库中是**半径**量级（`build_symbol` 直接把它当半径使用），
+/// 故最小中心间距 = `2 × size + 2`。槽宽放得下时返回 1（全部显示）。
+pub(crate) fn auto_symbol_step(symbol_size: f64, count: usize, axis_px: f64) -> usize {
+    if count <= 1 || axis_px <= 0.0 {
+        return 1;
+    }
+    let slot = axis_px / count as f64;
+    if slot <= 0.0 {
+        return 1;
+    }
+    let min_spacing = (symbol_size * 2.0 + 2.0).max(1.0);
+    ((min_spacing / slot).ceil() as usize).max(1)
 }
 
 pub(crate) fn map_symbol_type(ty: crate::pipeline::types::SymbolType) -> SymbolType {
@@ -172,5 +204,23 @@ pub(crate) fn map_symbol_type(ty: crate::pipeline::types::SymbolType) -> SymbolT
         crate::pipeline::types::SymbolType::Pin => SymbolType::Pin,
         crate::pipeline::types::SymbolType::Arrow => SymbolType::Arrow,
         crate::pipeline::types::SymbolType::None => SymbolType::None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::auto_symbol_step;
+
+    #[test]
+    fn auto_symbol_step_matches_pixel_spacing() {
+        // 槽宽 60px 远大于符号直径 10px → 不抽稀
+        assert_eq!(auto_symbol_step(4.0, 10, 600.0), 1);
+        // 槽宽 6px → ceil(10 / 6) = 2
+        assert_eq!(auto_symbol_step(4.0, 100, 600.0), 2);
+        // 槽宽 1px → 10
+        assert_eq!(auto_symbol_step(4.0, 600, 600.0), 10);
+        // 退化输入不 panic、不抽稀
+        assert_eq!(auto_symbol_step(4.0, 0, 600.0), 1);
+        assert_eq!(auto_symbol_step(4.0, 10, 0.0), 1);
     }
 }

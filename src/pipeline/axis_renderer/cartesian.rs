@@ -16,6 +16,7 @@ use crate::pipeline::{
         auto_rotate, format_label, label_step, label_style, measure_labels, rotated_bounds,
     },
     builder::{Z_AXIS, Z_GRID, Z_LABEL, text_el},
+    collision::{LabelBox, hide_overlapping},
     types::{
         AxisPosition, AxisSpec, AxisType, ColorContext, ResolvedAxisRanges, SubplotSpec,
         TextMeasurer,
@@ -57,35 +58,163 @@ fn choose_y_label_layout(
     (rotation, label_step(projected_h, slot_h))
 }
 
-/// 生成单个 X 轴标签。
+/// 解析 `axisLabel.interval`（ECharts 语义：**跳过的标签数**）为抽稀步长。
 ///
-/// - 未旋转（0°）：文本块顶部居中对齐锚点（水平居中于数据点）。
-/// - 旋转时：文本块开头（左上角）对准锚点（数据点），围绕该点旋转。
-///   底部 X 轴顺时针旋转（文本向右下延伸）、顶部 X 轴逆时针旋转（文本向右上延伸）。
-fn push_x_label(
-    elements: &mut Vec<SceneNode>,
+/// ECharts 文档：`interval = 0` 表示全部显示；`interval = n` 表示"隔 n 个标签显示
+/// 一个"，即步长 = `n + 1`（`i % (interval + 1) === 0`）。负值 / `"auto"` 视为未指定。
+fn explicit_label_step(interval: Option<f64>) -> Option<usize> {
+    interval.filter(|v| *v >= 0.0).map(|v| v as usize + 1)
+}
+
+/// 选出要渲染的轴标签下标：均匀抽稀 + 首尾标签策略。
+///
+/// - `step`：均匀抽稀步长（1 = 全部）；
+/// - `show_min` / `show_max`：`None` = 自动（首标签总显示；`auto_tail` 时尾标签与
+///   上一个候选间距 ≥ `end_projected` 才补上），`Some(false)` = 不显示，
+///   `Some(true)` = 强制显示；
+/// - `slot_span`：相邻下标在主轴上的像素间距（用于自动补尾标签的间距判断）；
+/// - `auto_tail`：`step` 是否为自动推导。显式 `interval` 时按 ECharts 语义**严格**
+///   抽稀，不再额外补尾标签（首尾对齐交给 `showMinLabel` / `showMaxLabel`）。
+#[allow(clippy::too_many_arguments)]
+fn select_axis_label_indices(
+    n: usize,
+    step: usize,
+    show_min: Option<bool>,
+    show_max: Option<bool>,
+    slot_span: f64,
+    end_projected: f64,
+    auto_tail: bool,
+) -> Vec<usize> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut cands: Vec<usize> = (0..n).step_by(step.max(1)).collect();
+    match show_min {
+        Some(false) => cands.retain(|&i| i != 0),
+        Some(true) if cands.first() != Some(&0) => cands.insert(0, 0),
+        _ => {}
+    }
+    let last = n - 1;
+    match show_max {
+        Some(false) => cands.retain(|&i| i != last),
+        Some(true) if cands.last() != Some(&last) => cands.push(last),
+        // 自动：仅在自动步长下、且间距足够时补尾标签（"首尾可见"的历史行为）
+        _ if auto_tail => {
+            if cands.last() != Some(&last)
+                && let Some(&prev) = cands.last()
+                && (last - prev) as f64 * slot_span >= end_projected
+            {
+                cands.push(last);
+            }
+        }
+        _ => {}
+    }
+    cands
+}
+
+/// X 轴标签几何：返回 `(文本块原点, 绘制旋转角, 包围盒)`。
+///
+/// - 未旋转（0°）：文本块顶部居中对齐锚点（水平居中于数据点）；
+/// - 旋转时：文本块开头（左上角）对准锚点，围绕该点旋转；顶部轴用负角使文本向右上延伸。
+fn x_label_geom(
     text: &str,
     anchor: Point,
     rotation: f64,
     downward: bool,
     colors: &ColorContext,
     measurer: &mut TextMeasurer,
-) {
-    let style = label_style(colors);
-    let (w, _h) = measurer.measure(text, &style);
-    let (x, y, draw_rotation) = if rotation == 0.0 {
-        (anchor.x - w / 2.0, anchor.y, 0.0)
+) -> (Point, f64, LabelBox) {
+    let (w, h) = measurer.measure(text, &label_style(colors));
+    if rotation == 0.0 {
+        let x = anchor.x - w / 2.0;
+        (Point::new(x, anchor.y), 0.0, LabelBox::new(x, anchor.y, w, h))
     } else {
-        // 文本开头对准数据点；顶部轴用负角使文本向右上延伸
         let draw_rotation = if downward { rotation } else { -rotation };
-        (anchor.x, anchor.y, draw_rotation)
-    };
-    let mut s = style;
-    s.rotation = draw_rotation;
-    elements.push(text_el(text.to_string(), Point::new(x, y), s, Z_LABEL));
+        (
+            Point::new(anchor.x, anchor.y),
+            draw_rotation,
+            LabelBox {
+                x: anchor.x,
+                y: anchor.y,
+                w,
+                h,
+                rotation: draw_rotation,
+            },
+        )
+    }
 }
 
-/// 生成单个 Y 轴刻度标签（垂直墨迹盒中心对齐 + 贴轴侧后端锚定）。
+/// 渲染一条 X 轴的刻度标签（Category / Value / Time / Log 共用）。
+///
+/// 顺序：`interval` 抽稀 → `showMinLabel` / `showMaxLabel` → 可选的重叠隐藏
+/// (`hideOverlap`) → 输出。`anchor_of(i)` 返回第 `i` 个标签的锚点。
+#[allow(clippy::too_many_arguments)]
+fn render_x_tick_labels(
+    elements: &mut Vec<SceneNode>,
+    labels: &[String],
+    explicit_step: Option<usize>,
+    auto_step: usize,
+    rotation: f64,
+    downward: bool,
+    anchor_of: &dyn Fn(usize) -> Point,
+    slot_w: f64,
+    axis_cfg: &AxisSpec,
+    colors: &ColorContext,
+    measurer: &mut TextMeasurer,
+) {
+    let n = labels.len();
+    if n == 0 {
+        return;
+    }
+    let step = explicit_step.unwrap_or(auto_step);
+    let (w_end, h_end) = measurer.measure(&labels[n - 1], &label_style(colors));
+    let (end_projected, _) = rotated_bounds(w_end, h_end, rotation);
+    let cands = select_axis_label_indices(
+        n,
+        step,
+        axis_cfg.decor.label_show_min,
+        axis_cfg.decor.label_show_max,
+        slot_w,
+        end_projected,
+        explicit_step.is_none(),
+    );
+    if cands.is_empty() {
+        return;
+    }
+
+    let geoms: Vec<(Point, f64, LabelBox)> = cands
+        .iter()
+        .map(|&i| x_label_geom(&labels[i], anchor_of(i), rotation, downward, colors, measurer))
+        .collect();
+
+    let keep = if axis_cfg.decor.label_hide_overlap {
+        let boxes: Vec<LabelBox> = geoms.iter().map(|g| g.2).collect();
+        let forced: Vec<bool> = cands
+            .iter()
+            .map(|&i| {
+                (i == 0 && axis_cfg.decor.label_show_min == Some(true))
+                    || (i == n - 1 && axis_cfg.decor.label_show_max == Some(true))
+            })
+            .collect();
+        hide_overlapping(&boxes, &forced)
+    } else {
+        vec![true; geoms.len()]
+    };
+
+    for (k, &i) in cands.iter().enumerate() {
+        if !keep[k] {
+            continue;
+        }
+        let (pos, rot, _) = geoms[k];
+        let mut s = label_style(colors);
+        s.rotation = rot;
+        elements.push(text_el(labels[i].clone(), pos, s, Z_LABEL));
+    }
+}
+
+/// Y 轴刻度标签几何（垂直墨迹盒中心对齐 + 贴轴侧后端锚定）。
+///
+/// 返回 `(文本块原点, 样式, 布局, 包围盒)`，供渲染与重叠隐藏共用（只测量一次）。
 ///
 /// - **垂直**：墨迹盒（`TextLayout::ink_bounds`，skrifa 按字形轮廓计算，相对
 ///   块左上角）的中心精确落在刻度 y。此前未旋转分支用 `TextBaseline::Middle`
@@ -111,16 +240,19 @@ fn push_x_label(
 /// 最终位置 = `position + R(θ)·(icx + dx_align, icy)`，反解 y：
 /// `position.y = tick_y − [R(θ)·(icx + dx_align, icy)]_y`；x 直接用锚点
 /// （贴轴侧由 align/advance 锚定，无需墨迹反推）。
-fn push_y_tick_label(
-    elements: &mut Vec<SceneNode>,
+fn y_label_geom(
     text: &str,
     anchor: Point,
     rotation: f64,
     colors: &ColorContext,
     is_right: bool,
+) -> (
+    Point,
+    lievisual::text::TextStyle,
+    std::sync::Arc<lievisual::text::TextLayout>,
+    LabelBox,
 ) {
-    let style = label_style(colors); // Left/Top 语义：位置即预计算的块左上角
-    let mut style = style;
+    let mut style = label_style(colors); // Left/Top 语义：位置即预计算的块左上角
     // 贴轴侧锚定：左轴文字向左伸展（advance 右缘 = 锚点），右轴相反
     style.align = if is_right {
         TextAlign::Left
@@ -144,15 +276,102 @@ fn push_y_tick_label(
     // 墨迹中心相对锚点的最终 y 偏移：[R(θ)·(icx + dx, icy)]_y
     let py = anchor.y - ((icx + dx) * sn + icy * cs);
 
-    elements.push(
-        SceneNode::new(Element::Text {
-            spans: vec![RichSpan::new(text.to_string(), style.clone())],
-            position: Point::new(anchor.x, py),
-            style,
-            layout: Some(layout),
-        })
-        .with_z(Z_LABEL),
+    // 包围盒按 advance 盒（align 平移后）取值，用于重叠隐藏
+    let box_x = if is_right {
+        anchor.x
+    } else {
+        anchor.x - layout.width
+    };
+    let bbox = LabelBox {
+        x: box_x,
+        y: py,
+        w: layout.width,
+        h: layout.height,
+        rotation,
+    };
+    (Point::new(anchor.x, py), style, layout, bbox)
+}
+
+/// 渲染一条 Y 轴的刻度标签（Category / Value / Time / Log 共用）。
+///
+/// 同 [`render_x_tick_labels`]：`interval` 抽稀 → 首尾标签策略 → 可选重叠隐藏。
+/// `anchor_y_of(i)` 返回第 `i` 个标签的刻度 y（像素）。
+#[allow(clippy::too_many_arguments)]
+fn render_y_tick_labels(
+    elements: &mut Vec<SceneNode>,
+    labels: &[String],
+    explicit_step: Option<usize>,
+    auto_step: usize,
+    rotation: f64,
+    anchor_y_of: &dyn Fn(usize) -> f64,
+    x: f64,
+    slot_h: f64,
+    axis_cfg: &AxisSpec,
+    colors: &ColorContext,
+    is_right: bool,
+    measurer: &mut TextMeasurer,
+) {
+    let n = labels.len();
+    if n == 0 {
+        return;
+    }
+    let step = explicit_step.unwrap_or(auto_step);
+    let style = label_style(colors);
+    let (w_end, h_end) = measurer.measure(&labels[n - 1], &style);
+    let (_, end_projected) = rotated_bounds(w_end, h_end, rotation);
+    let cands = select_axis_label_indices(
+        n,
+        step,
+        axis_cfg.decor.label_show_min,
+        axis_cfg.decor.label_show_max,
+        slot_h,
+        end_projected,
+        explicit_step.is_none(),
     );
+    if cands.is_empty() {
+        return;
+    }
+
+    // 先算几何（含包围盒），再决定哪些因重叠被隐藏
+    let geoms: Vec<(
+        Point,
+        lievisual::text::TextStyle,
+        std::sync::Arc<lievisual::text::TextLayout>,
+        LabelBox,
+    )> = cands
+        .iter()
+        .map(|&i| y_label_geom(&labels[i], Point::new(x, anchor_y_of(i)), rotation, colors, is_right))
+        .collect();
+
+    let keep = if axis_cfg.decor.label_hide_overlap {
+        let boxes: Vec<LabelBox> = geoms.iter().map(|g| g.3).collect();
+        let forced: Vec<bool> = cands
+            .iter()
+            .map(|&i| {
+                (i == 0 && axis_cfg.decor.label_show_min == Some(true))
+                    || (i == n - 1 && axis_cfg.decor.label_show_max == Some(true))
+            })
+            .collect();
+        hide_overlapping(&boxes, &forced)
+    } else {
+        vec![true; geoms.len()]
+    };
+
+    for (k, &i) in cands.iter().enumerate() {
+        if !keep[k] {
+            continue;
+        }
+        let (pos, style, layout, _) = &geoms[k];
+        elements.push(
+            SceneNode::new(Element::Text {
+                spans: vec![RichSpan::new(labels[i].clone(), style.clone())],
+                position: *pos,
+                style: style.clone(),
+                layout: Some(layout.clone()),
+            })
+            .with_z(Z_LABEL),
+        );
+    }
 }
 
 /// 笛卡尔坐标轴渲染器
@@ -619,57 +838,27 @@ impl CartesianAxisRenderer {
                 .collect();
             // 每个类别占据一个槽位
             let slot_w = bounds.width() / n as f64;
-            let (rotation, step) = choose_label_layout(
+            let (rotation, auto_step) = choose_label_layout(
                 &labels,
                 slot_w,
                 axis_cfg.label_rotate,
                 text_measurer,
                 colors,
             );
-            // `axisLabel.interval` 显式抽稀优先于自动决策
-            let step = axis_cfg
-                .label_interval
-                .filter(|v| *v >= 1.0)
-                .map(|v| v as usize)
-                .unwrap_or(step);
-
-            let mut last_rendered: Option<usize> = None;
-            for i in (0..n).step_by(step) {
-                last_rendered = Some(i);
-                let cx = bounds.x0 + axis_cfg.category_norm(i) * bounds.width();
-                push_x_label(
-                    elements,
-                    &labels[i],
-                    Point::new(cx, label_y),
-                    rotation,
-                    downward,
-                    colors,
-                    text_measurer,
-                );
-            }
-            // 最后一个标签：若与上一个渲染的标签间距足够则补上（首尾可见）
-            let last_idx = n - 1;
-            if step > 1
-                && last_rendered != Some(last_idx)
-                && let Some(prev) = last_rendered
-            {
-                let gap = (last_idx - prev) as f64 * slot_w;
-                let style = label_style(colors);
-                let (w, h) = text_measurer.measure(&labels[last_idx], &style);
-                let (pw, _) = rotated_bounds(w, h, rotation);
-                if gap >= pw {
-                    let cx = bounds.x0 + axis_cfg.category_norm(last_idx) * bounds.width();
-                    push_x_label(
-                        elements,
-                        &labels[last_idx],
-                        Point::new(cx, label_y),
-                        rotation,
-                        downward,
-                        colors,
-                        text_measurer,
-                    );
-                }
-            }
+            // `axisLabel.interval`（ECharts：跳过的标签数）优先于自动抽稀
+            render_x_tick_labels(
+                elements,
+                &labels,
+                explicit_label_step(axis_cfg.label_interval),
+                auto_step,
+                rotation,
+                downward,
+                &|i| Point::new(bounds.x0 + axis_cfg.category_norm(i) * bounds.width(), label_y),
+                slot_w,
+                axis_cfg,
+                colors,
+                text_measurer,
+            );
         } else {
             // Value / Time / Log 轴：统一通过 axis_ticks 生成刻度位置与标签
             let (norm_positions, tick_labels) = axis_ticks_with_count(
@@ -704,54 +893,27 @@ impl CartesianAxisRenderer {
             } else {
                 bounds.width()
             };
-            let (rotation, step) = choose_label_layout(
+            let (rotation, auto_step) = choose_label_layout(
                 &labels,
                 slot_w,
                 axis_cfg.label_rotate,
                 text_measurer,
                 colors,
             );
-            // `axisLabel.interval` 显式抽稀优先于自动决策
-            let step = axis_cfg
-                .label_interval
-                .filter(|v| *v >= 1.0)
-                .map(|v| v as usize)
-                .unwrap_or(step);
-
-            let mut last_rendered: Option<usize> = None;
-            for i in (0..positions.len()).step_by(step) {
-                last_rendered = Some(i);
-                push_x_label(
-                    elements,
-                    &labels[i],
-                    Point::new(positions[i], label_y),
-                    rotation,
-                    downward,
-                    colors,
-                    text_measurer,
-                );
-            }
-            let last_idx = positions.len() - 1;
-            if step > 1
-                && last_rendered != Some(last_idx)
-                && let Some(prev) = last_rendered
-            {
-                let gap = positions[last_idx] - positions[prev];
-                let style = label_style(colors);
-                let (w, h) = text_measurer.measure(&labels[last_idx], &style);
-                let (pw, _) = rotated_bounds(w, h, rotation);
-                if gap >= pw {
-                    push_x_label(
-                        elements,
-                        &labels[last_idx],
-                        Point::new(positions[last_idx], label_y),
-                        rotation,
-                        downward,
-                        colors,
-                        text_measurer,
-                    );
-                }
-            }
+            // `axisLabel.interval`（ECharts：跳过的标签数）优先于自动抽稀
+            render_x_tick_labels(
+                elements,
+                &labels,
+                explicit_label_step(axis_cfg.label_interval),
+                auto_step,
+                rotation,
+                downward,
+                &|i| Point::new(positions[i], label_y),
+                slot_w,
+                axis_cfg,
+                colors,
+                text_measurer,
+            );
         }
     }
 
@@ -801,7 +963,7 @@ impl CartesianAxisRenderer {
             }
         };
 
-        // Y 轴刻度标签：由模块级 `push_y_tick_label` 统一生成（墨迹盒对齐）
+        // Y 轴刻度标签：由模块级 `y_label_geom` 统一生成（墨迹盒对齐）
 
         if axis_cfg.axis_type == AxisType::Category {
             let n = axis_cfg.categories.len();
@@ -814,55 +976,30 @@ impl CartesianAxisRenderer {
                 .map(|l| format_label(l, &axis_cfg.label_formatter))
                 .collect();
             let slot_h = bounds.height() / n as f64;
-            let (rotation, step) = choose_y_label_layout(
+            let (rotation, auto_step) = choose_y_label_layout(
                 &labels,
                 slot_h,
                 axis_cfg.label_rotate,
                 text_measurer,
                 colors,
             );
-            let step = axis_cfg
-                .label_interval
-                .filter(|v| *v >= 1.0)
-                .map(|v| v as usize)
-                .unwrap_or(step);
             adjust_left_anchor(&labels, rotation, text_measurer, colors);
 
             // 与柱状图渲染保持一致：category 0 在底部，category n-1 在顶部
-            let mut last_rendered: Option<usize> = None;
-            for i in (0..n).step_by(step) {
-                last_rendered = Some(i);
-                let y = bounds.y1 - axis_cfg.category_norm(i) * bounds.height();
-                push_y_tick_label(
-                    elements,
-                    &labels[i],
-                    Point::new(x, y),
-                    rotation,
-                    colors,
-                    is_right,
-                );
-            }
-            let last_idx = n - 1;
-            if step > 1
-                && last_rendered != Some(last_idx)
-                && let Some(prev) = last_rendered
-            {
-                let gap = (last_idx - prev) as f64 * slot_h;
-                let style = label_style(colors);
-                let (w, h) = text_measurer.measure(&labels[last_idx], &style);
-                let (_, ph) = rotated_bounds(w, h, rotation);
-                if gap >= ph {
-                    let y = bounds.y1 - axis_cfg.category_norm(last_idx) * bounds.height();
-                    push_y_tick_label(
-                        elements,
-                        &labels[last_idx],
-                        Point::new(x, y),
-                        rotation,
-                        colors,
-                        is_right,
-                    );
-                }
-            }
+            render_y_tick_labels(
+                elements,
+                &labels,
+                explicit_label_step(axis_cfg.label_interval),
+                auto_step,
+                rotation,
+                &|i| bounds.y1 - axis_cfg.category_norm(i) * bounds.height(),
+                x,
+                slot_h,
+                axis_cfg,
+                colors,
+                is_right,
+                text_measurer,
+            );
             return;
         }
 
@@ -897,51 +1034,29 @@ impl CartesianAxisRenderer {
         } else {
             bounds.height()
         };
-        let (rotation, step) = choose_y_label_layout(
+        let (rotation, auto_step) = choose_y_label_layout(
             &labels,
             slot_h,
             axis_cfg.label_rotate,
             text_measurer,
             colors,
         );
-        let step = axis_cfg
-            .label_interval
-            .filter(|v| *v >= 1.0)
-            .map(|v| v as usize)
-            .unwrap_or(step);
         adjust_left_anchor(&labels, rotation, text_measurer, colors);
 
-        for i in (0..positions.len()).step_by(step) {
-            push_y_tick_label(
-                elements,
-                &labels[i],
-                Point::new(x, positions[i]),
-                rotation,
-                colors,
-                is_right,
-            );
-        }
-        let last_idx = positions.len() - 1;
-        if step > 1
-            && last_idx > 0
-            && !(positions.len() - 1).is_multiple_of(step)
-            && let Some(prev) = (0..positions.len()).rev().find(|&i| i % step == 0)
-        {
-            let gap = positions[prev] - positions[last_idx];
-            let style = label_style(colors);
-            let (w, h) = text_measurer.measure(&labels[last_idx], &style);
-            let (_, ph) = rotated_bounds(w, h, rotation);
-            if gap >= ph {
-                push_y_tick_label(
-                    elements,
-                    &labels[last_idx],
-                    Point::new(x, positions[last_idx]),
-                    rotation,
-                    colors,
-                    is_right,
-                );
-            }
-        }
+        render_y_tick_labels(
+            elements,
+            &labels,
+            explicit_label_step(axis_cfg.label_interval),
+            auto_step,
+            rotation,
+            &|i| positions[i],
+            x,
+            slot_h,
+            axis_cfg,
+            colors,
+            is_right,
+            text_measurer,
+        );
     }
 }
 

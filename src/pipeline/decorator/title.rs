@@ -5,7 +5,7 @@
 use lievisual::{
     Color,
     scene::{Element, SceneNode},
-    text::{FontWeight, RichSpan, TextStyle, measure_text},
+    text::{FontWeight, RichSpan, TextBaseline, TextStyle, measure_text},
 };
 use vello_cpu::kurbo::Point;
 
@@ -170,6 +170,11 @@ pub fn render_title(
                 title_style.font_family.clone(),
             );
             main_text_style.font_weight = title_font_weight(theme);
+            // `position.y` 语义 = 文本块顶边（canvas 的 `textBaseline: 'top'`），
+            // 使 `TITLE_TOP_MARGIN` / `title.top` 真正表示"距画布顶部"的留白。
+            // 若沿用默认的 `Alphabetic`，position.y 会被当成基线，15px 留白被
+            // 上标高吃掉，标题实际贴到画布顶边（见 tests/title_layout_test.rs）。
+            main_text_style.baseline = TextBaseline::Top;
 
             let mut lv_style = main_text_style.clone();
             if lv_style.font_family.trim().is_empty()
@@ -211,6 +216,8 @@ pub fn render_title(
                 subtitle_style.font_family.clone(),
             );
             sub_text_style.font_weight = FontWeight::Normal;
+            // 与主标题同口径：position.y 为文本块顶边（见上方说明）。
+            sub_text_style.baseline = TextBaseline::Top;
 
             let mut lv_style = sub_text_style.clone();
             if lv_style.font_family.trim().is_empty()

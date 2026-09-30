@@ -44,11 +44,14 @@ impl<'de> Deserialize<'de> for SamplingType {
     }
 }
 
-/// 字符串形式 `sampling` 的缺省阈值。
+/// "自动"采样阈值哨兵：目标点数由**绘图区像素尺寸**动态决定。
 ///
-/// ECharts 写成 `sampling:'lttb'` 时不带阈值（ECharts 按像素宽度动态决定目标点数）；
-/// liecharts 用固定阈值，取 1000——少于 1000 点的常规图表不受影响。
-const DEFAULT_SAMPLING_THRESHOLD: usize = 1000;
+/// 对齐 ECharts：写成 `sampling:'lttb'`（不带阈值）时，ECharts 不按固定点数、
+/// 而是按坐标系像素宽度决定降采样目标。这里用 `0` 作哨兵，由
+/// `chart_pipeline::render_chart` 在布局完成后替换为 `max(绘图区宽, 高)`。
+///
+/// 显式对象形式 `{type, threshold}` 仍按给定阈值执行。
+pub const AUTO_SAMPLING_THRESHOLD: usize = 0;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,7 +78,7 @@ impl<'de> Deserialize<'de> for SamplingOption {
                 let ty = SamplingType::deserialize(de::value::StrDeserializer::new(v))?;
                 Ok(SamplingOption {
                     ty,
-                    threshold: DEFAULT_SAMPLING_THRESHOLD,
+                    threshold: AUTO_SAMPLING_THRESHOLD,
                 })
             }
 
@@ -85,7 +88,7 @@ impl<'de> Deserialize<'de> for SamplingOption {
 
             fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
                 let mut ty = SamplingType::Lttb;
-                let mut threshold = DEFAULT_SAMPLING_THRESHOLD;
+                let mut threshold = AUTO_SAMPLING_THRESHOLD;
                 while let Some(key) = map.next_key::<String>()? {
                     match key.as_str() {
                         "type" => ty = map.next_value()?,

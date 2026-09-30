@@ -111,6 +111,12 @@ pub struct AxisDecor {
     /// `splitArea.show`：沿轴绘制交替色带
     pub split_area_show: bool,
     pub split_area_colors: Vec<Color>,
+    /// `axisLabel.hideOverlap`：隐藏互相重叠的刻度标签（ECharts 默认 false）
+    pub label_hide_overlap: bool,
+    /// `axisLabel.showMinLabel`：`None` = 自动判定（默认），`Some(_)` = 强制显示 / 隐藏
+    pub label_show_min: Option<bool>,
+    /// `axisLabel.showMaxLabel`：同 [`Self::label_show_min`]
+    pub label_show_max: Option<bool>,
 }
 
 impl AxisDecor {
@@ -128,6 +134,9 @@ impl AxisDecor {
             split_line_dash: Vec::new(),
             split_area_show: false,
             split_area_colors: Vec::new(),
+            label_hide_overlap: false,
+            label_show_min: None,
+            label_show_max: None,
         }
     }
 
@@ -323,6 +332,18 @@ pub struct MarkPointSpec {
 
 // ── LineConfig ──
 
+/// 折线数据点符号的显示策略（ECharts `series-line.showAllSymbol`）。
+///
+/// 只在**主轴为类目轴**时生效（与 ECharts 一致）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ShowAllSymbol {
+    /// 数据点过密时自动隐藏部分符号（ECharts 默认 `'auto'`）
+    #[default]
+    Auto,
+    /// 始终显示所有数据点的符号
+    All,
+}
+
 #[derive(Debug, Clone)]
 pub struct LineConfig {
     pub x_col: String,
@@ -344,6 +365,10 @@ pub struct LineConfig {
     pub area_opacity: f64,
     pub symbol_type: SymbolType,
     pub symbol_size: f64,
+    /// `showSymbol`：是否显示数据点符号（ECharts 默认 true）
+    pub symbol_show: bool,
+    /// `showAllSymbol`：符号抽稀策略（ECharts 默认 `'auto'`）
+    pub show_all_symbol: ShowAllSymbol,
     /// 是否显示值标签
     pub label_show: bool,
     pub label_font_size: f64,
@@ -353,6 +378,8 @@ pub struct LineConfig {
     pub label_position: Option<ValueLabelPos>,
     /// 值标签颜色（None = 跟随系列色，ECharts 默认）
     pub label_color: Option<Color>,
+    /// `labelLayout.hideOverlap`：数据点过密时隐藏重叠的值标签
+    pub label_hide_overlap: bool,
     /// 标注线配置
     pub mark_line: Vec<MarkLineSpec>,
     /// 标注点配置
@@ -385,11 +412,14 @@ impl Default for LineConfig {
             area_opacity: 0.5,
             symbol_type: SymbolType::EmptyCircle,
             symbol_size: 4.0,
+            symbol_show: true,
+            show_all_symbol: ShowAllSymbol::Auto,
             label_show: false,
             label_font_size: 12.0,
             label_formatter: None,
             label_position: None,
             label_color: None,
+            label_hide_overlap: false,
             mark_line: Vec::new(),
             mark_point: Vec::new(),
         }
@@ -501,6 +531,8 @@ pub struct BarConfig {
     pub label_position: Option<ValueLabelPos>,
     /// 值标签颜色（None = Top 跟随系列色 / Inside 白字，ECharts 默认）
     pub label_color: Option<Color>,
+    /// `labelLayout.hideOverlap`：数据点过密时隐藏重叠的值标签
+    pub label_hide_overlap: bool,
     /// 标注线配置
     pub mark_line: Vec<MarkLineSpec>,
     /// 标注点配置
@@ -518,6 +550,7 @@ impl Default for BarConfig {
             label_formatter: None,
             label_position: None,
             label_color: None,
+            label_hide_overlap: false,
             mark_line: Vec::new(),
             mark_point: Vec::new(),
         }

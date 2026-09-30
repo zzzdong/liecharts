@@ -373,7 +373,9 @@ impl Pie {
             value: "value".into(),
             radius: (Size::Percent(0.0), Size::Percent(75.0)),
             center: (Size::Percent(50.0), Size::Percent(50.0)),
-            label_show: false,
+            // ECharts 饼图 `label.show` 默认 **true**（与 JSON 入口、
+            // `compat.rs` 的 `unwrap_or(true)` 保持一致）。
+            label_show: true,
             label_position: LabelPosition::Outside,
         }
     }

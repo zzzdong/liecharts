@@ -377,6 +377,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             .as_ref()
                             .and_then(|v| v.as_number())
                             .unwrap_or(4.0),
+                        symbol_show: ls.show_symbol.unwrap_or(true),
+                        show_all_symbol: parse_show_all_symbol(ls.show_all_symbol.as_ref()),
                         label_show: ls.label.as_ref().and_then(|l| l.show).unwrap_or(false),
                         label_font_size: ls
                             .label
@@ -386,6 +388,11 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         label_formatter: ls.label.as_ref().and_then(|l| l.formatter.clone()),
                         label_position: parse_value_label_position(ls.label.as_ref()),
                         label_color: parse_label_color(ls.label.as_ref()),
+                        label_hide_overlap: ls
+                            .label_layout
+                            .as_ref()
+                            .and_then(|l| l.hide_overlap)
+                            .unwrap_or(false),
                         mark_line: parse_mark_line(ls.mark_line.as_ref()),
                         mark_point: parse_mark_point(ls.mark_point.as_ref()),
                     };
@@ -483,6 +490,11 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             label_formatter: bs.label.as_ref().and_then(|l| l.formatter.clone()),
                             label_position: parse_value_label_position(bs.label.as_ref()),
                             label_color: parse_label_color(bs.label.as_ref()),
+                            label_hide_overlap: bs
+                                .label_layout
+                                .as_ref()
+                                .and_then(|l| l.hide_overlap)
+                                .unwrap_or(false),
                             mark_line: parse_mark_line(bs.mark_line.as_ref()),
                             mark_point: parse_mark_point(bs.mark_point.as_ref()),
                         };
@@ -1574,7 +1586,28 @@ fn parse_axis_decor(
             .unwrap_or_default();
     }
 
+    // `axisLabel.hideOverlap` / `showMinLabel` / `showMaxLabel`（此前解析后从未被读取）
+    if let Some(al) = &a.axis_label {
+        d.label_hide_overlap = al.hide_overlap.unwrap_or(false);
+        d.label_show_min = al.show_min_label;
+        d.label_show_max = al.show_max_label;
+    }
+
     d
+}
+
+/// 解析 ECharts `series-line.showAllSymbol`（`boolean | 'auto'`，默认 `'auto'`）。
+///
+/// 只有显式 `true` 表示"始终显示全部符号"；`'auto'`（及缺省、`false`）一律
+/// 走自动抽稀策略（与 ECharts 默认行为一致）。
+fn parse_show_all_symbol(
+    v: Option<&crate::option::LenientBoolOrString>,
+) -> crate::pipeline::types::ShowAllSymbol {
+    use crate::pipeline::types::ShowAllSymbol;
+    match v {
+        Some(crate::option::LenientBoolOrString::Bool(true)) => ShowAllSymbol::All,
+        _ => ShowAllSymbol::Auto,
+    }
 }
 
 /// 把 ECharts `lineStyle.type` / `itemStyle.borderType` 展开为虚线段长。

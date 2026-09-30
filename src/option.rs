@@ -2925,10 +2925,14 @@ pub struct LineSeriesOption {
     pub item_style: Option<ItemStyleOption>,
     pub area_style: Option<AreaStyleOption>,
     pub label: Option<LabelOption>,
+    /// `series[].labelLayout`：标签布局（`hideOverlap`）
+    pub label_layout: Option<LabelLayoutOption>,
     pub step: Option<LenientStep>,
     pub connect_nulls: Option<bool>,
     pub show_symbol: Option<bool>,
-    pub show_all_symbol: Option<bool>,
+    /// `showAllSymbol`：ECharts 允许布尔值或字符串 `"auto"`（默认 `"auto"`）。
+    /// 此前建模为 `Option<bool>`，写 `"auto"` 会让整个 option 解析失败。
+    pub show_all_symbol: Option<LenientBoolOrString>,
     pub legend_hover_link: Option<bool>,
     pub z: Option<f64>,
     pub zlevel: Option<f64>,
@@ -2965,6 +2969,7 @@ impl Default for LineSeriesOption {
             item_style: None,
             area_style: None,
             label: None,
+            label_layout: None,
             step: None,
             connect_nulls: None,
             show_symbol: None,
@@ -3045,6 +3050,8 @@ pub struct BarSeriesOption {
     pub bar_min_height: Option<f64>,
     pub item_style: Option<ItemStyleOption>,
     pub label: Option<LabelOption>,
+    /// `series[].labelLayout`：标签布局（`hideOverlap`）
+    pub label_layout: Option<LabelLayoutOption>,
     /// 分组索引，自动分组时无需设置
     pub group_index: Option<usize>,
     pub z: Option<f64>,
@@ -4663,6 +4670,17 @@ pub struct LabelOption {
     pub line_over: Option<String>,
     pub bleed_margin: Option<f64>,
     pub rich: Option<serde_json::Value>,
+}
+
+/// 系列标签布局（ECharts `series[].labelLayout`）。
+///
+/// 目前实现 `hideOverlap`：数据点过密、标签互相重叠时隐藏部分标签
+/// （ECharts 默认 `false`，需显式开启）。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelLayoutOption {
+    /// 是否隐藏互相重叠的标签。
+    pub hide_overlap: Option<bool>,
 }
 
 /// Item style configuration (fill color, stroke color, opacity, etc.).

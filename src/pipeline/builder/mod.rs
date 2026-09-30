@@ -199,6 +199,60 @@ pub fn text_el(
     .with_z(z)
 }
 
+/// 隐藏互相重叠的文本标签（`series.labelLayout.hideOverlap`）。
+///
+/// 只处理 `z_index == z`、且**已完成排版**（`layout: Some`）的文本节点：
+/// 先按 `compute_text_offset` 还原每个标签的块包围盒，再保留互不重叠者
+/// （按节点顺序先到先得），其余节点从 `elements` 中移除。
+///
+/// 位置已定、只能隐藏，不做位移；与坐标轴 `axisLabel.hideOverlap` 共用
+/// [`crate::pipeline::collision::hide_overlapping`]。
+pub fn hide_overlapping_labels(elements: &mut Vec<SceneNode>, z: i32) {
+    use crate::pipeline::collision::{LabelBox, hide_overlapping};
+    use lievisual::text::compute_text_offset;
+
+    let is_target = |n: &SceneNode| {
+        n.z_index == z && matches!(&n.element, Element::Text { layout: Some(_), .. })
+    };
+    let boxes: Vec<LabelBox> = elements
+        .iter()
+        .filter(|n| is_target(n))
+        .filter_map(|n| match &n.element {
+            Element::Text {
+                position,
+                style,
+                layout: Some(layout),
+                ..
+            } => {
+                let (dx, dy) = compute_text_offset(layout, style.align, style.baseline);
+                Some(LabelBox {
+                    x: position.x + dx,
+                    y: position.y + dy,
+                    w: layout.width,
+                    h: layout.height,
+                    rotation: style.rotation,
+                })
+            }
+            _ => None,
+        })
+        .collect();
+    if boxes.len() < 2 {
+        return;
+    }
+    let forced = vec![false; boxes.len()];
+    let keep = hide_overlapping(&boxes, &forced);
+
+    let mut k = 0usize;
+    elements.retain(|n| {
+        if !is_target(n) {
+            return true;
+        }
+        let keep_it = keep[k];
+        k += 1;
+        keep_it
+    });
+}
+
 use crate::{
     error::Result,
     pipeline::typed_series::{RenderContext, TypedSeries},

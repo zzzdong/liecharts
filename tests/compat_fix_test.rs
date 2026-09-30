@@ -739,20 +739,347 @@ fn legend_symbol_colors_follow_series_names() {
     );
 }
 
-/// `axisLabel.interval` 显式抽稀生效。
+/// `axisLabel.interval` 显式抽稀生效（ECharts 语义：`n` = 跳过的标签数）。
+///
+/// ECharts 文档：`interval: 0` 全部显示；`interval: n` 隔 `n` 个显示一个
+/// （`i % (n + 1) === 0`）。回归：此前实现把 `interval` 直接当步长使用，
+/// 导致 `interval: 2` 显示 0/2/4（每 2 个）、`interval: 0` 被静默忽略。
 #[test]
 fn axis_label_interval_is_honoured() {
-    let nodes = render_json(
-        r#"{"xAxis":{"type":"category","data":["a","b","c","d","e"],"axisLabel":{"interval":2}},
-            "yAxis":{"type":"value"},"series":[{"type":"line","data":[1,2,3,4,5]}]}"#,
-        800,
-        500,
+    let cat_of = |json: &str| -> Vec<String> {
+        let nodes = render_json(json, 800, 500);
+        all_texts(&nodes)
+            .into_iter()
+            .filter(|t| ["a", "b", "c", "d", "e"].contains(&t.as_str()))
+            .collect()
+    };
+
+    let base = |interval: &str| {
+        let tpl = r#"{"xAxis":{"type":"category","data":["a","b","c","d","e"],"axisLabel":{"interval":INTERVAL}},"yAxis":{"type":"value"},"series":[{"type":"line","data":[1,2,3,4,5]}]}"#;
+        tpl.replace("INTERVAL", interval)
+    };
+
+    // interval:2 → 跳过 2 个 → 步长 3 → 下标 0,3 → a,d
+    assert_eq!(
+        cat_of(&base("2")),
+        vec!["a", "d"],
+        "interval:2 应每 3 个显示一个（a、d）"
     );
-    let cat: Vec<String> = all_texts(&nodes)
+    // interval:1 → 跳过 1 个 → 步长 2 → 下标 0,2,4 → a,c,e
+    assert_eq!(
+        cat_of(&base("1")),
+        vec!["a", "c", "e"],
+        "interval:1 应隔一个显示一个（a、c、e）"
+    );
+    // interval:0 → 全部显示
+    assert_eq!(
+        cat_of(&base("0")),
+        vec!["a", "b", "c", "d", "e"],
+        "interval:0 应显示全部标签"
+    );
+}
+
+/// `axisLabel.hideOverlap` 生效：强制显示全部标签时，重叠的标签被隐藏。
+#[test]
+fn axis_label_hide_overlap_reduces_labels() {
+    let cats: Vec<String> = (1..=30).map(|i| format!("类别{i:02}")).collect();
+    let data = serde_json::to_string(&cats).unwrap();
+    let series = format!("[{}]", vec!["1"; cats.len()].join(","));
+    let mk = |hide: bool| {
+        let tpl = r#"{"xAxis":{"type":"category","data":DATA,"axisLabel":{"interval":0,"hideOverlap":HIDE}},"yAxis":{"type":"value"},"series":[{"type":"line","data":SERIES}]}"#;
+        tpl.replace("DATA", &data)
+            .replace("HIDE", if hide { "true" } else { "false" })
+            .replace("SERIES", &series)
+    };
+    let count = |json: &str| -> usize {
+        all_texts(&render_json(json, 800, 500))
+            .into_iter()
+            .filter(|t| t.starts_with("类别"))
+            .count()
+    };
+    // interval:0 强制全部显示 → 30 个标签互相重叠
+    assert_eq!(count(&mk(false)), 30, "未开启 hideOverlap 应显示全部 30 个");
+    let hidden = count(&mk(true));
+    assert!(
+        hidden > 0 && hidden < 30,
+        "开启 hideOverlap 应隐藏部分重叠标签，实际 {hidden}"
+    );
+}
+
+/// `series.labelLayout.hideOverlap` 生效：柱顶数值标签过密时隐藏重叠者。
+#[test]
+fn series_label_hide_overlap_reduces_labels() {
+    let cats: Vec<String> = (1..=40).map(|i| format!("c{i:02}")).collect();
+    let data = serde_json::to_string(&cats).unwrap();
+    // 取值 `1007 / 2007 / …`，与 Y 轴整洁刻度（0/10000/…）区分，便于精确计数
+    let values: Vec<i64> = (1..=40).map(|i| i * 1000 + 7).collect();
+    let values_json = format!(
+        "[{}]",
+        values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(",")
+    );
+    let mk = |hide: bool| {
+        let tpl = r#"{"xAxis":{"type":"category","data":DATA},"yAxis":{"type":"value"},
+            "series":[{"type":"bar","data":VALUES,"label":{"show":true},
+            "labelLayout":{"hideOverlap":HIDE}}]}"#;
+        tpl.replace("DATA", &data)
+            .replace("VALUES", &values_json)
+            .replace("HIDE", if hide { "true" } else { "false" })
+    };
+    let count = |json: &str| -> usize {
+        all_texts(&render_json(json, 800, 500))
+            .into_iter()
+            .filter(|t| t.parse::<i64>().map(|v| v % 1000 == 7).unwrap_or(false))
+            .count()
+    };
+    assert_eq!(count(&mk(false)), 40, "未开启 hideOverlap 应显示全部 40 个");
+    let hidden = count(&mk(true));
+    assert!(
+        hidden > 0 && hidden < 40,
+        "开启 hideOverlap 应隐藏部分重叠值标签，实际 {hidden}"
+    );
+}
+
+/// `axisLabel.showMinLabel` / `showMaxLabel` 生效。
+#[test]
+fn axis_label_show_min_max_label_is_honoured() {
+    let base = |extra: &str| {
+        let tpl = r#"{"xAxis":{"type":"category","data":["a","b","c","d","e"],"axisLabel":{AXIS_LABEL}},"yAxis":{"type":"value"},"series":[{"type":"line","data":[1,2,3,4,5]}]}"#;
+        tpl.replace("AXIS_LABEL", extra)
+    };
+    let cats = |json: &str| -> Vec<String> {
+        all_texts(&render_json(json, 800, 500))
+            .into_iter()
+            .filter(|t| ["a", "b", "c", "d", "e"].contains(&t.as_str()))
+            .collect()
+    };
+
+    // showMinLabel:false → 首标签不显示
+    assert_eq!(cats(&base(r#""interval":0,"showMinLabel":false"#)), vec!["b", "c", "d", "e"]);
+    // showMaxLabel:false → 尾标签不显示
+    assert_eq!(cats(&base(r#""interval":0,"showMaxLabel":false"#)), vec!["a", "b", "c", "d"]);
+    // interval:2 默认抽稀为 a、d；showMaxLabel:true 强制补上尾标签 e
+    assert_eq!(
+        cats(&base(r#""interval":2,"showMaxLabel":true"#)),
+        vec!["a", "d", "e"],
+        "showMaxLabel:true 应强制显示尾标签"
+    );
+}
+
+/// `sampling: 'lttb'`（不带阈值）按**绘图区像素尺寸**自动降采样；
+/// 显式阈值（对象形式）保持用户给定值。
+#[test]
+fn auto_sampling_follows_plot_pixels() {
+    let n = 2000usize;
+    let cats = (0..n)
+        .map(|i| format!("\"c{i}\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    let vals = (0..n)
+        .map(|i| format!("{}", ((i as f64) * 0.05).sin()))
+        .collect::<Vec<_>>()
+        .join(",");
+    let mk = |sampling: &str| {
+        let tpl = r#"{"xAxis":{"type":"category","data":[CATS]},"yAxis":{"type":"value"},
+            "series":[{"type":"line","data":[VALS]SAMPLING}]}"#;
+        tpl.replace("CATS", &cats)
+            .replace("VALS", &vals)
+            .replace("SAMPLING", sampling)
+    };
+    // 取折线路径中的 LineTo 数量近似数据点数
+    let line_points = |json: &str| -> usize {
+        elements_of(&render_json(json, 800, 500), |e| {
+            matches!(e, Element::Path { .. })
+        })
         .into_iter()
-        .filter(|t| ["a", "b", "c", "d", "e"].contains(&t.as_str()))
-        .collect();
-    assert_eq!(cat, vec!["a", "c", "e"], "interval:2 应每 3 个显示一个");
+        .map(|(e, _)| match e {
+            Element::Path { path, .. } => path
+                .elements()
+                .iter()
+                .filter(|el| matches!(el, PathEl::LineTo(_)))
+                .count(),
+            _ => 0,
+        })
+        .max()
+        .unwrap_or(0)
+    };
+
+    let full = line_points(&mk(""));
+    assert!(full >= 1500, "未开启采样应绘制约 2000 个点，实际 {full}");
+
+    let auto = line_points(&mk(r#","sampling":"lttb""#));
+    assert!(
+        auto > 100 && auto < 1200,
+        "sampling:'lttb' 应按绘图区像素尺寸降到约 600 点，实际 {auto}"
+    );
+
+    let explicit = line_points(&mk(r#","sampling":{"type":"lttb","threshold":2000}"#));
+    assert!(
+        explicit >= 1500,
+        "显式 threshold=2000 时不应降采样，实际 {explicit}"
+    );
+}
+
+/// `showAllSymbol` 容错解析（boolean | `"auto"`）+ 类目轴上自动抽稀符号。
+///
+/// 回归：`showAllSymbol` 此前建模为 `Option<bool>`，写 ECharts 文档默认值
+/// `"auto"` 会让整个 option 解析失败；且该字段解析后从未被使用（符号恒全画）。
+#[test]
+fn show_all_symbol_auto_thins_symbols_on_category_axis() {
+    let n = 100usize;
+    let cats = (0..n)
+        .map(|i| format!("\"c{i}\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    let vals = (0..n)
+        .map(|i| format!("{}", (i % 7) as f64))
+        .collect::<Vec<_>>()
+        .join(",");
+    let mk = |extra: &str| {
+        let tpl = r#"{"xAxis":{"type":"category","data":[CATS]},"yAxis":{"type":"value"},
+            "series":[{"type":"line","data":[VALS]EXTRA}]}"#;
+        tpl.replace("CATS", &cats)
+            .replace("VALS", &vals)
+            .replace("EXTRA", extra)
+    };
+    let symbols = |json: &str| -> usize {
+        elements_of(&render_json(json, 800, 500), |e| {
+            matches!(e, Element::Circle { .. })
+        })
+        .len()
+    };
+
+    // 100 个类目 → 槽宽远小于符号直径 → 自动抽稀
+    let auto = symbols(&mk(r#","showAllSymbol":"auto""#));
+    assert!(
+        auto > 0 && auto < n,
+        "showAllSymbol:'auto' 应抽稀符号，实际 {auto} / {n}"
+    );
+
+    // 显式 true → 全部显示
+    let all = symbols(&mk(r#","showAllSymbol":true"#));
+    assert_eq!(all, n, "showAllSymbol:true 应显示全部符号");
+
+    // showSymbol:false → 完全不画
+    assert_eq!(
+        symbols(&mk(r#","showSymbol":false"#)),
+        0,
+        "showSymbol:false 不应绘制任何数据点符号"
+    );
+}
+
+/// 饼图 API 入口默认显示标签（对齐 ECharts `label.show` 默认 true）。
+///
+/// 回归：JSON 入口默认 `true`（`compat.rs`），而 API `Pie::new()` 曾默认 `false`，
+/// 两条入口行为不一致。
+#[test]
+fn pie_api_default_shows_labels() {
+    let df = liecharts::dataframe!("name" => ["A", "B", "C"], "value" => [1.0, 2.0, 3.0]);
+    let text_count = |show: Option<bool>| -> usize {
+        let pie = liecharts::api::Pie::new()
+            .data(df.clone())
+            .category("name")
+            .value("value");
+        let pie = match show {
+            Some(v) => pie.label(v),
+            None => pie,
+        };
+        liecharts::api::Chart::new(600, 400)
+            .add_pie(pie)
+            .render_svg()
+            .unwrap()
+            .matches("<text")
+            .count()
+    };
+
+    let default = text_count(None);
+    let hidden = text_count(Some(false));
+    assert!(
+        default > hidden,
+        "饼图 API 默认应显示标签（默认 {default} 个文本 > 关闭 {hidden} 个）"
+    );
+}
+
+/// 饼图图例的 `legend.formatter` 支持 `{c}`（数值）/ `{d}`（百分比）。
+///
+/// 回归：图例模板上下文恒传 `value: None / percent: None`，`{c}` 无法解析。
+#[test]
+fn pie_legend_formatter_shows_value_and_percent() {
+    let json = r#"{"legend":{"formatter":"{b}: {c} ({d}%)"},
+        "series":[{"type":"pie","data":[{"name":"A","value":30},{"name":"B","value":10}]}]}"#;
+    let texts = all_texts(&render_json(json, 800, 500));
+    assert!(
+        texts.iter().any(|t| t == "A: 30 (75.0%)"),
+        "图例应显示数值与百分比，实际文本: {texts:?}"
+    );
+    assert!(
+        texts.iter().any(|t| t == "B: 10 (25.0%)"),
+        "图例应显示数值与百分比，实际文本: {texts:?}"
+    );
+}
+
+/// 上下文缺失的占位符必须被移除，不能把字面量 `{c}` 画到图上。
+///
+/// 普通系列（line/bar）的图例项没有单一数值，`{c}`/`{d}` 对应字段为 `None`。
+#[test]
+fn legend_formatter_does_not_leak_placeholders() {
+    let json = r#"{"legend":{"formatter":"{b} {c} {d}"},
+        "xAxis":{"type":"category","data":["a"]},"yAxis":{"type":"value"},
+        "series":[{"type":"line","name":"S1","data":[1]},{"type":"line","name":"S2","data":[2]}]}"#;
+    let texts = all_texts(&render_json(json, 800, 500));
+    assert!(
+        !texts.iter().any(|t| t.contains("{c}") || t.contains("{d}")),
+        "不应残留占位符字面量，实际文本: {texts:?}"
+    );
+    for name in ["S1", "S2"] {
+        assert!(
+            texts.iter().any(|t| t.trim() == name),
+            "图例仍应显示名称 {name}，实际文本: {texts:?}"
+        );
+    }
+}
+
+/// 图例布局测量与实际渲染必须共用 `formatter` 后的文本。
+///
+/// 回归：`measure_legend_layout` 用**原始名称**测宽，忽略 `legend.formatter`——
+/// formatter 让文本变长后换行数增加，底部预留却没变，导致图例与绘图区错位。
+/// 这里用长 formatter 让图例从 1 行变 2 行，断言绘图区底边上移。
+#[test]
+fn legend_layout_uses_formatter_text() {
+    let mk = |formatter_field: &str| {
+        let tpl = r#"{"legend":{FORMATTER},"xAxis":{"type":"category","data":["a","b","c"]},
+            "yAxis":{"type":"value"},"series":[SERIES]}"#;
+        let series = (1..=6)
+            .map(|i| format!(r#"{{"type":"line","name":"S{i}","data":[1,2,3]}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        tpl.replace("FORMATTER", formatter_field)
+            .replace("SERIES", &series)
+    };
+    // 绘图区底边 = 最长的横向线（轴线 / 网格线）的 y；图例符号只有 ~25px，被过滤掉
+    let plot_bottom = |json: &str| -> f64 {
+        elements_of(&render_json(json, 700, 400), |e| {
+            matches!(e, Element::Line { .. })
+        })
+        .into_iter()
+        .filter_map(|(e, _)| match e {
+            Element::Line { start, end, .. }
+                if (start.y - end.y).abs() < 1e-6 && (start.x - end.x).abs() > 200.0 =>
+            {
+                Some(start.y)
+            }
+            _ => None,
+        })
+        .fold(f64::MIN, f64::max)
+    };
+
+    let short = plot_bottom(&mk(""));
+    let long = plot_bottom(&mk(
+        r#""formatter":"{b}────────────────────""#,
+    ));
+    assert!(
+        long < short,
+        "长 formatter 使图例多占一行后，绘图区底边应上移（short={short}, long={long}）"
+    );
 }
 
 fn bar_rects(json: &str) -> Vec<(Rect, liecharts::FillStrokeStyle)> {

@@ -272,6 +272,34 @@ fn apply_demands(spec: &mut ChartSpec, demands: &[crate::pipeline::grid_planner:
     }
 }
 
+/// 把"自动"采样阈值（[`crate::sampling::AUTO_SAMPLING_THRESHOLD`]，即 `0`）
+/// 解析为**绘图区像素尺寸**对应的目标点数。
+///
+/// 对齐 ECharts：`sampling:'lttb'`（不带阈值）时按坐标系像素宽度动态决定降采样
+/// 目标，而非固定点数。这里取该系列所属 subplot 的 `max(宽, 高)` 作为目标点数
+/// （每像素约 1 点；水平/垂直方向的稠密数据都能覆盖），并下限 3（LTTB 需要）。
+///
+/// 显式阈值（对象形式 `{type, threshold}`）保持不变。
+fn resolve_sampling_thresholds(
+    series: &mut [crate::pipeline::types::SeriesSpec],
+    specs: &[SubplotSpec],
+) {
+    for s in series.iter_mut() {
+        let Some((ty, threshold)) = s.sampling else {
+            continue;
+        };
+        if threshold != crate::sampling::AUTO_SAMPLING_THRESHOLD {
+            continue;
+        }
+        let px = specs
+            .get(s.grid_index)
+            .map(|sp| sp.bounds.width().max(sp.bounds.height()))
+            .unwrap_or(0.0);
+        let target = (px.round() as usize).max(3);
+        s.sampling = Some((ty, target));
+    }
+}
+
 /// 渲染已求解的布局为视觉元素
 fn render_chart(
     spec: &ChartSpec,
@@ -288,6 +316,7 @@ fn render_chart(
     // 数据转换（采样等）
     // 克隆 series 以便进行可变的数据处理，同时保持 spec 不变
     let mut processed_series = spec.series.clone();
+    resolve_sampling_thresholds(&mut processed_series, specs);
     data_processor::process_series(&mut processed_series);
     // 创建包含处理后的数据的 ChartSpec（用于 Materialize 阶段）
     let data_spec = ChartSpec {
@@ -364,7 +393,16 @@ fn render_chart(
                 radar_indicators_drawn = true;
             }
 
-            let elements = build_typed_series(&typed_series, &ctx)?;
+            let mut elements = build_typed_series(&typed_series, &ctx)?;
+            // `labelLayout.hideOverlap`：值标签以 `layout: None` 产出，需先排版
+            // 才能计算包围盒；随后按系列内标签的重叠情况隐藏（ECharts 默认关闭）。
+            if typed_series.label_hide_overlap() {
+                decorator::compute_text_layouts(&mut elements);
+                crate::pipeline::builder::hide_overlapping_labels(
+                    &mut elements,
+                    crate::pipeline::builder::Z_SERIES_LABEL,
+                );
+            }
             all_elements.extend(elements);
         }
     }
@@ -553,6 +591,36 @@ mod tests {
             theme_name: None,
             fit_mode,
         }
+    }
+
+    /// P2：`sampling` 不带阈值（哨兵 0）时按绘图区像素尺寸解析目标点数。
+    #[test]
+    fn auto_sampling_threshold_follows_plot_pixels() {
+        use crate::pipeline::types::SubplotSpec;
+        use crate::sampling::{AUTO_SAMPLING_THRESHOLD, SamplingType};
+
+        let spec = make_spec(FitMode::Fixed);
+        let mut series = spec.series.clone();
+        series[0].sampling = Some((SamplingType::Lttb, AUTO_SAMPLING_THRESHOLD));
+        let specs = vec![SubplotSpec {
+            id: 0,
+            bounds: Rect::new(0.0, 0.0, 640.0, 480.0),
+            series_indices: vec![0],
+            x_axis_indices: vec![0],
+            y_axis_indices: vec![0],
+        }];
+
+        resolve_sampling_thresholds(&mut series, &specs);
+        assert_eq!(
+            series[0].sampling.unwrap().1,
+            640,
+            "自动阈值应取绘图区最大边长"
+        );
+
+        // 显式阈值不受影响
+        series[0].sampling = Some((SamplingType::Lttb, 123));
+        resolve_sampling_thresholds(&mut series, &specs);
+        assert_eq!(series[0].sampling.unwrap().1, 123, "显式阈值不应被覆盖");
     }
 
     #[test]

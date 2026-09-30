@@ -60,6 +60,10 @@ pub fn format_number(v: f64) -> String {
 /// 应用模板替换。
 ///
 /// 未提供模板时返回 `fallback`（各调用方传入自己的默认文本）。
+///
+/// **上下文中缺失的字段**（如普通系列图例没有 `{c}`/`{d}`）：对应占位符会被
+/// 替换为**空串**，而不是原样保留——历史上 `legend.formatter:"{b}: {c}"` 会把
+/// 字面量 `{c}` 直接画到图上。
 pub fn render_template(tpl: Option<&str>, ctx: &TemplateContext, fallback: &str) -> String {
     let Some(tpl) = tpl else {
         return fallback.to_string();
@@ -83,6 +87,12 @@ pub fn render_template(tpl: Option<&str>, ctx: &TemplateContext, fallback: &str)
     }
     if let Some(sn) = ctx.series_name {
         out = out.replace("{a}", sn).replace("{name}", sn);
+    }
+    // 清理未被替换的已知占位符（对应字段缺失），避免字面量漏到画面上
+    for ph in ["{value}", "{c}", "{d}", "{b}", "{a}", "{name}"] {
+        if out.contains(ph) {
+            out = out.replace(ph, "");
+        }
     }
     out
 }
@@ -119,6 +129,15 @@ mod tests {
         assert_eq!(format_number(10.0), "10");
         assert_eq!(format_number(10.5), "10.5");
         assert_eq!(format_number(10.55), "10.55");
+    }
+
+    #[test]
+    fn missing_fields_are_removed_not_left_literal() {
+        // 图例项（普通系列）没有数值/百分比：`{c}`/`{d}` 应消失，而不是画出 "{c}"
+        let ctx = TemplateContext::name_only("A");
+        assert_eq!(render_template(Some("{b}{c}{d}"), &ctx, ""), "A");
+        // `{a}`（系列名）缺失时同样清理
+        assert_eq!(render_template(Some("{a}{b}"), &ctx, ""), "A");
     }
 
     #[test]

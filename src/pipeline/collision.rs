@@ -65,6 +65,43 @@ pub fn boxes_overlap(a: &LabelBox, b: &LabelBox) -> bool {
     x_overlap && y_overlap
 }
 
+/// 在候选标签中隐藏互相重叠者，返回保留掩码（下标对齐输入）。
+///
+/// 位置已定、只能隐藏的场景（`axisLabel.hideOverlap`、系列数值标签避让）
+/// 使用本函数：只做**隐藏**，不做位移。
+///
+/// `forced` 中为 `true` 的项优先保留（用于 `showMinLabel` / `showMaxLabel`）：
+/// - 强制项先与所有项比较，重叠的非强制项被隐藏；
+/// - 强制项之间也按"先到先得"（同 `build` 顺序）隐藏重叠的后继；
+/// - 非强制项之间按输入顺序先到先得。
+pub fn hide_overlapping(boxes: &[LabelBox], forced: &[bool]) -> Vec<bool> {
+    let n = boxes.len();
+    let mut keep = vec![true; n];
+    if n == 0 {
+        return keep;
+    }
+    let is_forced = |i: usize| forced.get(i).copied().unwrap_or(false);
+
+    // 强制项优先处理，其余按原顺序
+    let mut order: Vec<usize> = (0..n).filter(|&i| is_forced(i)).collect();
+    order.extend((0..n).filter(|&i| !is_forced(i)));
+
+    for (pos, &i) in order.iter().enumerate() {
+        if !keep[i] {
+            continue;
+        }
+        for &j in order.iter().skip(pos + 1) {
+            if !keep[j] {
+                continue;
+            }
+            if boxes_overlap(&boxes[i], &boxes[j]) {
+                keep[j] = false;
+            }
+        }
+    }
+    keep
+}
+
 /// 碰撞处理策略。
 pub trait CollisionResolver {
     /// 输入标签序列，返回处理后的标签（位置可能被调整）。
@@ -232,6 +269,29 @@ mod tests {
         let resolved = resolver.resolve(labels);
         assert!(resolved[1].y - resolved[0].y >= 16.0);
         assert!(resolved[2].y - resolved[1].y >= 16.0);
+    }
+
+    #[test]
+    fn test_hide_overlapping_keeps_first() {
+        let boxes = vec![
+            LabelBox::new(0.0, 0.0, 20.0, 14.0),
+            LabelBox::new(10.0, 0.0, 20.0, 14.0), // 与上一个重叠 → 隐藏
+            LabelBox::new(40.0, 0.0, 20.0, 14.0), // 不重叠 → 保留
+        ];
+        let keep = hide_overlapping(&boxes, &[false; 3]);
+        assert_eq!(keep, vec![true, false, true]);
+    }
+
+    #[test]
+    fn test_hide_overlapping_forced_wins() {
+        // 末尾标签被强制保留时，与它重叠的前一个普通标签应被隐藏
+        let boxes = vec![
+            LabelBox::new(0.0, 0.0, 20.0, 14.0),
+            LabelBox::new(12.0, 0.0, 20.0, 14.0),
+            LabelBox::new(24.0, 0.0, 20.0, 14.0),
+        ];
+        let keep = hide_overlapping(&boxes, &[false, false, true]);
+        assert_eq!(keep, vec![true, false, true]);
     }
 
     #[test]

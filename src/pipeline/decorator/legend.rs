@@ -90,19 +90,8 @@ pub fn render_legend(
     let entries = legend_entries(spec, colors);
 
     // 应用图例 formatter 模板，得到每个 item 的展示文本
-    let display_texts: Vec<String> = data
-        .iter()
-        .map(|name| {
-            // 图例项既是数据项名也是系列名，`{a}`/`{b}`/`{name}` 都指向它
-            let ctx = crate::pipeline::template::TemplateContext {
-                series_name: Some(name),
-                name: Some(name),
-                value: None,
-                percent: None,
-            };
-            crate::pipeline::template::render_template(legend.formatter.as_deref(), &ctx, name)
-        })
-        .collect();
+    //（饼图等按数据点着色的系列会把数值/占比注入模板：`{c}`/`{d}`）
+    let display_texts: Vec<String> = legend_display_texts(spec, legend);
 
     // 第一步：计算每个 item 的实际宽度（symbol + gap + 文本宽度）
     let mut item_widths = Vec::new();
@@ -419,6 +408,105 @@ fn push_unique_entry(
     }
 }
 
+/// 首次出现的名称生效（数值查找表版本）
+fn push_legend_value(
+    table: &mut Vec<(String, Option<f64>, Option<f64>)>,
+    name: String,
+    value: Option<f64>,
+    percent: Option<f64>,
+) {
+    if !name.is_empty() && !table.iter().any(|(n, _, _)| n == &name) {
+        table.push((name, value, percent));
+    }
+}
+
+/// 图例项「名称 → (数值, 占比 0~100)」对照表。
+///
+/// 只有**按数据点着色**的系列有值（与 [`collect_legend_names`] 的口径一致）：
+/// - 饼图：`{c}` = 扇区数值（仅正值，与 [`PieSlice`] 一致），
+///   `{d}` = 占该系列**正值总和**的百分比（与扇形标签 `PieSlice.percent` 同源）；
+/// - 极坐标柱：`{c}` = 半径值（角度轴无"占比"语义，`{d}` 为空）；
+/// - 其余系列（line/bar/…）：无值（模板里的 `{c}`/`{d}` 会被移除）。
+///
+/// [`collect_legend_names`]: crate::pipeline::compat::collect_legend_names
+/// [`PieSlice`]: crate::pipeline::typed_series::PieSlice
+fn legend_value_table(spec: &ChartSpec) -> Vec<(String, Option<f64>, Option<f64>)> {
+    use crate::pipeline::types::SeriesConfig;
+
+    let mut table: Vec<(String, Option<f64>, Option<f64>)> = Vec::new();
+
+    for series in &spec.series {
+        match &series.config {
+            SeriesConfig::Pie(cfg) => {
+                let (Some(name_col), Some(value_col)) = (
+                    series.data.get_column(&cfg.category_col),
+                    series.data.get_column(&cfg.value_col),
+                ) else {
+                    continue;
+                };
+                let total: f64 = (0..series.data.row_count())
+                    .filter_map(|i| value_col.as_f64(i))
+                    .filter(|v| *v > 0.0)
+                    .sum();
+                for i in 0..series.data.row_count() {
+                    let Some(value) = value_col.as_f64(i).filter(|v| *v > 0.0) else {
+                        continue;
+                    };
+                    let Some(name) = name_col.as_string(i) else {
+                        continue;
+                    };
+                    let percent = (total > 0.0).then(|| value / total * 100.0);
+                    push_legend_value(&mut table, name, Some(value), percent);
+                }
+            }
+            SeriesConfig::PolarBar(cfg) => {
+                let (Some(name_col), Some(value_col)) = (
+                    series.data.get_column(&cfg.angle_col),
+                    series.data.get_column(&cfg.radius_col),
+                ) else {
+                    continue;
+                };
+                for i in 0..series.data.row_count() {
+                    let (Some(name), Some(value)) = (name_col.as_string(i), value_col.as_f64(i))
+                    else {
+                        continue;
+                    };
+                    push_legend_value(&mut table, name, Some(value), None);
+                }
+            }
+            _ => {}
+        }
+    }
+    table
+}
+
+/// 图例项的展示文本：应用 `legend.formatter`，并把数据点数值/占比注入模板上下文。
+///
+/// [`render_legend`] 与 [`measure_legend_layout`] **必须共用本函数**：否则一侧
+/// 按原始名称测宽、另一侧按 formatter 后的文本渲染，换行/高度估算会与实际错位。
+fn legend_display_texts(spec: &ChartSpec, legend: &LegendSpec) -> Vec<String> {
+    let table = legend_value_table(spec);
+    legend
+        .data
+        .iter()
+        .map(|name| {
+            let (value, percent) = table
+                .iter()
+                .find(|(n, _, _)| n == name)
+                .map(|(_, v, p)| (*v, *p))
+                .unwrap_or((None, None));
+            // 图例项既是数据项名也是系列名，`{a}`/`{b}`/`{name}` 都指向它
+            let ctx = crate::pipeline::template::TemplateContext {
+                series_name: Some(name),
+                name: Some(name),
+                value,
+                percent,
+            };
+            crate::pipeline::template::render_template(legend.formatter.as_deref(), &ctx, name)
+        })
+        .collect()
+}
+
 /// 解析 ECharts 位置字面量：`"20%"` 相对 `total`，`"20"` / `"20px"` / `20` 为像素。
 fn parse_len(s: &str, total: f64) -> Option<f64> {
     let s = s.trim();
@@ -647,7 +735,7 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
     let legend_color = Color::from_hex(&legend_style.color).unwrap_or(Color::rgb(50, 50, 50));
 
     let mut item_widths = Vec::with_capacity(legend.data.len());
-    for name in &legend.data {
+    for name in legend_display_texts(spec, legend) {
         let mut lv_style = TextStyle::new(
             legend_color,
             legend_style.font_size,
@@ -661,7 +749,7 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
         {
             lv_style.font_family = DEFAULT_FONT_STACK.to_string();
         }
-        let layout = (*measure_text(&[RichSpan::new(name.clone(), lv_style)], None).layout).clone();
+        let layout = (*measure_text(&[RichSpan::new(name, lv_style)], None).layout).clone();
         let w = icon_w + LEGEND_SYMBOL_TEXT_GAP + layout.width + legend_padding * 2.0;
         item_widths.push(w);
     }

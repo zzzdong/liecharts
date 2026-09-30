@@ -924,11 +924,16 @@ impl Chart {
                             area_opacity: 0.5,
                             symbol_type: sym,
                             symbol_size: l.symbol_size,
+                            // API 入口默认对齐 ECharts：显示符号、`showAllSymbol:'auto'`
+                            // （用户可用 `symbol(SymbolType::None)` 完全关闭符号）
+                            symbol_show: true,
+                            show_all_symbol: crate::pipeline::types::ShowAllSymbol::Auto,
                             label_show: l.label_show,
                             label_font_size: l.label_font_size,
                             label_formatter: l.label_formatter.clone(),
                             label_position: l.label_position,
                             label_color: l.label_color,
+                            label_hide_overlap: false,
                             mark_line: Vec::new(),
                         })
                     }
@@ -964,6 +969,7 @@ impl Chart {
                             label_formatter: l.label_formatter.clone(),
                             label_position: l.label_position,
                             label_color: l.label_color,
+                            label_hide_overlap: false,
                             mark_line: Vec::new(),
                             mark_point: Vec::new(),
                         })

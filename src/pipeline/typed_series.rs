@@ -26,6 +26,20 @@ pub enum TypedSeries {
     Table(TableSeries),
 }
 
+impl TypedSeries {
+    /// 该系列的标签是否要求隐藏重叠（`labelLayout.hideOverlap`）。
+    ///
+    /// 目前仅柱/折线（含分组柱）的值标签支持；其余类型恒为 `false`。
+    pub fn label_hide_overlap(&self) -> bool {
+        match self {
+            TypedSeries::Bar(s) => s.label.as_ref().is_some_and(|l| l.hide_overlap),
+            TypedSeries::Line(s) => s.label.as_ref().is_some_and(|l| l.hide_overlap),
+            TypedSeries::GroupedBar(s) => s.label.as_ref().is_some_and(|l| l.hide_overlap),
+            _ => false,
+        }
+    }
+}
+
 /// 渲染上下文
 pub struct RenderContext<'a> {
     /// 颜色上下文（仅用于轴/网格线/边框等装饰元素）
@@ -62,6 +76,11 @@ pub struct LineSeries {
     pub area_opacity: f64,
     pub symbol_type: SymbolType,
     pub symbol_size: f64,
+    /// 符号抽稀步长：`0` = 不绘制符号；`1` = 全部；`n` = 每隔 `n` 个数据点绘制一个。
+    ///
+    /// 由 Materializer 依 `showSymbol` / `showAllSymbol` 与类目轴像素槽宽算出
+    /// （ECharts `showAllSymbol:'auto'`：类目轴上数据点过密时自动隐藏部分符号）。
+    pub symbol_step: usize,
     /// 数据点（像素空间坐标，无需再映射）
     pub points: Vec<Point>,
     /// 面积填充的基线 Y（像素空间）
@@ -447,6 +466,8 @@ pub struct SeriesLabelConfig {
     pub font_size: f64,
     /// 标签模板（支持 `{a}`/`{b}`/`{c}`/`{d}`/`{value}`），None 时显示数值
     pub formatter: Option<String>,
+    /// `labelLayout.hideOverlap`：数据点过密时隐藏互相重叠的标签
+    pub hide_overlap: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
