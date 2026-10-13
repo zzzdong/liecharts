@@ -140,19 +140,24 @@ const LEGEND_PLOT_GAP: f64 = 8.0;
 /// 单行图例时该值小于 v6 的 `grid.bottom`（80px）默认值，两者取 max 后默认输出
 /// 与 v6 一致；多行（换行）图例才会超过 80px，从而避免与绘图区重叠。
 ///
+/// 图例来源与 [`render_legend`](legend::render_legend) 一致（共用
+/// [`resolve_legend`](legend::resolve_legend)）：显式配置或按需自动生成的图例
+/// 都参与底部预留——历史上只看 `spec.legend`，自动图例不预留，导致图例压在
+/// 底部子图与轴标签上。
+///
 /// 图例被显式配置在顶部时改由 [`estimate_header_height`] 预留；配置在画布中部
 /// 时不做预留（与 ECharts 一致：中部图例允许与绘图区重叠）。
 pub fn estimate_footer_height(spec: &ChartSpec, theme: &Theme, width: f64) -> f64 {
-    let Some(legend) = &spec.legend else {
+    let Some(legend) = legend::resolve_legend(spec) else {
         return 0.0;
     };
-    if legend::legend_vertical_zone(legend) != LegendVerticalZone::Bottom {
+    if legend::legend_vertical_zone(&legend) != LegendVerticalZone::Bottom {
         return 0.0;
     }
     match legend::measure_legend_layout(spec, width as u32, theme) {
         Some(layout) if layout.rows > 0 => {
             let canvas_h = spec.height as f64;
-            let block_top = legend::legend_block_top(legend, layout.total_height, canvas_h);
+            let block_top = legend::legend_block_top(&legend, layout.total_height, canvas_h);
             let below = (canvas_h - block_top - layout.total_height).max(0.0);
             layout.total_height + below + LEGEND_PLOT_GAP
         }

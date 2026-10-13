@@ -1185,6 +1185,32 @@ impl Chart {
                     _ => 0,
                 };
 
+                // 系列默认绑定**本 grid** 的第一条 x / y 轴（`sub_grid` 闭包与
+                // `grid_index()` 的语义承诺：轴与系列自动按 grid 归属，见
+                // [`GridBuilder`] 文档）。历史行为是 x_axis_index 恒 0、y 轴用层
+                // 字段原值——多子图时所有系列的类目槽位都按 grid 0 的 X 轴计算
+                //（4 类目被压进 6 槽），Y 轴范围也被其他子图的系列串味。
+                // 层字段指向不属于本 grid 的轴时按误配处理，回退到本 grid 的
+                // 第一条轴；指向本 grid 的轴（含双轴 `right_axis()`）保持原值。
+                let grid_x_axis = self
+                    .x_axes
+                    .iter()
+                    .position(|a| a.grid_index == grid_idx)
+                    .unwrap_or(0);
+                let x_axis_index = grid_x_axis;
+                let y_axis_index = if self
+                    .y_axes
+                    .get(y_axis_idx)
+                    .is_some_and(|a| a.grid_index == grid_idx)
+                {
+                    y_axis_idx
+                } else {
+                    self.y_axes
+                        .iter()
+                        .position(|a| a.grid_index == grid_idx)
+                        .unwrap_or(y_axis_idx)
+                };
+
                 let stack = match layer {
                     LayerSpec::Line(l) => l.stack.clone(),
                     LayerSpec::Bar(l) => l.stack.clone(),
@@ -1227,8 +1253,8 @@ impl Chart {
                     name,
                     data,
                     grid_index: grid_idx,
-                    x_axis_index: 0,
-                    y_axis_index: y_axis_idx,
+                    x_axis_index,
+                    y_axis_index,
                     stack,
                     group_index,
                     sampling,

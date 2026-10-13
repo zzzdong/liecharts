@@ -674,10 +674,15 @@ fn legend_symbol_shape_follows_chart_type() {
         800,
         500,
     );
-    // 饼图符号 = 圆，直径取符号框短边 `itemHeight`(14) → 半径 7
+    // 饼图符号 = 25×14 **圆角矩形**（ECharts v6 默认图标，实测 line-simple.svg
+    // 圆角半径 3.5；历史实现是直径 14 的圆）
     assert!(
-        circles(&pie).iter().any(|(_, r, _)| (*r - 7.0).abs() < 0.1),
-        "饼图系列的图例符号应为直径 14 的圆"
+        rounded_rects(&pie)
+            .iter()
+            .any(|(r, radius, _)| (r.width() - 25.0).abs() < 0.1
+                && (r.height() - 14.0).abs() < 0.1
+                && (*radius - 3.5).abs() < 0.1),
+        "饼图系列的图例符号应为 25×14、圆角 3.5 的圆角矩形"
     );
 }
 
@@ -1008,11 +1013,11 @@ fn pie_legend_formatter_shows_value_and_percent() {
         "series":[{"type":"pie","data":[{"name":"A","value":30},{"name":"B","value":10}]}]}"#;
     let texts = all_texts(&render_json(json, 800, 500));
     assert!(
-        texts.iter().any(|t| t == "A: 30 (75.0%)"),
+        texts.iter().any(|t| t == "A: 30 (75.00%)"),
         "图例应显示数值与百分比，实际文本: {texts:?}"
     );
     assert!(
-        texts.iter().any(|t| t == "B: 10 (25.0%)"),
+        texts.iter().any(|t| t == "B: 10 (25.00%)"),
         "图例应显示数值与百分比，实际文本: {texts:?}"
     );
 }

@@ -120,3 +120,89 @@ fn pie_sectors_closed() {
         closed_count
     );
 }
+
+/// ECharts 对齐回归（`examples/json_config.rs` 场景）：
+///
+/// 1. **饼图不参与 grid**：`radius: ['0%','70%']` 的半径 = 70% × min(画布宽,高)/2，
+///    圆心在画布正中（`center: ['50%','50%']`），不被竖排图例的底部预留压缩。
+///    历史实现把饼塞进默认 grid 并 clamp 到 grid 内接半径——8 项竖排图例把
+///    grid 压到 206px 高，配置的 210px 被砍到 104px（官方同图为 263.2px / 70%）。
+/// 2. **竖向图例行距** = max(itemHeight, 字号) + itemGap = 14 + 8 = 22px/档
+///    （官方 v6 SVG 竖向图例实测同值；历史实现是 38.8px/项）。
+#[test]
+fn pie_geometry_and_vertical_legend_pitch_match_echarts() {
+    let json = r#"
+{
+  "title": {"text": "安全事件类型分布"},
+  "legend": {"orient": "vertical", "left": "left"},
+  "series": [{
+    "name": "安全事件类型分布",
+    "type": "pie",
+    "radius": ["0%", "70%"],
+    "data": [
+      {"name": "运维监控", "value": 67403},
+      {"name": "拒绝服务", "value": 5764},
+      {"name": "数据泄露", "value": 4155},
+      {"name": "可疑行为", "value": 2458},
+      {"name": "登录操作", "value": 1536},
+      {"name": "漏洞攻击", "value": 141},
+      {"name": "web攻击", "value": 103},
+      {"name": "网络行为", "value": 27}
+    ]
+  }]
+}
+"#;
+    let chart = liecharts::ChartBuilder::from_option_json(json)
+        .unwrap()
+        .build(800, 600)
+        .unwrap();
+    let svg = chart.render_svg().unwrap();
+
+    // 半径/圆心：首扇区从 12 点钟方向起点 (cx, cy − r) 出发，路径以 "L400,300"
+    // （圆心连线）收口。70% × min(800,600)/2 = 210 → 起点 (400, 90)。
+    assert!(
+        svg.contains("M400,90"),
+        "饼图首扇区应从 (400, 90) 出发（圆心 (400,300)、半径 210 = 70% × min/2）"
+    );
+    assert!(
+        svg.contains("L400,300"),
+        "扇区路径应以画布中心 (400,300) 为顶点收口"
+    );
+
+    // 竖向图例：相邻两项文本基线差 = itemHeight(14) + itemGap(8) = 22
+    let names = [
+        "运维监控",
+        "拒绝服务",
+        "数据泄露",
+        "可疑行为",
+        "登录操作",
+        "漏洞攻击",
+        "web攻击",
+        "网络行为",
+    ];
+    let mut ys: Vec<f64> = svg
+        .split("<text")
+        .skip(1)
+        .filter_map(|seg| {
+            let content = seg
+                .split_once('>')
+                .and_then(|(_, rest)| rest.split("</text>").next())
+                .unwrap_or("");
+            let y: f64 = seg
+                .split("y=\"")
+                .nth(1)
+                .and_then(|s| s.split('"').next())
+                .and_then(|s| s.parse().ok())?;
+            names.contains(&content).then_some(y)
+        })
+        .collect();
+    ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_eq!(ys.len(), 8, "8 个图例项都应渲染，实际 {:?}", ys);
+    for pair in ys.windows(2) {
+        let pitch = pair[1] - pair[0];
+        assert!(
+            (pitch - 22.0).abs() < 0.5,
+            "竖向图例相邻项间距应为 22px（itemHeight+itemGap），实际 {pitch}"
+        );
+    }
+}

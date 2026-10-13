@@ -5,7 +5,7 @@ use std::f64::consts::PI;
 use lievisual::{
     Color,
     scene::{Element, FillStrokeStyle, SceneNode, Stroke},
-    text::{RichSpan, TextAlign, TextBaseline, TextStyle},
+    text::{RichSpan, TextAlign, TextBaseline, TextStyle, measure_text},
 };
 use lievisual::kurbo::{BezPath, Point};
 
@@ -17,20 +17,62 @@ use crate::{
     },
 };
 
-/// 饼图外部标签的几何布局（用于碰撞避让）
+/// 引导线第 2 段（径向）长度：从扇形边缘沿扇区中线外推的距离。
+///
+/// ECharts v6 `labelLine.length` 实测 = 15px（参考 line-simple.svg：折点半径
+/// ≈ r + 15）。
+const LABEL_LINE_LEN: f64 = 15.0;
+/// 引导线第 3 段（水平）长度：折点到文本边的距离（ECharts `labelLine.length2`
+/// 实测 = 30px）。
+const LABEL_LINE_END: f64 = 30.0;
+/// 引导线终点与文本盒之间的间隙（实测 5px）。
+const LABEL_TEXT_GAP: f64 = 5.0;
+/// 文本白色描边的 8 向偏移（单位 px）。
+///
+/// ECharts 用 `stroke=#fff stroke-width=2 paint-order=stroke` 给外置标签加白边；
+/// lievisual 的 `TextStyle` 没有文本描边能力，用 8 向 1px 白色副本近似（先铺白字、
+/// 再叠正常色文本），视觉上得到一圈约 1px 的白色描边。
+const LABEL_HALO_OFFSETS: [(f64, f64); 8] = [
+    (-1.0, 0.0),
+    (1.0, 0.0),
+    (0.0, -1.0),
+    (0.0, 1.0),
+    (-0.707, -0.707),
+    (0.707, -0.707),
+    (-0.707, 0.707),
+    (0.707, 0.707),
+];
+
+/// 饼图外部标签的几何布局（ECharts label layout 思路）
 struct PieLabelGeometry {
     /// 标签展示文本
     text: String,
-    /// 文本锚点 X（引导线第 2 段终点外侧）
-    text_x: f64,
-    /// 文本锚点 Y（引导线第 2 段终点）
-    text_y: f64,
-    /// 引导线第 1 段起点（扇形边缘，沿角度方向径向）
+    /// 所属扇区颜色（引导线与文字描边同色，ECharts 语义）
+    color: Color,
+    /// 标签所在侧（自然位置在圆心的左/右）
+    side: PieSide,
+    /// 扇区中线角度（弧度，0 = 12 点钟方向，顺时针为正）
+    mid_angle: f64,
+    /// 引导线第 1 段起点（扇形边缘）
     line_start: Point,
-    /// 引导线折点
+    /// 引导线折点（外圆 `r + LABEL_LINE_LEN` 上）
     line_kink: Point,
-    /// 标签所在区域
-    region: PieRegion,
+    /// 自然锚点 y（折点 y，未做同侧避让）
+    natural_y: f64,
+    /// 文本锚点 y（同侧避让后）
+    text_y: f64,
+    /// 文本锚点 x（由最终折点推出）
+    text_x: f64,
+}
+
+/// 标签所在侧（自然位置在圆心的左/右）
+///
+/// ECharts 同口径：12 点附近的密集小扇区全部落到同一侧（实测 line-simple.svg
+/// 中 6 个 <1% 的扇区标签全在左侧），不做上/下分组。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PieSide {
+    Left,
+    Right,
 }
 
 pub struct PieBuilder;
@@ -43,10 +85,11 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
         let width = bounds.width();
         let height = bounds.height();
 
-        // 饼图在 bounds 中心居中
+        // 饼图在 bounds 中心居中（ECharts 语义 `center: ['50%','50%']`）。
+        // 历史实现把圆心下移 5%（0.55）为标题/图例让位，但官方 SVG 实测圆心
+        // 就在画布正中（标题/图例不参与饼图的定位），故回退到 0.5。
         let center_x = bounds.x0 + width * 0.5;
-        // 将圆心稍微向下偏移，以平衡标题和图例占用的顶部空间
-        let center_y = bounds.y0 + height * 0.55;
+        let center_y = bounds.y0 + height * 0.5;
         let center = Point::new(center_x, center_y);
 
         // P2a：radius 为**绝对像素**（api/compat 层按「画布 min/2」折算）；
@@ -116,9 +159,13 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
                     }
                     LabelPosition::Outside => {
                         let text = format_label_text(slice, series.label_formatter.as_deref());
-                        if let Some(geo) =
-                            compute_label_geometry(center, slice_outer, mid_angle, &text)
-                        {
+                        if let Some(geo) = compute_label_geometry(
+                            center,
+                            slice_outer,
+                            mid_angle,
+                            &text,
+                            slice.color,
+                        ) {
                             outside_labels.push(geo);
                         }
                     }
@@ -140,28 +187,32 @@ impl SeriesBuilder<PieSeries> for PieBuilder {
 
         // 第二遍：用避让后的几何生成引导线 + 文本
         for geo in resolved {
-            elements.extend(emit_label_elements(&geo, ctx, series.label_line_show));
+            elements.extend(emit_label_elements(
+                &geo,
+                ctx,
+                series.label_font_size,
+                series.label_line_show,
+            ));
         }
 
         Ok(elements)
     }
 }
 
-/// 饼图外部标签的碰撞避让。
+/// 饼图外部标签的布局（ECharts label layout 思路，算法替换而非常量对齐）。
 ///
-/// 结合「引导线两段式」的布局要求（第 1 段「圆心 -> 扇形边缘」隐含不显示）：
-/// - **第 2 段**：从扇形边缘沿扇区角度方向径向引出（`line_start -> line_kink`）；
-/// - **第 3 段**：指向文本侧边（`line_kink -> line_end`），保持水平/垂直，指向文本端点的垂直/水平中心。
+/// 与 ECharts `PieView` + `avoidLabelOverlap` 同源，分两阶段：
 ///
-/// 碰撞避让原则：**按区域分组、独立避让**——
-/// - Left/Right 区域：文本在饼图左/右外缘垂直排布，组内做 **Y 轴避让**；
-/// - Top/Bottom 区域：文本在饼图上方/下方，组内做 **X 轴避让**。
-///
-///   避免右侧大扇区被左侧小扇区推挤，也避免顶部小扇区引导线横穿饼图。
-///
-/// 参考 ECharts 的 `avoidOverlap` 思路：当同侧标签相互重叠时，不再用单向位移
-/// 把标签一味向外推挤（会导致整体偏移、越界），而是围绕饼图圆心**对称均匀排布**，
-/// 并把整组标签约束在画布范围内（见 [`distribute_vertical`]、[`distribute_horizontal`]）。
+/// 1. **沿半径外推**（[`compute_label_geometry`] + [`finalize_label_geometry`]）：
+///    每个标签的引导线折点始终落在「扇形边缘沿扇区中线外推 `LABEL_LINE_LEN`」
+///    的外圆上；文本锚点由折点沿水平方向引出 `LABEL_LINE_END + LABEL_TEXT_GAP`。
+///    因此引导线水平段长度恒定（30px + 5px 间隙），与扇区大小无关——实测
+///    line-simple.svg 中 8 个标签的水平段全部是 30px。
+/// 2. **同侧纵向避让**（[`resolve_side_group`]）：标签只按自然位置分左右两侧；
+///    同侧内按「沿该侧自上而下」排序，从最上方标签起逐个
+///    `y = max(自然 y, 上一位 y + pitch)` 下推（`pitch = 字号 × 1.2`），
+///    自然位置不冲突的标签保持不动（如 82% 大扇区）；整组越界时整体上移，
+///    仍放不下才按可用高度压缩步长（保序、不出画布）。
 fn resolve_label_overlap(
     labels: Vec<PieLabelGeometry>,
     font_size: f64,
@@ -171,270 +222,186 @@ fn resolve_label_overlap(
     canvas_height: f64,
 ) -> Vec<PieLabelGeometry> {
     if labels.len() < 2 {
-        return labels;
-    }
-
-    let (mut tops, mut bottoms, mut lefts, mut rights): (
-        Vec<PieLabelGeometry>,
-        Vec<PieLabelGeometry>,
-        Vec<PieLabelGeometry>,
-        Vec<PieLabelGeometry>,
-    ) = (Vec::new(), Vec::new(), Vec::new(), Vec::new());
-    for g in labels {
-        match g.region {
-            PieRegion::Top => tops.push(g),
-            PieRegion::Bottom => bottoms.push(g),
-            PieRegion::Left => lefts.push(g),
-            PieRegion::Right => rights.push(g),
+        let mut out = labels;
+        for g in out.iter_mut() {
+            finalize_label_geometry(g, font_size, center_x, center_y, canvas_width);
         }
+        return out;
     }
 
-    // Left/Right 纵向避让，Top/Bottom 横向均匀分布
-    rights = resolve_group(
-        rights,
-        font_size,
-        false,
-        center_x,
-        center_y,
-        canvas_width,
-        canvas_height,
-    );
-    lefts = resolve_group(
-        lefts,
-        font_size,
-        false,
-        center_x,
-        center_y,
-        canvas_width,
-        canvas_height,
-    );
-    tops = resolve_group(
-        tops,
-        font_size,
-        true,
-        center_x,
-        center_y,
-        canvas_width,
-        canvas_height,
-    );
-    bottoms = resolve_group(
-        bottoms,
-        font_size,
-        true,
-        center_x,
-        center_y,
-        canvas_width,
-        canvas_height,
-    );
+    let (lefts, rights): (Vec<_>, Vec<_>) =
+        labels.into_iter().partition(|g| g.side == PieSide::Left);
 
-    let mut result = rights;
-    result.extend(lefts);
-    result.extend(tops);
-    result.extend(bottoms);
+    let mut result = Vec::with_capacity(lefts.len() + rights.len());
+    result.extend(resolve_side_group(
+        lefts,
+        PieSide::Left,
+        font_size,
+        center_x,
+        center_y,
+        canvas_width,
+        canvas_height,
+    ));
+    result.extend(resolve_side_group(
+        rights,
+        PieSide::Right,
+        font_size,
+        center_x,
+        center_y,
+        canvas_width,
+        canvas_height,
+    ));
     result
 }
 
-/// 对同一区域内的一组标签做避让。
-///
-/// - **Left/Right 区域**（`horizontal=false`）：文本沿饼图左/右外缘垂直排布，
-///   组内做 **Y 轴避让**。
-/// - **Top/Bottom 区域**（`horizontal=true`）：多个小扇区常聚集在正上/正下方，
-///   其自然 x 坐标非常接近，若用单向位移避让会把标签逐一向外推挤，导致重叠或越界。
-///   因此改用对称均匀分布（见 [`distribute_horizontal`]）。
-fn resolve_group(
-    group: Vec<PieLabelGeometry>,
+/// 单侧标签的纵向避让 + 折点/锚点反推。
+fn resolve_side_group(
+    mut group: Vec<PieLabelGeometry>,
+    side: PieSide,
     font_size: f64,
-    horizontal: bool,
     center_x: f64,
     center_y: f64,
     canvas_width: f64,
     canvas_height: f64,
 ) -> Vec<PieLabelGeometry> {
-    if group.len() < 2 {
-        return group;
-    }
-
-    if horizontal {
-        return distribute_horizontal(group, font_size, center_x, canvas_width);
-    }
-    distribute_vertical(group, font_size, center_y, canvas_height)
-}
-
-/// 左侧/右侧标签的纵向对称均匀分布。
-///
-/// 参考 ECharts 半椭圆贴合弧线的思路：同侧标签的理想位置沿扇区角度自然分布，
-/// 只有当相邻标签相互重叠时，才围绕圆心 y（`center_y`）对称均匀排布，
-/// 避免单向位移把标签整体推向画布边缘。
-fn distribute_vertical(
-    mut group: Vec<PieLabelGeometry>,
-    font_size: f64,
-    center_y: f64,
-    canvas_height: f64,
-) -> Vec<PieLabelGeometry> {
-    // 按自然 y 排序，保持扇区顺序
+    // 沿该侧「自上而下」排序：左侧角度降序（360°→180°）、右侧角度升序
+    // （0°→180°）。半圆内 y 随角度单调，故等价于 natural_y 升序；y 相同的
+    // 聚集扇区按角度定序——与官方参考一致（离 12 点最近的标签排最上）。
+    let angle_desc = side == PieSide::Left;
     group.sort_by(|a, b| {
-        a.text_y
-            .partial_cmp(&b.text_y)
-            .unwrap_or(std::cmp::Ordering::Equal)
+        let ord = a
+            .mid_angle
+            .partial_cmp(&b.mid_angle)
+            .unwrap_or(std::cmp::Ordering::Equal);
+        if angle_desc { ord.reverse() } else { ord }
     });
 
-    // 标签高度 + 纵向间距
-    let label_h = font_size * 1.2;
-    let natural_gap = label_h + 4.0;
-
-    // 先判断是否存在重叠：相邻标签的 y 间距小于所需间距
-    let has_overlap = group
-        .windows(2)
-        .any(|w| w[1].text_y - w[0].text_y < natural_gap);
-    if !has_overlap {
-        // 无重叠，保持贴合扇区的自然位置
-        return group;
+    // 自顶向下逐项下推：自然位置不冲突的标签保持原位（ECharts 实测 pitch
+    // ≈ 字号 + 2；这里取字号×1.2，为 CJK 下探字形留余量）
+    let pitch = font_size * 1.2;
+    let mut prev_y = f64::NEG_INFINITY;
+    for g in group.iter_mut() {
+        g.text_y = if prev_y.is_finite() {
+            g.natural_y.max(prev_y + pitch)
+        } else {
+            g.natural_y
+        };
+        prev_y = g.text_y;
     }
 
-    let n = group.len();
-
-    // 画布纵向可用范围（两端预留安全边距）
+    // 画布纵向约束：整体上移；仍放不下则按可用高度压缩步长（保序）
     const SAFE_MARGIN: f64 = 8.0;
     let min_y = SAFE_MARGIN;
-    let max_y = (canvas_height - SAFE_MARGIN - label_h).max(min_y);
-    let available = (max_y - min_y).max(0.0);
+    let max_y = (canvas_height - SAFE_MARGIN - font_size).max(min_y);
+    let n = group.len();
+    if n > 0 && group[n - 1].text_y > max_y {
+        let overflow = group[n - 1].text_y - max_y;
+        if group[0].text_y - overflow >= min_y {
+            for g in group.iter_mut() {
+                g.text_y -= overflow;
+            }
+        } else if n > 1 {
+            let step = (max_y - min_y) / (n - 1) as f64;
+            for (i, g) in group.iter_mut().enumerate() {
+                g.text_y = min_y + i as f64 * step;
+            }
+        }
+    }
 
-    // 均匀间距：优先自然间距；若总高放不下则等比压缩，确保不越界
-    let step = if n > 1 && (n - 1) as f64 * natural_gap > available {
-        available / (n - 1) as f64
-    } else {
-        natural_gap
-    };
-
-    // 围绕圆心对称排布，并将起点夹到范围内
-    let span = (n - 1) as f64 * step;
-    let start_y = (center_y - span * 0.5).clamp(min_y, max_y - span);
-
-    for (i, g) in group.iter_mut().enumerate() {
-        let target = start_y + i as f64 * step;
-        g.text_y = target;
-        g.line_kink.y = target;
+    for g in group.iter_mut() {
+        finalize_label_geometry(g, font_size, center_x, center_y, canvas_width);
     }
     group
 }
 
-/// 顶部/底部标签的横向对称均匀分布。
+/// 由避让后的 `text_y` 反推引导线折点与文本锚点 x。
 ///
-/// 多个小扇区常聚集在正上/正下方，其自然 x 坐标都非常接近圆心 x，
-/// 若用单向位移避让，会把标签逐一向外推挤（最外侧可能被推出画布），
-/// 且中间标签可能仍挤在一起相互遮挡。
-/// 这里改为围绕圆心对称均匀排布，并把标签整体约束在画布范围内。
-fn distribute_horizontal(
-    mut group: Vec<PieLabelGeometry>,
+/// 折点取「外圆 `r + LABEL_LINE_LEN` 与水平线 `y = text_y` 的交点（该侧解）」，
+/// 文本锚点 = 折点 ± (`LABEL_LINE_END` + `LABEL_TEXT_GAP`)；最后把文本盒夹回
+/// 画布内（ECharts 同样把标签约束在视口内）。
+fn finalize_label_geometry(
+    g: &mut PieLabelGeometry,
     font_size: f64,
     center_x: f64,
+    center_y: f64,
     canvas_width: f64,
-) -> Vec<PieLabelGeometry> {
-    // 按自然 x 排序，保持扇区顺序
-    group.sort_by(|a, b| {
-        a.text_x
-            .partial_cmp(&b.text_x)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    let n = group.len();
-    let max_w = group
-        .iter()
-        .map(|g| crate::pipeline::axis_label::estimate_text_size(&g.text, font_size).0)
-        .fold(0.0_f64, f64::max);
-
-    // 画布横向可用范围（两端预留安全边距，最右侧还需留出文本宽度）
-    const SAFE_MARGIN: f64 = 8.0;
-    let min_x = SAFE_MARGIN;
-    let max_x = (canvas_width - SAFE_MARGIN - max_w).max(min_x);
-
-    let natural_gap = max_w + 12.0;
-    let available = (max_x - min_x).max(0.0);
-
-    // 均匀间距：优先自然间距；若总宽放不下则等比压缩，确保不越界
-    let step = if n > 1 && (n - 1) as f64 * natural_gap > available {
-        available / (n - 1) as f64
-    } else {
-        natural_gap
+) {
+    // 折点半径 = 扇形边缘半径 + 径向长度（玫瑰图扇区外径不一，按各自半径算）
+    let kink_r = (g.line_start - Point::new(center_x, center_y)).hypot() + LABEL_LINE_LEN;
+    let dy = (g.text_y - center_y).clamp(-kink_r, kink_r);
+    let dx = (kink_r * kink_r - dy * dy).max(0.0).sqrt();
+    let (kink_x, outward) = match g.side {
+        PieSide::Left => (center_x - dx, -1.0),
+        PieSide::Right => (center_x + dx, 1.0),
     };
+    g.line_kink = Point::new(kink_x, g.text_y);
+    g.text_x = kink_x + outward * (LABEL_LINE_END + LABEL_TEXT_GAP);
 
-    // 围绕圆心对称排布，并将起点夹到范围内
-    let span = (n - 1) as f64 * step;
-    let start_x = (center_x - span * 0.5).clamp(min_x, max_x - span);
-
-    for (i, g) in group.iter_mut().enumerate() {
-        let target = start_x + i as f64 * step;
-        g.text_x = target;
+    // 文本盒不得越出画布（左缘 ≥ 安全边距 / 右缘 ≤ 画布宽 − 安全边距）
+    const SAFE_MARGIN: f64 = 8.0;
+    let text_w = measure_label_width(&g.text, font_size);
+    match g.side {
+        PieSide::Left => {
+            g.text_x = g
+                .text_x
+                .max(SAFE_MARGIN + text_w)
+                .min(canvas_width - SAFE_MARGIN)
+        }
+        PieSide::Right => {
+            g.text_x = g
+                .text_x
+                .max(SAFE_MARGIN)
+                .min(canvas_width - SAFE_MARGIN - text_w)
+        }
     }
-    group
 }
 
-/// 饼图外部标签所在区域（决定文本放置与避让方向）
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum PieRegion {
-    Top,
-    Bottom,
-    Left,
-    Right,
+/// 标签文本的自然宽度（parley 实测，与渲染口径一致）。
+fn measure_label_width(text: &str, font_size: f64) -> f64 {
+    let style = TextStyle::new(Color::rgb(0, 0, 0), font_size, "sans-serif");
+    measure_text(&[RichSpan::new(text.to_string(), style)], None)
+        .layout
+        .width
 }
 
-/// 计算饼图外部标签的几何布局（引导线两段 + 文本锚点）。
+/// 计算饼图外部标签的自然几何（引导线两段 + 文本锚点）。
 ///
-/// 按扇区角度将标签归入四区，避免引导线横穿饼图：
-/// - **Left/Right**：文本在饼图左/右外缘垂直排布（x 固定），后续做 Y 轴避让；
-/// - **Top/Bottom**：文本在饼图上方/下方沿角度方向外置，后续做 X 轴避让。
-///
-///   引导线统一「从扇形边缘沿角度方向径向引出」，向外不向内。
+/// 只算「沿半径外推」的自然位置：折点 = 扇形边缘沿扇区中线外推
+/// `LABEL_LINE_LEN`，文本锚点 y = 折点 y；x 留待同侧避让后由
+/// [`finalize_label_geometry`] 反推（水平段长度恒定，与扇区大小无关）。
 fn compute_label_geometry(
     center: Point,
-    outer_radius: f64,
+    slice_outer: f64,
     mid_angle: f64,
     text: &str,
+    color: Color,
 ) -> Option<PieLabelGeometry> {
     // 将角度转换为标准坐标系（0°=右侧，π/2=下方）
     let angle = -PI / 2.0 + mid_angle;
-    let dir = (angle.cos(), angle.sin());
-    let (c, s) = dir;
+    let (c, s) = (angle.cos(), angle.sin());
 
-    // 扇形边缘（引导线第 2 段起点）
-    let line_start = Point::new(center.x + outer_radius * c, center.y + outer_radius * s);
-
-    // 判断区域：仅角度非常接近正上/正下（|cos| 很小）才归顶部/底部，
-    // 其余按左右分侧（避免多个标签横向堆积在顶部导致超界/重叠）。
-    let region = if s < -0.30 && c.abs() < 0.5 {
-        PieRegion::Top
-    } else if s > 0.30 && c.abs() < 0.5 {
-        PieRegion::Bottom
-    } else if c >= 0.0 {
-        PieRegion::Right
-    } else {
-        PieRegion::Left
-    };
-
-    // 文本锚点：按区域外置在饼图轮廓外侧
-    let text_margin = 12.0;
-    let (text_x, text_y) = match region {
-        PieRegion::Left => (center.x - outer_radius - text_margin, line_start.y),
-        PieRegion::Right => (center.x + outer_radius + text_margin, line_start.y),
-        // 顶部/底部：文本在饼图上方/下方，x 沿扇形方向
-        PieRegion::Top => (line_start.x, center.y - outer_radius - text_margin),
-        PieRegion::Bottom => (line_start.x, center.y + outer_radius + text_margin),
-    };
-
-    // 引导线第 2 段径向长度（从扇形边缘沿角度方向延伸）
-    let radial_len = 12.0;
-    let line_kink = Point::new(
-        center.x + (outer_radius + radial_len) * c,
-        center.y + (outer_radius + radial_len) * s,
-    );
+    // 引导线第 1 段起点：扇形边缘（沿扇区中线）
+    let line_start = Point::new(center.x + slice_outer * c, center.y + slice_outer * s);
+    // 自然折点：沿扇区中线外推 `LABEL_LINE_LEN`
+    let kink_r = slice_outer + LABEL_LINE_LEN;
+    let line_kink = Point::new(center.x + kink_r * c, center.y + kink_r * s);
 
     Some(PieLabelGeometry {
         text: text.to_string(),
-        text_x,
-        text_y,
+        color,
+        // 自然位置在圆心哪一侧，标签就归哪侧（12 点附近的密集小扇区会全部
+        // 落到同侧，与官方 SVG 一致）
+        side: if c < 0.0 {
+            PieSide::Left
+        } else {
+            PieSide::Right
+        },
+        mid_angle,
         line_start,
         line_kink,
-        region,
+        natural_y: line_kink.y,
+        text_y: line_kink.y,
+        text_x: line_kink.x,
     })
 }
 
@@ -442,22 +409,22 @@ fn compute_label_geometry(
 fn emit_label_elements(
     geo: &PieLabelGeometry,
     ctx: &RenderContext,
+    font_size: f64,
     show_guide_line: bool,
 ) -> Vec<SceneNode> {
     let mut elements = Vec::new();
 
-    // 引导线第 3 段终点：指向文本侧边/顶底端点中心
-    let line_end = match geo.region {
-        PieRegion::Left => Point::new(geo.text_x + 5.0, geo.text_y),
-        PieRegion::Right => Point::new(geo.text_x - 5.0, geo.text_y),
-        PieRegion::Top => Point::new(geo.text_x, geo.text_y + 5.0),
-        PieRegion::Bottom => Point::new(geo.text_x, geo.text_y - 5.0),
+    // 引导线第 3 段终点：指向文本侧边中点
+    let line_end = match geo.side {
+        PieSide::Left => Point::new(geo.text_x + LABEL_TEXT_GAP, geo.text_y),
+        PieSide::Right => Point::new(geo.text_x - LABEL_TEXT_GAP, geo.text_y),
     };
 
-    // 绘制引导线（两段折线，第 1 段「圆心->扇形边缘」隐含不显示）：
-    // 第 2 段（径向）：扇形边缘(line_start) -> 折点(line_kink)
-    // 第 3 段（水平）：折点 -> 文本侧边中点(line_end)
-    // `labelLine.show: false` 时不画引导线（ECharts 语义）
+    // 绘制引导线（两段折线）：
+    // 第 2 段（径向）：扇形边缘(line_start) -> 折点(line_kink，外圆上)
+    // 第 3 段（水平）：折点 -> 文本侧边(line_end)，长度恒定
+    // 颜色取**扇区色**（ECharts 语义：labelLine 继承系列色，实测 line-simple.svg
+    // 中引导线 stroke 与扇区 fill 一致）；`labelLine.show: false` 时不画。
     if show_guide_line {
         let mut guide_path = BezPath::new();
         guide_path.move_to(geo.line_start);
@@ -468,24 +435,40 @@ fn emit_label_elements(
             guide_path,
             FillStrokeStyle {
                 fill: None,
-                stroke: Some(Stroke::new(ctx.colors.text_secondary_color, 1.0)),
+                stroke: Some(Stroke::new(geo.color, 1.0)),
             },
             false,
             Z_SERIES_FILL + 1,
         ));
     }
 
-    // 文本对齐：Left/Right 文本侧对齐；Top/Bottom 文本顶/底对齐且水平居中
-    let (align, baseline) = match geo.region {
-        PieRegion::Left => (TextAlign::Right, TextBaseline::Middle),
-        PieRegion::Right => (TextAlign::Left, TextBaseline::Middle),
-        PieRegion::Top => (TextAlign::Center, TextBaseline::Bottom),
-        PieRegion::Bottom => (TextAlign::Center, TextBaseline::Top),
+    // 文本对齐：按所在侧做侧对齐，垂直居中（与引导线终点同高）
+    let (align, baseline) = match geo.side {
+        PieSide::Left => (TextAlign::Right, TextBaseline::Middle),
+        PieSide::Right => (TextAlign::Left, TextBaseline::Middle),
     };
 
-    let mut style = TextStyle::new(ctx.colors.text_color, 12.0, "sans-serif");
+    let mut style = TextStyle::new(ctx.colors.text_color, font_size, "sans-serif");
     style.align = align;
     style.baseline = baseline;
+
+    // 白色描边底衬：ECharts 用 `stroke=#fff stroke-width=2 paint-order=stroke`
+    // 让标签压在扇区/引导线上仍可读。lievisual 的 TextStyle 没有文本描边能力，
+    // 这里用「8 向 1px 白色副本」近似：先铺白字，再叠正常色文本。
+    for (dx, dy) in LABEL_HALO_OFFSETS {
+        let mut halo_style = style.clone();
+        halo_style.color = Color::WHITE;
+        elements.push(
+            SceneNode::new(Element::Text {
+                spans: vec![RichSpan::new(geo.text.clone(), halo_style.clone())],
+                position: Point::new(geo.text_x + dx, geo.text_y + dy),
+                style: halo_style,
+                layout: None,
+            })
+            .with_z(Z_SERIES_FILL + 2),
+        );
+    }
+
     elements.push(
         SceneNode::new(Element::Text {
             spans: vec![RichSpan::new(geo.text.clone(), style.clone())],
@@ -542,7 +525,7 @@ fn build_inside_label(
 /// 通过统一的模板引擎替换 ECharts 占位符：
 /// - `{b}`：数据项名称（`slice.name`）
 /// - `{c}`：数据项数值（`slice.value`）
-/// - `{d}`：百分比（`slice.percent`，保留 1 位小数）
+/// - `{d}`：百分比（`slice.percent`，保留 2 位小数，与 ECharts 一致）
 /// - `{a}`/`{name}`：系列名
 ///
 /// 未提供模板时，回退到默认的 `"名称 百分比%"` 格式。
@@ -558,7 +541,7 @@ fn format_label_text(
             value: Some(slice.value),
             percent: Some(slice.percent * 100.0),
         },
-        &format!("{} {:.1}%", slice.name, slice.percent * 100.0),
+        &format!("{} {:.2}%", slice.name, slice.percent * 100.0),
     )
 }
 
@@ -681,15 +664,10 @@ mod tests {
 
     use super::*;
 
-    fn mk_label(text_x: f64, text_y: f64) -> PieLabelGeometry {
-        PieLabelGeometry {
-            text: "样例标签".to_string(),
-            text_x,
-            text_y,
-            line_start: Point::new(text_x, text_y),
-            line_kink: Point::new(text_x, text_y),
-            region: PieRegion::Right,
-        }
+    /// 构造左侧标签的自然几何（`mid_angle` 以弧度计，0 = 12 点钟方向）。
+    fn mk_label(mid_angle: f64, text: &str) -> PieLabelGeometry {
+        let center = Point::new(400.0, 300.0);
+        compute_label_geometry(center, 200.0, mid_angle, text, Color::rgb(80, 112, 221)).unwrap()
     }
 
     /// 环形扇区的内弧必须贴合内半径。
@@ -736,68 +714,130 @@ mod tests {
         assert!(inner_curves > 0, "未在路径中找到内弧段");
     }
 
+    /// 自然位置不冲突的同侧标签：保持贴合扇区，不被改动。
     #[test]
-    fn test_vertical_no_overlap_keeps_natural_positions() {
-        // 标签间距充足时不应被改动（贴合扇区）
-        let group = vec![mk_label(10.0, 100.0), mk_label(10.0, 200.0)];
-        let resolved = distribute_vertical(group, 12.0, 150.0, 300.0);
-        assert_eq!(resolved[0].text_y, 100.0);
-        assert_eq!(resolved[1].text_y, 200.0);
-    }
-
-    #[test]
-    fn test_vertical_overlap_symmetrical_and_within_canvas() {
-        // 三个重叠标签应围绕圆心对称分布，且不超出画布
+    fn same_side_far_apart_keeps_natural_positions() {
+        let center = (400.0, 300.0);
         let group = vec![
-            mk_label(10.0, 148.0),
-            mk_label(10.0, 150.0),
-            mk_label(10.0, 152.0),
+            mk_label(200_f64.to_radians(), "A"),
+            mk_label(300_f64.to_radians(), "B"),
         ];
-        let resolved = distribute_vertical(group, 12.0, 150.0, 300.0);
-        // 均匀间距
-        let gap1 = resolved[1].text_y - resolved[0].text_y;
-        let gap2 = resolved[2].text_y - resolved[1].text_y;
-        assert!((gap1 - gap2).abs() < 1e-6);
-        // 不越界
-        assert!(resolved[0].text_y >= 8.0);
-        assert!(resolved[2].text_y <= 300.0 - 8.0);
-        // 围绕圆心对称
-        assert!((resolved[0].text_y - 150.0).abs() - (resolved[2].text_y - 150.0).abs() < 1e-6);
+        let resolved = resolve_label_overlap(group, 12.0, center.0, center.1, 800.0, 600.0);
+        let mut ys: Vec<f64> = resolved.iter().map(|g| g.text_y).collect();
+        ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        // 200° 在左下、300° 在正下：自然 y 相差很远（≈ 93.8 + 200）
+        let expected_gap = {
+            let kink_r = 200.0 + LABEL_LINE_LEN;
+            let y200 = 300.0 - kink_r * 200_f64.to_radians().cos();
+            let y300 = 300.0 - kink_r * 300_f64.to_radians().cos();
+            (y300 - y200).abs()
+        };
+        assert!(
+            (ys[1] - ys[0] - expected_gap).abs() < 1e-6,
+            "间距充足时 y 应保持自然位置，实际差 {} vs {}",
+            ys[1] - ys[0],
+            expected_gap
+        );
     }
 
+    /// 同侧标签重叠时：自上而下逐个下推，间距 = 字号×1.2，顺序不变。
     #[test]
-    fn test_vertical_crowded_compresses_to_stay_in_canvas() {
-        // 标签过多放不下时压缩间距，保证全部落在画布内
-        let group = (0..10).map(|_| mk_label(10.0, 150.0)).collect::<Vec<_>>();
-        let resolved = distribute_vertical(group, 12.0, 150.0, 200.0);
-        assert!(resolved[0].text_y >= 8.0);
-        assert!(resolved[9].text_y <= 200.0 - 8.0 - 12.0 * 1.2);
-    }
-
-    #[test]
-    fn test_horizontal_clustered_spreads_within_canvas() {
-        // 顶部聚集的多个标签均匀分布且不越界
-        let group = vec![
-            mk_label(398.0, 10.0),
-            mk_label(400.0, 10.0),
-            mk_label(402.0, 10.0),
-            mk_label(401.0, 10.0),
-            mk_label(399.0, 10.0),
-        ];
-        let resolved = distribute_horizontal(group, 12.0, 400.0, 800.0);
-        let xs: Vec<f64> = resolved.iter().map(|g| g.text_x).collect();
-        // 均匀递增
-        for w in xs.windows(2) {
-            assert!(w[1] > w[0]);
-        }
-        let gap = xs[1] - xs[0];
-        assert!((xs[4] - xs[3] - gap).abs() < 1e-6);
-        // 不越界（最右文本宽度需留出空间）
-        let max_w = resolved
+    fn same_side_overlap_pushes_down_with_pitch() {
+        let center = (400.0, 300.0);
+        // 6 个标签聚集在 12 点附近（自然 y 几乎相同）
+        let angles = [352.0_f64, 354.0, 356.0, 358.0, 359.0, 359.5];
+        let group: Vec<_> = angles
             .iter()
-            .map(|g| crate::pipeline::axis_label::estimate_text_size(&g.text, 12.0).0)
-            .fold(0.0_f64, f64::max);
-        assert!(xs[0] >= 8.0);
-        assert!(xs[4] + max_w <= 800.0 - 8.0);
+            .map(|a| mk_label(a.to_radians(), "标签"))
+            .collect();
+        let resolved = resolve_label_overlap(group, 12.0, center.0, center.1, 800.0, 600.0);
+        assert_eq!(resolved.len(), 6);
+
+        // 按 y 升序（= 自上而下）检查步长
+        let mut ys: Vec<f64> = resolved.iter().map(|g| g.text_y).collect();
+        ys.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        for w in ys.windows(2) {
+            let gap = w[1] - w[0];
+            assert!(
+                (gap - 12.0 * 1.2).abs() < 1e-6,
+                "同侧标签间距应为 pitch=14.4，实际 {gap}"
+            );
+        }
+        // 最上方标签保持自然 y（不被上移）
+        let top_natural = {
+            let kink_r = 200.0 + LABEL_LINE_LEN;
+            300.0 - kink_r * (359.5_f64.to_radians()).cos()
+        };
+        let top = ys[0];
+        assert!(
+            (top - top_natural).abs() < 1e-6,
+            "最上方标签应保持自然 y，实际 {top} vs {top_natural}"
+        );
+    }
+
+    /// 折点必须落在外圆 `r + LABEL_LINE_LEN` 上，文本锚点 = 折点 ± 35。
+    #[test]
+    fn kink_stays_on_outer_circle_and_anchor_offset() {
+        let center = (400.0, 300.0);
+        let group = vec![
+            mk_label(200_f64.to_radians(), "左下"),
+            mk_label(340_f64.to_radians(), "左上"),
+        ];
+        let resolved = resolve_label_overlap(group, 12.0, center.0, center.1, 800.0, 600.0);
+        for g in &resolved {
+            let r = (g.line_kink - Point::new(center.0, center.1)).hypot();
+            let expect_r = 200.0 + LABEL_LINE_LEN;
+            assert!(
+                (r - expect_r).abs() < 1e-6,
+                "折点应在外圆 {expect_r} 上，实际 {r}"
+            );
+            let dx = (g.text_x - g.line_kink.x).abs();
+            assert!(
+                (dx - (LABEL_LINE_END + LABEL_TEXT_GAP)).abs() < 1e-6,
+                "文本锚点与折点的水平距离应恒为 35，实际 {dx}"
+            );
+            assert_eq!(
+                g.text_y, g.line_kink.y,
+                "引导线第 3 段应水平（折点与文本同高）"
+            );
+        }
+    }
+
+    /// 12 点附近的聚集小扇区全部落到同一侧（不再有上/下分组导致的横向堆叠）。
+    #[test]
+    fn clustered_near_top_share_one_side() {
+        let center = (400.0, 300.0);
+        let group: Vec<_> = [358.0_f64, 359.0, 359.6, 0.4, 1.0]
+            .iter()
+            .map(|a| mk_label(a.to_radians(), "小扇区"))
+            .collect();
+        let resolved = resolve_label_overlap(group, 12.0, center.0, center.1, 800.0, 600.0);
+        let sides: Vec<PieSide> = resolved.iter().map(|g| g.side).collect();
+        // 358°~359.6° 在左、0.4°~1.0° 在右（按自然位置 x 分侧）
+        assert_eq!(sides.iter().filter(|s| **s == PieSide::Left).count(), 3);
+        assert_eq!(sides.iter().filter(|s| **s == PieSide::Right).count(), 2);
+    }
+
+    /// 标签过多放不下时：整体上移/压缩，全部留在画布内。
+    #[test]
+    fn crowded_group_stays_inside_canvas() {
+        let center = (400.0, 300.0);
+        let group: Vec<_> = (0..12)
+            .map(|i| mk_label((200.0 + i as f64 * 12.0).to_radians(), "拥挤标签"))
+            .collect();
+        let resolved = resolve_label_overlap(group, 12.0, center.0, center.1, 800.0, 600.0);
+        for g in &resolved {
+            assert!(g.text_y >= 8.0, "标签 y 不得越出画布上缘: {}", g.text_y);
+            assert!(
+                g.text_y <= 600.0 - 8.0 - 12.0,
+                "标签 y 不得越出画布下缘: {}",
+                g.text_y
+            );
+            assert!(
+                g.text_x >= 8.0 && g.text_x <= 800.0 - 8.0,
+                "标签 x 不得越出画布: {}",
+                g.text_x
+            );
+        }
     }
 }

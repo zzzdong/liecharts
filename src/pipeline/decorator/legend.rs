@@ -11,35 +11,22 @@ use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     pipeline::{
-        builder::{ColorExt, Z_TITLE, circle, rect},
+        builder::{ColorExt, Z_TITLE, circle, rect, rounded_rect},
         types::{ChartSpec, ChartType, ColorContext, LegendOrient, LegendSpec},
     },
     theme::{DEFAULT_FONT_STACK, Theme},
 };
 
-/// 构建图例元素
+/// 解析图例配置：显式配置优先（`show: false` → `None`），未配置但图表需要
+/// 颜色区分时按需自动生成（`should_auto_legend`）。
 ///
-/// 图例默认位于**画布底部居中**（ECharts v6 `legend` 默认：`left:'center'`、
-/// `bottom: tokens.size.m`），支持 palette 取色和系列取色两种模式。
-pub fn render_legend(
-    spec: &ChartSpec,
-    width: u32,
-    height: u32,
-    colors: &ColorContext,
-    theme: &Theme,
-) -> Vec<SceneNode> {
-    let mut elements = Vec::new();
-
-    // 图例来源：
-    // - 用户显式配置了 legend → 遵循用户配置（show 决定显隐）
-    // - 未配置但图表需要颜色区分 → 按需自动绘制图例
-    let auto_legend = match &spec.legend {
-        Some(legend) => {
-            if !legend.show {
-                return elements;
-            }
-            None
-        }
+/// [`render_legend`] / [`measure_legend_layout`] / `estimate_footer_height`
+/// **必须共用本函数**：历史上底部空间预留只看 `spec.legend`，自动图例
+/// （未显式配置 legend 的多系列图表）不参与预留，导致图例压在绘图区与
+/// 轴标签上（mixed_grid / hug_demo_3 等多子图场景）。
+pub fn resolve_legend(spec: &ChartSpec) -> Option<LegendSpec> {
+    match &spec.legend {
+        Some(legend) => legend.show.then(|| legend.clone()),
         None if should_auto_legend(spec) => Some(LegendSpec {
             show: true,
             data: crate::pipeline::compat::collect_legend_names(&spec.series),
@@ -54,13 +41,24 @@ pub fn render_legend(
             top: None,
             bottom: None,
         }),
-        None => return elements,
-    };
+        None => None,
+    }
+}
 
-    let legend = match (&spec.legend, &auto_legend) {
-        (Some(l), _) => l,
-        (None, Some(a)) => a,
-        _ => return elements,
+/// 构建图例元素
+///
+/// 图例默认位于**画布底部居中**（ECharts v6 `legend` 默认：`left:'center'`、
+/// `bottom: tokens.size.m`），支持 palette 取色和系列取色两种模式。
+pub fn render_legend(
+    spec: &ChartSpec,
+    width: u32,
+    height: u32,
+    colors: &ColorContext,
+    theme: &Theme,
+) -> Vec<SceneNode> {
+    let mut elements = Vec::new();
+    let Some(legend) = resolve_legend(spec) else {
+        return elements;
     };
 
     let legend_style = theme.get_legend_text_style();
@@ -91,7 +89,7 @@ pub fn render_legend(
 
     // 应用图例 formatter 模板，得到每个 item 的展示文本
     //（饼图等按数据点着色的系列会把数值/占比注入模板：`{c}`/`{d}`）
-    let display_texts: Vec<String> = legend_display_texts(spec, legend);
+    let display_texts: Vec<String> = legend_display_texts(spec, &legend);
 
     // 第一步：计算每个 item 的实际宽度（symbol + gap + 文本宽度）
     let mut item_widths = Vec::new();
@@ -136,9 +134,9 @@ pub fn render_legend(
     // 第三步：逐行布局 item。整块位置：水平默认居中（v6 `left:'center'`）、
     // 垂直默认贴画布底部（v6 `bottom: tokens.size.m`），`left/right/top/bottom`
     // 显式配置时按配置定位。
-    let row_height = legend_style.font_size * 1.4 + 16.0;
+    let (row_height, row_advance) = legend_row_metrics(&legend, legend_style.font_size);
     let total_height =
-        rows.len() as f64 * row_height + rows.len().saturating_sub(1) as f64 * LEGEND_ROW_GAP;
+        rows.len() as f64 * row_height + rows.len().saturating_sub(1) as f64 * legend.item_gap;
     let block_top = resolve_block_top(
         legend.top.as_deref(),
         legend.bottom.as_deref(),
@@ -154,7 +152,7 @@ pub fn render_legend(
     for (row_idx, row) in rows.iter().enumerate() {
         // 行总宽计入项间距：k 项有 (k-1) 个 item_gap，用于整行定位
         let row_total = row_total_width(row, &item_widths, item_gap);
-        let y = block_top + row_height / 2.0 + row_idx as f64 * (row_height + LEGEND_ROW_GAP);
+        let y = block_top + row_height / 2.0 + row_idx as f64 * row_advance;
         // 整行按锚点定位（默认居中）；垂直排列时各行按整块宽度对齐（左缘一致）。
         // 单个 item 就超出可用宽度时（换行也放不下）退化为左对齐到安全边距，
         // 避免 `start_x < 0` 导致图例被画布左缘裁掉。
@@ -204,8 +202,24 @@ pub fn render_legend(
                     fill_color,
                     Z_TITLE,
                 )),
+                LegendSymbolKind::RoundRect => {
+                    // 饼图/极坐标柱：25×14 圆角矩形（ECharts v6 默认图标；
+                    // 实测 line-simple.svg 圆角半径 = itemHeight/4 = 3.5）
+                    let radius = icon_h * 0.25;
+                    elements.push(rounded_rect(
+                        Rect::new(
+                            symbol_x,
+                            y - icon_h / 2.0,
+                            symbol_x + icon_w,
+                            y + icon_h / 2.0,
+                        ),
+                        radius,
+                        fill_color,
+                        Z_TITLE,
+                    ));
+                }
                 LegendSymbolKind::Circle => {
-                    // 饼图/散点：圆（直径取符号框短边）
+                    // 散点/气泡：圆（直径取符号框短边）
                     let d = icon_w.min(icon_h);
                     elements.push(circle(
                         Point::new(symbol_x + icon_w / 2.0, y),
@@ -309,12 +323,15 @@ fn row_total_width(row: &[usize], item_widths: &[f64], item_gap: f64) -> f64 {
 
 /// 图例符号形状（按所标注的系列类型决定，ECharts 同源行为）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum LegendSymbolKind {
+pub enum LegendSymbolKind {
     /// 折线/面积：横线段 + 中点标记
     Line,
     /// 柱状/热力/其它：矩形
     Rect,
-    /// 饼图/散点/极坐标散点：圆
+    /// 饼图/极坐标柱：25×14 **圆角矩形**（ECharts v6 默认图标，实测
+    /// line-simple.svg 中扇区图例是 rx=3.5 的圆角矩形而非圆）
+    RoundRect,
+    /// 散点/气泡/极坐标散点：圆
     Circle,
     /// K 线：竖线 + 实体
     Candle,
@@ -369,10 +386,10 @@ fn legend_entries(spec: &ChartSpec, colors: &ColorContext) -> Vec<LegendEntry> {
 fn symbol_kind_of(chart_type: ChartType) -> LegendSymbolKind {
     match chart_type {
         ChartType::Line => LegendSymbolKind::Line,
-        ChartType::Pie | ChartType::Scatter | ChartType::Bubble | ChartType::PolarScatter => {
+        ChartType::Pie | ChartType::PolarBar => LegendSymbolKind::RoundRect,
+        ChartType::Scatter | ChartType::Bubble | ChartType::PolarScatter => {
             LegendSymbolKind::Circle
         }
-        ChartType::PolarBar => LegendSymbolKind::Circle,
         ChartType::Candlestick => LegendSymbolKind::Candle,
         _ => LegendSymbolKind::Rect,
     }
@@ -638,11 +655,28 @@ fn resolve_block_top(top: Option<&str>, bottom: Option<&str>, block_h: f64, heig
     (height - LEGEND_BOTTOM_MARGIN - block_h).max(0.0)
 }
 
+/// 图例行盒高与**行进距离**（`render_legend` 与 `measure_legend_layout` 共用）。
+///
+/// ECharts 语义：图例项的盒高 = max(`itemHeight`（或 `symbolSize`）, 文本行高 ≈
+/// 字号)，相邻两项的间隔是 `itemGap`（横向纵向同义）。v6 默认下即
+/// `14 + 8 = 22px`/档，与官方 SVG 中竖向图例的行距一致。
+///
+/// 历史实现用 `font_size * 1.4 + 16`（= 32.8）再叠加独立行距 6 → 38.8px/项：
+/// 竖向图例被拉长近一倍，`json_config` 的 8 项竖排图例因此预留 327px 底部空间
+/// （画布 55%），把绘图区压到 206px 高，饼图半径又被 `resolve_pie_radii`
+/// clamp 到 104px（官方同图是 263.2px）。
+pub fn legend_row_metrics(legend: &LegendSpec, font_size: f64) -> (f64, f64) {
+    let icon_h = match legend.symbol_size {
+        Some(s) => s.max(1.0),
+        None => legend.item_height.max(1.0),
+    };
+    let box_h = icon_h.max(font_size);
+    (box_h, box_h + legend.item_gap.max(0.0))
+}
+
 /// 图例布局常量（`measure_legend_layout` 与 `render_legend` 共用）
 ///
-/// 行高 = `font_size * 1.4 + 16`（与旧单行估算一致）；行间距 6px；
-/// 两侧各留 8px 安全边距。单行且放得下时行为与旧版逐字节一致。
-const LEGEND_ROW_GAP: f64 = 6.0;
+/// 两侧各留 8px 安全边距；行盒高与行间距见 [`legend_row_metrics`]。
 const LEGEND_EDGE_MARGIN: f64 = 8.0;
 /// 图例整体底边距画布底部的距离（ECharts v6 `legend.bottom` = `tokens.size.m`）
 pub const LEGEND_BOTTOM_MARGIN: f64 = 15.0;
@@ -693,35 +727,9 @@ pub struct LegendLayout {
 
 /// 度量图例换行后的实际占用（不产生元素）
 ///
-/// 图例来源与 `render_legend` 一致：显式配置（`show` 决定显隐）或按需自动生成。
+/// 图例来源与 `render_legend` 一致（共用 [`resolve_legend`]）。
 pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Option<LegendLayout> {
-    let auto;
-    let legend = match &spec.legend {
-        Some(l) => {
-            if !l.show {
-                return None;
-            }
-            l
-        }
-        None if should_auto_legend(spec) => {
-            auto = LegendSpec {
-                show: true,
-                data: crate::pipeline::compat::collect_legend_names(&spec.series),
-                item_width: DEFAULT_LEGEND_ITEM_WIDTH,
-                item_height: DEFAULT_LEGEND_ITEM_HEIGHT,
-                symbol_size: None,
-                item_gap: DEFAULT_LEGEND_ITEM_GAP,
-                formatter: None,
-                orient: LegendOrient::Horizontal,
-                left: None,
-                right: None,
-                top: None,
-                bottom: None,
-            };
-            &auto
-        }
-        None => return None,
-    };
+    let legend = resolve_legend(spec)?;
 
     let legend_style = theme.get_legend_text_style();
     // 与 `render_legend` 同口径：符号框 = itemWidth/itemHeight（或 symbolSize 覆盖），
@@ -735,7 +743,7 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
     let legend_color = Color::from_hex(&legend_style.color).unwrap_or(Color::rgb(50, 50, 50));
 
     let mut item_widths = Vec::with_capacity(legend.data.len());
-    for name in legend_display_texts(spec, legend) {
+    for name in legend_display_texts(spec, &legend) {
         let mut lv_style = TextStyle::new(
             legend_color,
             legend_style.font_size,
@@ -757,7 +765,8 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
         return None;
     }
 
-    let row_height = legend_style.font_size * 1.4 + 16.0;
+    // 行盒高 / 行进距离与 `render_legend` 同源（ECharts：max(itemHeight, 字号) + itemGap）
+    let (row_height, _) = legend_row_metrics(&legend, legend_style.font_size);
     let rows = if legend.orient == LegendOrient::Vertical {
         // 垂直：每项独占一行（单列），高度随项数线性增长
         item_widths.len()
@@ -767,7 +776,7 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
     Some(LegendLayout {
         rows,
         row_height,
-        total_height: rows as f64 * row_height + (rows.saturating_sub(1)) as f64 * LEGEND_ROW_GAP,
+        total_height: rows as f64 * row_height + (rows.saturating_sub(1)) as f64 * item_gap,
     })
 }
 

@@ -300,6 +300,42 @@ fn resolve_sampling_thresholds(
     }
 }
 
+/// 极坐标类系列（饼图 / 极坐标柱 / 极坐标散点）的布局基准矩形。
+///
+/// ECharts 语义：这些系列**不参与 `grid`**——`center` 相对画布取百分比，
+/// `radius` 的基准是 `min(画布宽, 画布高)/2`，标题/图例/轴标签都不会把它们
+/// 挤小。历史实现把它们塞进默认 grid 再 clamp 到「grid 内接半径」：竖向图例
+/// 的 footer 预留把 grid 压扁后，`radius: ['0%','70%']` 在 800×600 下本应
+/// 是 210px，实际被砍到 ~104px（官方同一份配置的输出是 263.2px / 70%）。
+///
+/// 用户显式配置过 grid（任一边缘非 `None`，典型是多子图）时保持 grid 语义，
+/// 既有多子图输出不受影响。
+fn polar_series_bounds(subplot: &SubplotSpec, spec: &ChartSpec, width: u32, height: u32) -> Rect {
+    let grid_explicit = spec.grids.get(subplot.id).is_some_and(|g| {
+        g.left
+            .or(g.right)
+            .or(g.top)
+            .or(g.bottom)
+            .or(g.width)
+            .or(g.height)
+            .is_some()
+    });
+    let all_polar = !subplot.series_indices.is_empty()
+        && subplot.series_indices.iter().all(|&idx| {
+            spec.series.get(idx).is_some_and(|s| {
+                matches!(
+                    s.config.chart_type(),
+                    ChartType::Pie | ChartType::PolarBar | ChartType::PolarScatter
+                )
+            })
+        });
+    if grid_explicit || !all_polar {
+        subplot.bounds
+    } else {
+        Rect::new(0.0, 0.0, width as f64, height as f64)
+    }
+}
+
 /// 渲染已求解的布局为视觉元素
 fn render_chart(
     spec: &ChartSpec,
@@ -362,11 +398,13 @@ fn render_chart(
 
     // 渲染系列数据（新流程：Materialize + Build）
     for subplot in specs {
+        // 极坐标类系列以**画布**为基准（见 [`polar_series_bounds`]）
+        let bounds = polar_series_bounds(subplot, spec, width, height);
         // 创建渲染上下文
         let ctx = RenderContext {
             colors,
             theme,
-            bounds: subplot.bounds,
+            bounds,
         };
 
         // Materialize 阶段：将 SeriesSpec 转换为 TypedSeries
@@ -374,7 +412,7 @@ fn render_chart(
         let typed_series_list = materialize_all(
             &subplot.series_indices,
             &data_spec,
-            subplot.bounds,
+            bounds,
             axis_ranges,
             colors,
         )?;

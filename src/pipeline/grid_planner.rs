@@ -125,6 +125,11 @@ const HEADER_MIN_TOP: f64 = 65.0;
 /// [`Self::footer_height`] 传入，与本文下限取 max（单行图例时即 80，与 v6 一致）。
 const GRID_BOTTOM_MIN: f64 = 80.0;
 
+/// Fixed 收缩下的最小绘图区尺寸（`adjust_label_margins` 收缩与
+/// 图例带硬约束都不可越过；放不下则放弃，保持历史行为）。
+const MIN_PLOT_W: f64 = 50.0;
+const MIN_PLOT_H: f64 = 40.0;
+
 /// 绘图区左右默认留白（ECharts v6 `grid.left` / `grid.right` 默认 `'15%'` / `'10%'`）。
 const GRID_LEFT_RATIO: f64 = 0.15;
 const GRID_RIGHT_RATIO: f64 = 0.10;
@@ -173,6 +178,15 @@ impl<'a> GridPlanner<'a> {
     /// 默认底部边距：图例占用与 v6 `grid.bottom` 下限取 max。
     fn bottom_default(&self) -> f64 {
         self.footer_height.max(GRID_BOTTOM_MIN)
+    }
+
+    /// 底部装饰带（贴底图例）的顶部 y：绘图区与底部轴标签都不可侵入。
+    ///
+    /// `footer_height` 已含图例块高度、其下留白与呼吸间距
+    /// （`LEGEND_PLOT_GAP`），故带顶与图例块之间天然保留呼吸空隙；
+    /// `footer_height == 0`（无贴底图例）时退化为画布底（历史口径）。
+    fn plot_bottom_limit(&self) -> f64 {
+        self.total_height as f64 - self.footer_height
     }
 
     /// 该 subplot 的左右边距是否为相对值（`None` = 默认百分比，或显式 `Pct`）。
@@ -261,6 +275,18 @@ impl<'a> GridPlanner<'a> {
             spec.y_axis_indices = binding.y_axis_indices.clone();
         }
 
+        // 底部图例带为硬约束：绘图区不可侵入。用户显式 `grid.bottom` 小于
+        // 图例占用时（如 4 子图各留 3% 边距 + 贴底图例），绘图区底缘上移让位；
+        // 底部轴标签的空间需求由 `adjust_label_margins` 以带顶为界继续上报。
+        if self.footer_height > 0.0 {
+            let limit = self.plot_bottom_limit();
+            for spec in specs.iter_mut() {
+                if spec.bounds.y1 > limit {
+                    spec.bounds.y1 = limit.max(spec.bounds.y0 + MIN_PLOT_H);
+                }
+            }
+        }
+
         // 根据坐标轴标签的**实测**占用空间自适应调整 subplot 边界，
         // 避免密集/长文本标签（尤其旋转后）超出画布或被截断。
         let mut demands = self.adjust_label_margins(&mut specs, input, measurer);
@@ -298,12 +324,9 @@ impl<'a> GridPlanner<'a> {
         const X_LABEL_GAP: f64 = 14.0; // 锚点距坐标轴的距离
         const Y_LABEL_GAP: f64 = 8.0; // 锚点距坐标轴的距离
         const LABEL_PAD: f64 = 4.0; // 额外安全边距
-        const MIN_PLOT_W: f64 = 50.0;
-        const MIN_PLOT_H: f64 = 40.0;
         let hug = matches!(input.fit_mode, FitMode::Hug | FitMode::HugMax);
 
         let total_w = self.total_width as f64;
-        let total_h = self.total_height as f64;
 
         let mut demands: Vec<SubplotDemand> =
             specs.iter().map(|_| SubplotDemand::default()).collect();
@@ -376,11 +399,15 @@ impl<'a> GridPlanner<'a> {
                         }
                     }
                 } else {
-                    let current = total_h - spec.bounds.y1;
+                    // 可用空间到「底部图例带顶」为止：底部轴标签不得压入贴底
+                    // 图例块（footer_height 已含图例块高 + 其下留白 + 呼吸间距；
+                    // footer_height == 0 时即历史口径 = 算到画布底）。
+                    let current = self.plot_bottom_limit() - spec.bounds.y1;
                     if needed > current {
                         grow_bottom = grow_bottom.max(needed - current);
                         if hug {
-                            demand.set_bottom(needed, needed - current);
+                            // 目标底边距（相对画布底）= 图例带高 + 标签需求
+                            demand.set_bottom(needed + self.footer_height, needed - current);
                         }
                     }
                 }

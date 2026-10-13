@@ -84,6 +84,18 @@ pub fn circles(nodes: &[SceneNode]) -> Vec<(Point, f64, &liecharts::FillStrokeSt
         .collect()
 }
 
+/// 提取所有 RoundedRect 元素（含 Group 内）。返回 (rect, 圆角半径, style)；
+/// 非均匀圆角取 top-left 值。
+pub fn rounded_rects(nodes: &[SceneNode]) -> Vec<(Rect, f64, &liecharts::FillStrokeStyle)> {
+    elements_of(nodes, |e| matches!(e, Element::RoundedRect { .. }))
+        .into_iter()
+        .map(|(e, _)| match e {
+            Element::RoundedRect { rect, radii, style } => (*rect, radii.uniform_value(), style),
+            _ => unreachable!(),
+        })
+        .collect()
+}
+
 /// 提取所有 Path 元素。返回 (path, style, closed)。
 pub fn paths(
     nodes: &[SceneNode],
