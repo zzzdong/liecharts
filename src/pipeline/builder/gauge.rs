@@ -126,10 +126,10 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
         if value_angle > start_angle + 1e-6 {
             let filled_path = build_arc_ribbon(center, inner_r, outer_r, start_angle, value_angle);
             let bbox = filled_path.bounding_box();
-            let gradient = LinearGradient {
-                start: Point::new(bbox.x0, bbox.y0),
-                end: Point::new(bbox.x1, bbox.y1),
-                stops: vec![
+            let gradient = LinearGradient::new(
+                Point::new(bbox.x0, bbox.y0),
+                Point::new(bbox.x1, bbox.y1),
+                vec![
                     GradientStop {
                         offset: 0.00,
                         color: Color::rgb(80, 180, 80), // 绿
@@ -143,7 +143,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
                         color: Color::rgb(220, 80, 80), // 红
                     },
                 ],
-            };
+            );
             elements.push(gradient_path(filled_path, gradient, None, Z_SERIES_FILL));
         }
 
