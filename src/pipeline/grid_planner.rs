@@ -1,4 +1,4 @@
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 use crate::pipeline::{
     axis_label::{AxisLabelSet, auto_rotate, measure_labels, rotated_bounds},

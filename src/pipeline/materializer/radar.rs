@@ -1,6 +1,6 @@
 //! Radar Materializer: 将 Radar SeriesSpec 转换为 RadarSeries
 
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 use crate::{
     Color,

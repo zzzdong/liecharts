@@ -4,7 +4,7 @@
 //! 所有坐标已经是像素空间，渲染器无需再做任何计算或字段提取。
 
 use lievisual::geometry::Color;
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 /// 管线中间产物：所有字段已完全解析为像素空间和具体值
 /// 渲染器无需再做任何计算或字段提取
@@ -47,7 +47,7 @@ pub struct RenderContext<'a> {
     /// 主题（文本样式等）
     pub theme: &'a crate::theme::Theme,
     /// 画布边界（用于将百分比坐标转换为像素坐标）
-    pub bounds: vello_cpu::kurbo::Rect,
+    pub bounds: lievisual::kurbo::Rect,
 }
 
 // ═══════════════════════════════════════════════════════════════════

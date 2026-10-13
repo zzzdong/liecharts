@@ -1,6 +1,6 @@
 //! PolarBar Materializer: 将 PolarBar SeriesSpec 转换为 PolarBarSeries
 
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 use crate::{
     Color,

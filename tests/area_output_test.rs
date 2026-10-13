@@ -8,7 +8,7 @@
 
 mod common;
 use common::*;
-use vello_cpu::kurbo::Shape;
+use lievisual::kurbo::Shape;
 
 const W: f64 = 800.0;
 const H: f64 = 600.0;

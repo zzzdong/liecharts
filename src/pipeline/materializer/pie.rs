@@ -1,6 +1,6 @@
 //! Pie Materializer: 将 Pie SeriesSpec 转换为 PieSeries
 
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 use crate::{
     Color,

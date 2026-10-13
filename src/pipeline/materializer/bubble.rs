@@ -1,6 +1,6 @@
 //! Bubble Materializer: 将 Bubble SeriesSpec 转换为 BubbleSeries
 
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     Color,

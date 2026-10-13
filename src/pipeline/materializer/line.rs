@@ -1,7 +1,7 @@
 //! Line Materializer: 将 Line SeriesSpec 转换为 LineSeries
 
 use lievisual::Color;
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     error::Result,

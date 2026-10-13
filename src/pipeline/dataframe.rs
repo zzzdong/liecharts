@@ -344,7 +344,7 @@ impl LineDataTransformer {
         color: Color,
         x_range: (f64, f64),
         y_range: (f64, f64),
-        bounds: &vello_cpu::kurbo::Rect,
+        bounds: &lievisual::kurbo::Rect,
     ) -> DataFrame {
         let mut result = df.clone();
 

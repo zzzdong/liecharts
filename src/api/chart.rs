@@ -628,13 +628,9 @@ impl Chart {
         let laid = self.build_laid_out()?;
         let renderer = crate::render::PixmapRenderer::new(laid.width, laid.height);
         let pixmap = renderer.render(&laid.elements, laid.fit_max)?;
-        let data: Vec<u8> = pixmap
-            .data()
-            .iter()
-            .flat_map(|p| vec![p.r, p.g, p.b, p.a])
-            .collect();
-        let width = pixmap.width() as u32;
-        let height = pixmap.height() as u32;
+        let data: Vec<u8> = pixmap.pixels().to_vec();
+        let width = pixmap.width();
+        let height = pixmap.height();
         let image = image::RgbaImage::from_raw(width, height, data).ok_or_else(|| {
             crate::error::ChartError::RenderError("Failed to create PNG image".to_string())
         })?;
@@ -648,12 +644,8 @@ impl Chart {
         let laid = self.build_laid_out()?;
         let renderer = crate::render::PixmapRenderer::new(laid.width, laid.height);
         let pixmap = renderer.render(&laid.elements, laid.fit_max)?;
-        let data: Vec<u8> = pixmap
-            .data()
-            .iter()
-            .flat_map(|p| vec![p.r, p.g, p.b, p.a])
-            .collect();
-        let image = image::RgbaImage::from_raw(pixmap.width() as u32, pixmap.height() as u32, data)
+        let data: Vec<u8> = pixmap.pixels().to_vec();
+        let image = image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), data)
             .ok_or_else(|| {
                 crate::error::ChartError::RenderError("Failed to create image".to_string())
             })?;

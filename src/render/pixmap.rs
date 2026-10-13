@@ -1,13 +1,13 @@
 //! Pixmap renderer — delegates rasterization to lievisual's
 //! `VelloPixmapRenderer` (backed by vello_cpu).
 
-use vello_cpu::Pixmap;
+use lievisual::Pixmap;
 
 use crate::{SceneNode, error::Result, render::to_scene};
 
 /// Bitmap renderer backed by lievisual / vello_cpu.
 ///
-/// Produces a `vello_cpu::Pixmap` that callers can encode to PNG/JPEG via the
+/// Produces a `lievisual::Pixmap` that callers can encode to PNG/JPEG via the
 /// `image` crate.
 #[derive(Debug)]
 pub struct PixmapRenderer {

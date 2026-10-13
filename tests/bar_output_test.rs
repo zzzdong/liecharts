@@ -10,7 +10,7 @@
 
 mod common;
 use common::*;
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 /// 提取数据柱（Z_SERIES 层的 Rect，排除覆盖整个画布的背景 rect）。
 fn data_bars(nodes: &[liecharts::SceneNode]) -> Vec<Rect> {

@@ -7,7 +7,7 @@ use lievisual::{
     scene::{Element, FillStrokeStyle, SceneNode, Stroke},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle},
 };
-use vello_cpu::kurbo::{BezPath, Point};
+use lievisual::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,
@@ -677,7 +677,7 @@ fn add_arc_eliptical(
 
 #[cfg(test)]
 mod tests {
-    use vello_cpu::kurbo::{PathEl, Point};
+    use lievisual::kurbo::{PathEl, Point};
 
     use super::*;
 

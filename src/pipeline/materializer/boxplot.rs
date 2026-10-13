@@ -1,6 +1,6 @@
 //! Boxplot Materializer: 将 Boxplot SeriesSpec 转换为 BoxplotSeries
 
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     Color,

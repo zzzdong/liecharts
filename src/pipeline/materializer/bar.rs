@@ -1,6 +1,6 @@
 //! Bar Materializer: 将 Bar SeriesSpec 转换为 BarSeries
 
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 use crate::{
     Color,
@@ -185,10 +185,10 @@ impl SeriesMaterializer for BarMaterializer {
         );
         // 标注点锚在「柱体值端中心」：x 取柱中心、y 由数值映射得到，
         // 与 `compute_mark_points` 的 min/max（落在数据点）语义一致。
-        let anchors: Vec<vello_cpu::kurbo::Point> = bars
+        let anchors: Vec<lievisual::kurbo::Point> = bars
             .iter()
             .map(|b| {
-                vello_cpu::kurbo::Point::new(
+                lievisual::kurbo::Point::new(
                     if is_horizontal {
                         if b.value < 0.0 { b.rect.x0 } else { b.rect.x1 }
                     } else {

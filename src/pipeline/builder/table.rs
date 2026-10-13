@@ -4,7 +4,7 @@ use lievisual::{
     scene::{Element, SceneNode},
     text::{FontWeight as VisualFontWeight, RichSpan, TextAlign, TextBaseline, TextStyle},
 };
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     error::Result,

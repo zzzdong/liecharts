@@ -1,5 +1,5 @@
 use lievisual::text::{RichSpan, measure_text};
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 use crate::{Color, SceneNode, TextStyle, theme::DEFAULT_FONT_STACK};
 

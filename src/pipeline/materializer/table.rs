@@ -1,6 +1,6 @@
 //! Table Materializer: 将 Table SeriesSpec 转换为 TableSeries
 
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 use crate::{
     Color,

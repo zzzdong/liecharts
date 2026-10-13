@@ -7,7 +7,7 @@ use lievisual::{
     scene::{Element, Fill, SceneNode},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle, measure_text},
 };
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     pipeline::{
@@ -260,9 +260,9 @@ pub fn render_legend(
             }
 
             // 图例文字 - 使用 Left 对齐，位置在 symbol 右侧。
-            // 垂直对齐：显式计算文本 ink_bounds 的视觉中心，将其对齐到 symbol 矩形中心，
-            // 而不是依赖 baseline=Middle 的隐式居中（浏览器 SVG 渲染时基线换算
-            // 与 parley 度量不一致会产生 1-2px 偏差）。
+            // 垂直对齐：显式计算文本 **cap 盒**（`cap_bounds`）的视觉中心，将其对齐到
+            // symbol 矩形中心，而不是依赖 baseline=Middle 的隐式居中（浏览器 SVG 渲染时
+            // 基线换算与 parley 度量不一致会产生 1-2px 偏差）。
             let text_x = symbol_x + icon_w + LEGEND_SYMBOL_TEXT_GAP;
             let mut style = TextStyle::new(
                 legend_color,
@@ -270,7 +270,7 @@ pub fn render_legend(
                 legend_style.font_family.clone(),
             );
             style.align = TextAlign::Left;
-            style.baseline = TextBaseline::Top; // 布局原点语义：ink_bounds 相对此原点
+            style.baseline = TextBaseline::Top; // 布局原点语义：cap 盒相对此原点
             let mut lv_style = style.clone();
             if lv_style.font_family.trim().is_empty()
                 || lv_style
@@ -283,12 +283,12 @@ pub fn render_legend(
             let text_layout =
                 (*measure_text(&[RichSpan::new(display_text.clone(), lv_style)], None).layout)
                     .clone();
-            let ink = text_layout.ink_bounds();
-            let ink_center_y = ink.min_y() + (ink.max_y() - ink.min_y()).max(0.0) / 2.0;
+            let cb = text_layout.cap_bounds();
+            let cap_center_y = cb.min_y() + (cb.max_y() - cb.min_y()).max(0.0) / 2.0;
             elements.push(
                 SceneNode::new(Element::Text {
                     spans: vec![RichSpan::new(display_text.clone(), style.clone())],
-                    position: Point::new(text_x, y - ink_center_y),
+                    position: Point::new(text_x, y - cap_center_y),
                     style,
                     layout: Some(std::sync::Arc::new(text_layout)),
                 })

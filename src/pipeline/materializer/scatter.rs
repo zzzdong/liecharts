@@ -1,6 +1,6 @@
 //! Scatter Materializer: 将 Scatter SeriesSpec 转换为 ScatterSeries
 
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     Color,

@@ -18,7 +18,7 @@ fn axis_overflow() {
     use liecharts::SceneNode;
     fn walk(nodes: &[SceneNode], depth: usize) {
         for n in nodes {
-            if let lievisual::scene::Element::Rect { rect, .. } = &n.element {
+            if let Some(lievisual::scene::Element::Rect { rect, .. }) = n.element() {
                 // 只打印接近绘图区大小的 rect
                 if rect.width() > 100.0 && rect.height() > 100.0 {
                     println!(
@@ -32,7 +32,7 @@ fn axis_overflow() {
                     );
                 }
             }
-            if let lievisual::scene::Element::Group { children } = &n.element {
+            if let Some(children) = n.children() {
                 walk(children, depth + 1);
             }
         }

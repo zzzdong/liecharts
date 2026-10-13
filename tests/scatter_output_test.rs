@@ -10,7 +10,7 @@ mod common;
 use common::*;
 use liecharts::{Fill, SceneNode};
 use lievisual::scene::FillStrokeStyle;
-use vello_cpu::kurbo::Point;
+use lievisual::kurbo::Point;
 
 const W: f64 = 800.0;
 const H: f64 = 600.0;

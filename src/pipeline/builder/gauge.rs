@@ -20,7 +20,7 @@ use lievisual::{
     scene::{Element, FillStrokeStyle, GradientStop, LinearGradient, SceneNode, Stroke},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle, measure_text},
 };
-use vello_cpu::kurbo::{Arc, BezPath, PathSeg, Point, Shape};
+use lievisual::kurbo::{Arc, BezPath, PathSeg, Point, Shape};
 
 use crate::{
     error::Result,
@@ -215,23 +215,23 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
         let perp = Point::new(-ns, nc);
 
         let needle = BezPath::from_vec(vec![
-            vello_cpu::kurbo::PathEl::MoveTo(Point::new(
+            lievisual::kurbo::PathEl::MoveTo(Point::new(
                 center.x + dir.x * needle_len,
                 center.y + dir.y * needle_len,
             )),
-            vello_cpu::kurbo::PathEl::LineTo(Point::new(
+            lievisual::kurbo::PathEl::LineTo(Point::new(
                 center.x + perp.x * needle_half_w,
                 center.y + perp.y * needle_half_w,
             )),
-            vello_cpu::kurbo::PathEl::LineTo(Point::new(
+            lievisual::kurbo::PathEl::LineTo(Point::new(
                 center.x - dir.x * tail_len,
                 center.y - dir.y * tail_len,
             )),
-            vello_cpu::kurbo::PathEl::LineTo(Point::new(
+            lievisual::kurbo::PathEl::LineTo(Point::new(
                 center.x - perp.x * needle_half_w,
                 center.y - perp.y * needle_half_w,
             )),
-            vello_cpu::kurbo::PathEl::ClosePath,
+            lievisual::kurbo::PathEl::ClosePath,
         ]);
         elements.push(path(
             needle,
@@ -278,10 +278,10 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
     }
 }
 
-/// 生成墨迹盒中心精确落在 `target` 的单行文本。
+/// 生成 cap 盒中心精确落在 `target` 的单行文本。
 ///
 /// `align=Left`/`baseline=Top` 语义下两个后端的块偏移均为 0（锚点 = 块左上
-/// 角），将 `ink_bounds()`（相对块原点）的中心反解进 position 即可，与图例
+/// 角），将 `cap_bounds()`（相对块原点）的中心反解进 position 即可，与图例
 /// 文本对齐（`decorator/legend.rs`）同一机制。
 fn push_ink_centered_text(
     elements: &mut Vec<SceneNode>,
@@ -300,10 +300,10 @@ fn push_ink_centered_text(
         style.max_width,
     )
     .layout;
-    let ink = layout.ink_bounds();
+    let cb = layout.cap_bounds();
     let position = Point::new(
-        target.x - (ink.min_x() + ink.max_x()) / 2.0,
-        target.y - (ink.min_y() + ink.max_y()) / 2.0,
+        target.x - (cb.min_x() + cb.max_x()) / 2.0,
+        target.y - (cb.min_y() + cb.max_y()) / 2.0,
     );
     elements.push(
         SceneNode::new(Element::Text {

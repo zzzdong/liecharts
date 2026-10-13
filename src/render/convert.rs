@@ -37,7 +37,7 @@ pub fn to_fit_scene(elements: &[SceneNode], width: u32, height: u32, fit_max: (f
         .filter(|n| {
             // 跳过整画布背景矩形，提取其颜色
             if n.z_index == Z_BACKGROUND
-                && let Element::Rect { rect, style } = &n.element
+                && let Some(Element::Rect { rect, style }) = n.element()
                 && rect.width() >= width as f64
                 && rect.height() >= height as f64
             {

@@ -7,7 +7,7 @@
 //! - Bar 系列先收集，最后做分组分析
 
 use lievisual::Color;
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     error::Result,
@@ -331,7 +331,7 @@ pub fn compute_mark_lines(
 /// `anchors` 与 `values` 必须一一对应，且 `anchors` 为像素空间坐标。
 pub fn compute_mark_points(
     specs: &[crate::pipeline::types::MarkPointSpec],
-    anchors: &[vello_cpu::kurbo::Point],
+    anchors: &[lievisual::kurbo::Point],
     values: &[f64],
     horizontal: bool,
     map_value: impl Fn(f64) -> f64,
@@ -375,9 +375,9 @@ pub fn compute_mark_points(
         // min/max：值就是该点的值，像素坐标直接用锚点；average：值轴坐标重算
         let point = if spec.data_type == MarkPointType::Average {
             if horizontal {
-                vello_cpu::kurbo::Point::new(map_value(value), anchor.y)
+                lievisual::kurbo::Point::new(map_value(value), anchor.y)
             } else {
-                vello_cpu::kurbo::Point::new(anchor.x, map_value(value))
+                lievisual::kurbo::Point::new(anchor.x, map_value(value))
             }
         } else {
             anchor
@@ -768,7 +768,7 @@ fn materialize_side_by_side_bars(
     bounds: Rect,
     colors: &ColorContext,
 ) -> Result<Vec<GroupedBarRow>> {
-    use vello_cpu::kurbo::Rect as KurboRect;
+    use lievisual::kurbo::Rect as KurboRect;
 
     use crate::pipeline::{typed_series::GroupedBarRow, types::AxisType};
 
@@ -912,7 +912,7 @@ fn materialize_stacked_bars(
     bounds: Rect,
     colors: &ColorContext,
 ) -> Result<Vec<GroupedBarRow>> {
-    use vello_cpu::kurbo::Rect as KurboRect;
+    use lievisual::kurbo::Rect as KurboRect;
 
     use crate::pipeline::{typed_series::GroupedBarRow, types::AxisType};
 
@@ -1247,7 +1247,7 @@ fn materialize_one_stacked_line_group(
 
 #[cfg(test)]
 mod tests {
-    use vello_cpu::kurbo::Rect;
+    use lievisual::kurbo::Rect;
 
     use super::*;
     use crate::pipeline::{

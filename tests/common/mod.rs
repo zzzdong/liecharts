@@ -13,7 +13,7 @@
 
 use liecharts::{Color, SceneNode, option::ChartOption};
 use lievisual::scene::Element;
-use vello_cpu::kurbo::{Point, Rect, Shape};
+use lievisual::kurbo::{Point, Rect, Shape};
 
 /// 从 `site/examples/{name}.json` 读取并解析 ECharts 兼容 option。
 pub fn option_from_example(name: &str) -> ChartOption {
@@ -42,9 +42,11 @@ pub fn render(name: &str, width: u32, height: u32) -> Vec<SceneNode> {
 /// 同时保留节点的 z_index（用于区分网格/系列/轴/标签层级）。
 pub fn flatten<'a>(nodes: &'a [SceneNode], out: &mut Vec<(&'a Element, i32)>) {
     for n in nodes {
-        match &n.element {
-            Element::Group { children } => flatten(children, out),
-            other => out.push((other, n.z_index)),
+        // 叶子（NodeKind::Draw）产出元素；容器（NodeKind::Group）递归展开。
+        if let Some(element) = n.element() {
+            out.push((element, n.z_index));
+        } else if let Some(children) = n.children() {
+            flatten(children, out);
         }
     }
 }
@@ -86,7 +88,7 @@ pub fn circles(nodes: &[SceneNode]) -> Vec<(Point, f64, &liecharts::FillStrokeSt
 pub fn paths(
     nodes: &[SceneNode],
 ) -> Vec<(
-    &vello_cpu::kurbo::BezPath,
+    &lievisual::kurbo::BezPath,
     &liecharts::FillStrokeStyle,
     bool,
 )> {

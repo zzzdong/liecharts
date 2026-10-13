@@ -10,7 +10,7 @@ use lievisual::{
     Color,
     scene::{FillStrokeStyle, SceneNode, Stroke},
 };
-use vello_cpu::kurbo::{BezPath, Point};
+use lievisual::kurbo::{BezPath, Point};
 
 use crate::pipeline::{
     builder::{Z_GRID, line, path},

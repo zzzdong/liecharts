@@ -7,7 +7,7 @@ use lievisual::{
     scene::{Element, SceneNode},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle},
 };
-use vello_cpu::kurbo::{BezPath, Point};
+use lievisual::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,

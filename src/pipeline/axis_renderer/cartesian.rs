@@ -8,7 +8,7 @@ use lievisual::{
     scene::{Element, SceneNode, Stroke},
     text::{RichSpan, TextAlign, measure_text},
 };
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 use super::axis_ticks_with_count;
 use crate::pipeline::{
@@ -216,8 +216,8 @@ fn render_x_tick_labels(
 ///
 /// 返回 `(文本块原点, 样式, 布局, 包围盒)`，供渲染与重叠隐藏共用（只测量一次）。
 ///
-/// - **垂直**：墨迹盒（`TextLayout::ink_bounds`，skrifa 按字形轮廓计算，相对
-///   块左上角）的中心精确落在刻度 y。此前未旋转分支用 `TextBaseline::Middle`
+/// - **垂直**：字体级视觉盒（`TextLayout::cap_bounds`，`baseline − cap_height → baseline`，
+///   相对块左上角）的中心精确落在刻度 y。此前未旋转分支用 `TextBaseline::Middle`
 ///   （后端实现为行盒启发式 `alphabetic_baseline − em_height_ascent×0.5`），
 ///   旋转分支用行盒旋转 AABB 近似——对齐的都是**行盒**而非墨迹：行盒含
 ///   ascent/descent 设计边距，且墨迹随内容（数字、逗号/括号下探、负号、CJK）
@@ -265,9 +265,9 @@ fn y_label_geom(
         style.max_width,
     )
     .layout;
-    let ink = layout.ink_bounds();
-    let icx = (ink.min_x() + ink.max_x()) / 2.0;
-    let icy = (ink.min_y() + ink.max_y()) / 2.0;
+    let cb = layout.cap_bounds();
+    let icx = (cb.min_x() + cb.max_x()) / 2.0;
+    let icy = (cb.min_y() + cb.max_y()) / 2.0;
 
     // 后端语义：块原点 = position，advance 盒按 align 平移 dx（Right →
     // −width，Left → 0），再绕 position 旋转 θ。
@@ -1063,7 +1063,7 @@ impl CartesianAxisRenderer {
 #[cfg(test)]
 mod tests {
     use lievisual::scene::Element;
-    use vello_cpu::kurbo::Rect;
+    use lievisual::kurbo::Rect;
 
     use super::*;
     use crate::pipeline::types::{ResolvedAxisRange, ResolvedAxisRanges};
@@ -1148,14 +1148,14 @@ mod tests {
 
         let text_runs: Vec<&SceneNode> = elements
             .iter()
-            .filter(|e| matches!(&e.element, Element::Text { .. }))
+            .filter(|e| matches!(e.element(), Some(Element::Text { .. })))
             .collect();
         let rotated = text_runs
             .iter()
             .filter(|e| {
                 matches!(
-                    &e.element,
-                    Element::Text { style, .. } if style.rotation != 0.0
+                    e.element(),
+                    Some(Element::Text { style, .. }) if style.rotation != 0.0
                 )
             })
             .count();
@@ -1224,8 +1224,8 @@ mod tests {
         // 轴线画在绘图区上边缘
         let has_top_line = elements.iter().any(|e| {
             matches!(
-                &e.element,
-                Element::Line { start, end, .. }
+                e.element(),
+                Some(Element::Line { start, end, .. })
                     if start.y == 40.0 && end.y == 40.0 && start.x == 0.0 && end.x == 400.0
             )
         });
@@ -1236,8 +1236,8 @@ mod tests {
             .iter()
             .filter(|e| {
                 matches!(
-                    &e.element,
-                    Element::Text { position, .. } if position.y < 40.0 && position.y >= 0.0
+                    e.element(),
+                    Some(Element::Text { position, .. }) if position.y < 40.0 && position.y >= 0.0
                 )
             })
             .collect();
@@ -1317,15 +1317,15 @@ mod tests {
             .iter()
             .filter(|e| {
                 matches!(
-                    &e.element,
-                    Element::Text { position, style, .. }
+                    e.element(),
+                    Some(Element::Text { position, style, .. })
                         if style.rotation != 0.0 && position.x >= subplot.bounds.x0 && position.x <= subplot.bounds.x1
                 )
             })
             .collect();
         assert!(!rotated_x_labels.is_empty(), "长标签应自动旋转");
         for label in &rotated_x_labels {
-            if let Element::Text { position, .. } = &label.element {
+            if let Some(Element::Text { position, .. }) = label.element() {
                 // 文本开头（旋转中心）应贴齐锚点（y1 + 14），不能上移到 y1 之上（侵入绘图区）
                 let expected_top = subplot.bounds.y1 + 14.0;
                 assert!(
@@ -1371,19 +1371,19 @@ mod tests {
         elements
             .iter()
             .filter_map(|e| {
-                let Element::Text {
+                let Some(Element::Text {
                     position,
                     style,
                     layout,
                     ..
-                } = &e.element
+                }) = e.element()
                 else {
                     return None;
                 };
                 let layout = layout.as_ref()?;
-                let ink = layout.ink_bounds();
-                let icx = (ink.min_x() + ink.max_x()) / 2.0;
-                let icy = (ink.min_y() + ink.max_y()) / 2.0;
+                let cb = layout.cap_bounds();
+                let icx = (cb.min_x() + cb.max_x()) / 2.0;
+                let icy = (cb.min_y() + cb.max_y()) / 2.0;
                 let dx = match style.align {
                     TextAlign::Right => -layout.width,
                     _ => 0.0,
@@ -1396,27 +1396,27 @@ mod tests {
 
     /// 计算 Text 元素旋转后墨迹盒的最大像素 x（左轴墨迹右缘 = 贴轴一侧）。
     fn rendered_ink_max_x(e: &SceneNode) -> Option<f64> {
-        let Element::Text {
+        let Some(Element::Text {
             position,
             style,
             layout,
             ..
-        } = &e.element
+        }) = e.element()
         else {
             return None;
         };
         let layout = layout.as_ref()?;
-        let ink = layout.ink_bounds();
+        let cb = layout.cap_bounds();
         let dx = match style.align {
             TextAlign::Right => -layout.width,
             _ => 0.0,
         };
         let (sn, cs) = style.rotation.sin_cos();
         let corners = [
-            (ink.min_x(), ink.min_y()),
-            (ink.max_x(), ink.min_y()),
-            (ink.min_x(), ink.max_y()),
-            (ink.max_x(), ink.max_y()),
+            (cb.min_x(), cb.min_y()),
+            (cb.max_x(), cb.min_y()),
+            (cb.min_x(), cb.max_y()),
+            (cb.max_x(), cb.max_y()),
         ];
         let max_px = corners
             .iter()

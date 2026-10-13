@@ -7,7 +7,7 @@ use lievisual::{
     scene::{Element, SceneNode},
     text::{FontWeight, RichSpan, TextBaseline, TextStyle, measure_text},
 };
-use vello_cpu::kurbo::Point;
+use lievisual::kurbo::Point;
 
 use crate::{
     pipeline::{

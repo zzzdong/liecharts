@@ -1,6 +1,6 @@
 //! PolarScatter Materializer: 将 PolarScatter SeriesSpec 转换为 PolarScatterSeries
 
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 use crate::{
     Color,

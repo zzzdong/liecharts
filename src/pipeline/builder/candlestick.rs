@@ -1,7 +1,7 @@
 //! Candlestick Builder: 将 CandlestickSeries 组装为 lievisual `SceneNode`
 
 use lievisual::scene::{FillStrokeStyle, SceneNode, Stroke};
-use vello_cpu::kurbo::Point;
+use lievisual::kurbo::Point;
 
 use crate::{
     error::Result,

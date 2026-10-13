@@ -7,7 +7,7 @@ use lievisual::{
     scene::{Element, FillStrokeStyle, SceneNode, Stroke},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle},
 };
-use vello_cpu::kurbo::{BezPath, Point, Rect};
+use lievisual::kurbo::{BezPath, Point, Rect};
 
 use crate::{
     error::Result,

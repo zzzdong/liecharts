@@ -36,12 +36,12 @@ use crate::{
 pub fn compute_text_layouts(elements: &mut [lievisual::scene::SceneNode]) {
     use lievisual::{scene::Element, text::RichSpan};
     for node in elements.iter_mut() {
-        if let Element::Text {
+        if let Some(Element::Text {
             spans,
             style,
             layout,
             ..
-        } = &mut node.element
+        }) = node.element_mut()
             && layout.is_none()
         {
             // 拼接纯文本（单 span 最常见）

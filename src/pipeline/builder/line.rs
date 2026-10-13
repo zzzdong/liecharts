@@ -5,7 +5,7 @@ use lievisual::{
     scene::{Element, SceneNode},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle},
 };
-use vello_cpu::kurbo::{BezPath, Point};
+use lievisual::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,
@@ -431,7 +431,7 @@ fn build_symbol(
             ));
         }
         SymbolType::Rect => {
-            let r = vello_cpu::kurbo::Rect::new(
+            let r = lievisual::kurbo::Rect::new(
                 center.x - size,
                 center.y - size,
                 center.x + size,
@@ -459,7 +459,7 @@ fn build_symbol(
 
 #[cfg(test)]
 mod tests {
-    use vello_cpu::kurbo::Rect;
+    use lievisual::kurbo::Rect;
 
     use super::*;
     use crate::{pipeline::types::ColorContext, theme::Theme};
@@ -499,8 +499,8 @@ mod tests {
 
         // 单个数据点画不出线，但必须渲染出数据点符号
         assert_eq!(elements.len(), 1, "单点折线图应渲染出 1 个符号");
-        match &elements[0].element {
-            Element::Circle { style, .. } => {
+        match elements[0].element() {
+            Some(Element::Circle { style, .. }) => {
                 assert!(style.fill.is_none(), "ECharts 默认折线符号是空心圆");
                 assert!(style.stroke.is_some());
             }
@@ -528,12 +528,12 @@ mod tests {
         assert!(
             elements
                 .iter()
-                .any(|e| matches!(&e.element, Element::Path { .. }))
+                .any(|e| matches!(e.element(), Some(Element::Path { .. })))
         );
         assert_eq!(
             elements
                 .iter()
-                .filter(|e| matches!(&e.element, Element::Circle { .. }))
+                .filter(|e| matches!(e.element(), Some(Element::Circle { .. })))
                 .count(),
             3
         );

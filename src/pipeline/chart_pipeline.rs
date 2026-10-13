@@ -1,4 +1,4 @@
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 /// 基于 DataFrame 的新 Pipeline
 ///
@@ -497,7 +497,7 @@ mod tests {
 
         let sector_count = elements
             .iter()
-            .filter(|e| matches!(&e.element, lievisual::scene::Element::Path { .. }))
+            .filter(|e| matches!(e.element(), Some(lievisual::scene::Element::Path { .. })))
             .count();
         assert!(sector_count >= 3, "Should have at least 3 pie sectors");
     }
@@ -648,8 +648,8 @@ mod tests {
         let text_xs: Vec<f64> = hug
             .elements
             .iter()
-            .filter_map(|n| match &n.element {
-                Element::Text { position, .. } => Some(position.x),
+            .filter_map(|n| match n.element() {
+                Some(Element::Text { position, .. }) => Some(position.x),
                 _ => None,
             })
             .collect();

@@ -11,13 +11,13 @@ use lievisual::{
 };
 
 /// 便捷构造函数：矩形节点。
-pub fn rect(rect: vello_cpu::kurbo::Rect, style: FillStrokeStyle, z: i32) -> SceneNode {
+pub fn rect(rect: lievisual::kurbo::Rect, style: FillStrokeStyle, z: i32) -> SceneNode {
     SceneNode::new(Element::rect(rect, style)).with_z(z)
 }
 
 /// 便捷构造函数：圆节点。
 pub fn circle(
-    center: vello_cpu::kurbo::Point,
+    center: lievisual::kurbo::Point,
     radius: f64,
     style: FillStrokeStyle,
     z: i32,
@@ -30,7 +30,7 @@ pub fn circle(
 /// `radius <= 0` 时退化为普通矩形（避免后端对 0 半径的边界处理差异）。
 /// 半径被自动 clamp 到短边的一半，保证退化柱体（高/宽极小）不产生畸形路径。
 pub fn rounded_rect(
-    bounds: vello_cpu::kurbo::Rect,
+    bounds: lievisual::kurbo::Rect,
     radius: f64,
     style: FillStrokeStyle,
     z: i32,
@@ -50,8 +50,8 @@ pub fn rounded_rect(
 
 /// 便捷构造函数：线段节点。
 pub fn line(
-    start: vello_cpu::kurbo::Point,
-    end: vello_cpu::kurbo::Point,
+    start: lievisual::kurbo::Point,
+    end: lievisual::kurbo::Point,
     style: Stroke,
     z: i32,
 ) -> SceneNode {
@@ -59,13 +59,13 @@ pub fn line(
 }
 
 /// 便捷构造函数：折线节点。
-pub fn poly(points: Vec<vello_cpu::kurbo::Point>, style: Stroke, z: i32) -> SceneNode {
+pub fn poly(points: Vec<lievisual::kurbo::Point>, style: Stroke, z: i32) -> SceneNode {
     SceneNode::new(Element::poly(points, style)).with_z(z)
 }
 
 /// 便捷构造函数：路径节点。
 pub fn path(
-    path: vello_cpu::kurbo::BezPath,
+    path: lievisual::kurbo::BezPath,
     style: FillStrokeStyle,
     closed: bool,
     z: i32,
@@ -80,7 +80,7 @@ pub fn path(
 
 /// 便捷构造函数：渐变路径节点。
 pub fn gradient_path(
-    path: vello_cpu::kurbo::BezPath,
+    path: lievisual::kurbo::BezPath,
     gradient: LinearGradient,
     stroke: Option<Stroke>,
     z: i32,
@@ -186,7 +186,7 @@ impl ColorExt for Color {
 /// 便捷构造函数：文本节点。`style` 已含 `rotation` / `max_width` 等块级属性。
 pub fn text_el(
     text: impl Into<String>,
-    position: vello_cpu::kurbo::Point,
+    position: lievisual::kurbo::Point,
     style: lievisual::text::TextStyle,
     z: i32,
 ) -> SceneNode {
@@ -212,18 +212,18 @@ pub fn hide_overlapping_labels(elements: &mut Vec<SceneNode>, z: i32) {
     use lievisual::text::compute_text_offset;
 
     let is_target = |n: &SceneNode| {
-        n.z_index == z && matches!(&n.element, Element::Text { layout: Some(_), .. })
+        n.z_index == z && matches!(n.element(), Some(Element::Text { layout: Some(_), .. }))
     };
     let boxes: Vec<LabelBox> = elements
         .iter()
         .filter(|n| is_target(n))
-        .filter_map(|n| match &n.element {
-            Element::Text {
+        .filter_map(|n| match n.element() {
+            Some(Element::Text {
                 position,
                 style,
                 layout: Some(layout),
                 ..
-            } => {
+            }) => {
                 let (dx, dy) = compute_text_offset(layout, style.align, style.baseline);
                 Some(LabelBox {
                     x: position.x + dx,
@@ -353,7 +353,7 @@ pub fn fill_stroke_style(fill: Color, stroke: Color, stroke_width: f64) -> FillS
 pub fn render_mark_lines(
     elements: &mut Vec<SceneNode>,
     mark_lines: &[crate::pipeline::typed_series::MarkLineRender],
-    bounds: vello_cpu::kurbo::Rect,
+    bounds: lievisual::kurbo::Rect,
 ) {
     use lievisual::{
         geometry::Point,
@@ -362,7 +362,7 @@ pub fn render_mark_lines(
 
     for ml in mark_lines {
         // 标注线：从绘图区左边界到右边界
-        let mut path = vello_cpu::kurbo::BezPath::new();
+        let mut path = lievisual::kurbo::BezPath::new();
         path.move_to(Point::new(bounds.x0, ml.y));
         path.line_to(Point::new(bounds.x1, ml.y));
         elements.push(

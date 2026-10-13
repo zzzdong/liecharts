@@ -1,6 +1,6 @@
 //! Heatmap Materializer: 将 Heatmap SeriesSpec 转换为 HeatmapSeries
 
-use vello_cpu::kurbo::Rect;
+use lievisual::kurbo::Rect;
 
 use crate::{
     Color,

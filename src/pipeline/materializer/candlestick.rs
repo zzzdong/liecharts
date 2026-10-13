@@ -1,6 +1,6 @@
 //! Candlestick Materializer: 将 Candlestick SeriesSpec 转换为 CandlestickSeries
 
-use vello_cpu::kurbo::{Point, Rect};
+use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     Color,

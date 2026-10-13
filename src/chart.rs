@@ -1,4 +1,4 @@
-pub use vello_cpu::Pixmap;
+pub use lievisual::Pixmap;
 
 use crate::{
     SceneNode,
@@ -60,13 +60,9 @@ impl Chart {
 fn write_pixmap(elements: &[SceneNode], width: u32, height: u32, path: &str) -> Result<()> {
     let renderer = PixmapRenderer::new(width, height);
     let pixmap = renderer.render(elements, None)?;
-    let pw = pixmap.width() as u32;
-    let ph = pixmap.height() as u32;
-    let data: Vec<u8> = pixmap
-        .data()
-        .iter()
-        .flat_map(|p| vec![p.r, p.g, p.b, p.a])
-        .collect();
+    let pw = pixmap.width();
+    let ph = pixmap.height();
+    let data: Vec<u8> = pixmap.pixels().to_vec();
     let image = image::RgbaImage::from_raw(pw, ph, data).ok_or_else(|| {
         crate::error::ChartError::RenderError("Failed to create image".to_string())
     })?;
@@ -84,12 +80,8 @@ fn svg_string(elements: &[SceneNode], width: u32, height: u32) -> String {
 fn png_bytes(elements: &[SceneNode], width: u32, height: u32) -> Result<Vec<u8>> {
     let renderer = PixmapRenderer::new(width, height);
     let pixmap = renderer.render(elements, None)?;
-    let data: Vec<u8> = pixmap
-        .data()
-        .iter()
-        .flat_map(|p| vec![p.r, p.g, p.b, p.a])
-        .collect();
-    let image = image::RgbaImage::from_raw(pixmap.width() as u32, pixmap.height() as u32, data)
+    let data: Vec<u8> = pixmap.pixels().to_vec();
+    let image = image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), data)
         .ok_or_else(|| {
             crate::error::ChartError::RenderError("Failed to create PNG image".to_string())
         })?;
