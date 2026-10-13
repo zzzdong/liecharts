@@ -42,7 +42,7 @@ pub fn rounded_rect(
     }
     SceneNode::new(Element::RoundedRect {
         rect: bounds,
-        radius,
+        radii: radius.into(),
         style,
     })
     .with_z(z)

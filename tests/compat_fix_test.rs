@@ -123,7 +123,7 @@ fn bar_border_radius_emits_rounded_rect() {
         let radii: Vec<f64> = elements_of(&nodes, |e| matches!(e, Element::RoundedRect { .. }))
             .into_iter()
             .filter_map(|(e, _)| match e {
-                Element::RoundedRect { radius, .. } => Some(*radius),
+                Element::RoundedRect { radii, .. } => Some(radii.uniform_value()),
                 _ => None,
             })
             .collect();
