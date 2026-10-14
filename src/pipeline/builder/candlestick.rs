@@ -1,6 +1,6 @@
 //! Candlestick Builder: 将 CandlestickSeries 组装为 lievisual `SceneNode`
 
-use lievisual::scene::{FillStrokeStyle, SceneNode, Stroke};
+use lievisual::scene::SceneNode;
 use lievisual::kurbo::Point;
 
 use crate::{
@@ -60,28 +60,15 @@ impl SeriesBuilder<CandlestickSeries> for CandlestickBuilder {
                 Z_SERIES_LINE,
             ));
 
-            // 实体 — 默认按 A 股惯例「阳线空心、阴线实心」；
-            // 用户显式给了 `itemStyle.color` / `color0` 时改为两者都实心填充
-            // （ECharts 默认语义）。
-            let up_stroke_color = series.border_color.unwrap_or(color);
-            if candle.is_up && !series.explicit_colors {
-                // 阳线：仅描边，空心
-                elements.push(rect(
-                    candle.body_rect,
-                    FillStrokeStyle {
-                        fill: None,
-                        stroke: Some(Stroke::new(up_stroke_color, 1.5)),
-                    },
-                    Z_SERIES_FILL,
-                ));
-            } else {
-                // 阴线 / 显式配色：实心填充
-                elements.push(rect(
-                    candle.body_rect,
-                    fill_stroke_style(color, up_stroke_color, 1.0),
-                    Z_SERIES_FILL,
-                ));
-            }
+            // 实体 — ECharts 默认语义：阳线/阴线**都实心填充**（`itemStyle.color`
+            // / `color0`），描边同色、`borderWidth: 1`。历史实现按 A 股惯例把阳线
+            // 画成空心，与官方输出不一致。
+            let body_stroke_color = series.border_color.unwrap_or(color);
+            elements.push(rect(
+                candle.body_rect,
+                fill_stroke_style(color, body_stroke_color, 1.0),
+                Z_SERIES_FILL,
+            ));
         }
 
         Ok(elements)

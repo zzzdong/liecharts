@@ -1267,6 +1267,12 @@ pub struct ColorContext {
     pub table_row_odd_bg: Color,     // 表格奇数行背景
 }
 
+/// ECharts v6 浅色主题下**与调色板无关**的固定颜色。
+///
+/// `ColorContext::default()` / `ColorAssigner::assign` /
+/// `ColorAssigner::assign_with_theme` 三处曾各自复制同一份字面量，任一处漏改
+/// 都会造成"默认色 vs 主题色"漂移；现在 `Default` 是唯一事实来源，两个 assign
+/// 入口都用 `..ColorContext::default()` 继承后只覆盖主题驱动字段。
 impl Default for ColorContext {
     fn default() -> Self {
         Self {
@@ -1279,8 +1285,8 @@ impl Default for ColorContext {
             border_color: Color::rgb(255, 255, 255),
             text_color: Color::rgb(51, 51, 51),
             text_secondary_color: Color::rgb(102, 102, 102),
-            up_color: Color::rgb(234, 85, 67),
-            down_color: Color::rgb(80, 170, 94),
+            up_color: Color::rgb(236, 0, 0), // #ec0000 ECharts candlestick 默认阳线色
+            down_color: Color::rgb(0, 218, 60), // #00da3c ECharts candlestick 默认阴线色
             table_header_bg: Color::rgb(220, 220, 220),
             table_row_even_bg: Color::rgb(248, 248, 248),
             table_row_odd_bg: Color::rgb(255, 255, 255),

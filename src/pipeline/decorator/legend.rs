@@ -323,7 +323,7 @@ fn row_total_width(row: &[usize], item_widths: &[f64], item_gap: f64) -> f64 {
 
 /// 图例符号形状（按所标注的系列类型决定，ECharts 同源行为）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LegendSymbolKind {
+enum LegendSymbolKind {
     /// 折线/面积：横线段 + 中点标记
     Line,
     /// 柱状/热力/其它：矩形

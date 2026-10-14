@@ -232,15 +232,13 @@ pub struct Bubble {
 #[derive(Debug, Clone)]
 pub struct CandlestickSeries {
     pub name: String,
+    /// 阳线（涨）填充色（`itemStyle.color`）
     pub up_color: Color,
+    /// 阴线（跌）填充色（`itemStyle.color0`）
     pub down_color: Color,
-    /// 阳线描边色（`itemStyle.borderColor`）
+    /// 实体描边色（`itemStyle.borderColor`）。None = 与填充同色
+    /// （ECharts 默认语义：阳线/阴线都实心填充，描边同色）
     pub border_color: Option<Color>,
-    /// 用户是否显式指定了涨/跌颜色。
-    ///
-    /// 未指定时阳线按 A 股惯例画成**空心**（仅描边）；显式指定 `itemStyle.color`
-    /// 后按用户色实心填充（ECharts 默认两张都实心）。
-    pub explicit_colors: bool,
     pub candles: Vec<CandleRect>,
 }
 

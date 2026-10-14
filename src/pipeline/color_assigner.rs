@@ -44,19 +44,8 @@ impl ColorAssigner {
 
         ColorContext {
             palette: default_palette.clone(),
-            background: Color::rgb(255, 255, 255),
             series_colors,
-            axis_line_color: Color::rgb(200, 200, 200),
-            axis_label_color: Color::rgb(50, 50, 50),
-            grid_line_color: Color::rgb(230, 230, 230),
-            border_color: Color::rgb(255, 255, 255),
-            text_color: Color::rgb(51, 51, 51),
-            text_secondary_color: Color::rgb(102, 102, 102),
-            up_color: Color::rgb(234, 85, 67),
-            down_color: Color::rgb(80, 170, 94),
-            table_header_bg: Color::rgb(220, 220, 220),
-            table_row_even_bg: Color::rgb(248, 248, 248),
-            table_row_odd_bg: Color::rgb(255, 255, 255),
+            ..ColorContext::default()
         }
     }
 
@@ -111,14 +100,8 @@ impl ColorAssigner {
             axis_line_color,
             axis_label_color,
             grid_line_color,
-            border_color: Color::rgb(255, 255, 255),
-            text_color: Color::rgb(51, 51, 51),
-            text_secondary_color: Color::rgb(102, 102, 102),
-            up_color: Color::rgb(234, 85, 67),
-            down_color: Color::rgb(80, 170, 94),
-            table_header_bg: Color::rgb(220, 220, 220),
-            table_row_even_bg: Color::rgb(248, 248, 248),
-            table_row_odd_bg: Color::rgb(255, 255, 255),
+            // 其余固定色（文字/表格/K 线涨跌）继承 `ColorContext::default()`
+            ..ColorContext::default()
         }
     }
 }
