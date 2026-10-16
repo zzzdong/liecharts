@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-10-16
+
+### Added
+
+- **Font `body_font_size` as rem root** (ECharts `option.textStyle.fontSize` parity):
+  - `Chart::new(...).body_font_size(n)` is now equivalent to JSON
+    `option.textStyle.fontSize`. It injects a `1rem` root so the whole chart's
+    text scales proportionally by theme token factors — title `1.5×`, axis/value
+    labels `1.0×`, auxiliary text `0.833×`.
+  - Extracted `chart_pipeline::apply_rem_root` so both the JSON and api-builder
+    paths share one root-injection path. Added `tests/font_rem_test.rs` covering
+    both paths.
+
+### Fixed
+
+- **Option/Default trap**: `label_font_size` (and related) were hardcoded defaults
+  that were indistinguishable from an explicit `12`. They are now `Option<f64>`, so
+  an unset label inherits the rem root instead of being misread as "explicit 12".
+
 ## [0.3.0] - 2026-10-14
 
 ### ⚠️ Breaking Changes
@@ -50,4 +69,5 @@ unchanged. Direct `parley` / `vello_cpu` dependencies were removed from
 - **Candlestick**: entity bodies now use ECharts' default solid fill, and the
   color source was consolidated. Added a regression test for entity fill.
 
+[0.3.1]: https://github.com/zzzdong/liecharts/releases/tag/v0.3.1
 [0.3.0]: https://github.com/zzzdong/liecharts/releases/tag/v0.3.0
