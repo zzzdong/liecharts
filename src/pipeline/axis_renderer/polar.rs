@@ -7,10 +7,10 @@ use std::f64::consts::PI;
 
 use lievisual::{
     Color,
+    kurbo::{Circle, Point, Shape as KurboShape},
     scene::{FillStrokeStyle, SceneNode, Stroke},
     text::{TextAlign, TextBaseline, TextStyle},
 };
-use lievisual::kurbo::{Circle, Point, Shape as KurboShape};
 
 use crate::pipeline::{
     builder::{Z_GRID, Z_LABEL, path, text_el},

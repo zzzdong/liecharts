@@ -4,10 +4,10 @@ use std::{collections::HashSet, f64::consts::PI};
 
 use lievisual::{
     Color,
+    kurbo::Point,
     scene::{Element, SceneNode},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle},
 };
-use lievisual::kurbo::Point;
 
 use crate::{
     error::Result,

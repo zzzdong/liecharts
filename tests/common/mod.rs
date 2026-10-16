@@ -12,8 +12,8 @@
 #![allow(dead_code)]
 
 use liecharts::{Color, SceneNode, option::ChartOption};
-use lievisual::scene::Element;
 use lievisual::kurbo::{Point, Rect, Shape};
+use lievisual::scene::Element;
 
 /// 从 `site/examples/{name}.json` 读取并解析 ECharts 兼容 option。
 pub fn option_from_example(name: &str) -> ChartOption {

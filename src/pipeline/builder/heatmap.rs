@@ -1,10 +1,10 @@
 //! Heatmap Builder: 将 HeatmapSeries 组装为 lievisual `SceneNode`
 
 use lievisual::{
+    kurbo::Point,
     scene::{Element, SceneNode},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle},
 };
-use lievisual::kurbo::Point;
 
 use crate::{
     error::Result,

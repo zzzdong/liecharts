@@ -4,10 +4,10 @@
 
 use lievisual::{
     Color,
+    kurbo::Point,
     scene::{Element, SceneNode},
     text::{FontWeight, RichSpan, TextBaseline, TextStyle, measure_text},
 };
-use lievisual::kurbo::Point;
 
 use crate::{
     pipeline::{

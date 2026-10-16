@@ -670,8 +670,8 @@ impl Chart {
         let renderer = crate::render::PixmapRenderer::new(laid.width, laid.height);
         let pixmap = renderer.render(&laid.elements, laid.fit_max)?;
         let data: Vec<u8> = pixmap.pixels().to_vec();
-        let image = image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), data)
-            .ok_or_else(|| {
+        let image =
+            image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), data).ok_or_else(|| {
                 crate::error::ChartError::RenderError("Failed to create image".to_string())
             })?;
         image.save(path)?;

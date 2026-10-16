@@ -96,10 +96,7 @@ pub fn build_chart_with_theme(
 ) -> Result<Vec<SceneNode>> {
     // 「用户显式根 + rem」：`option.textStyle.fontSize` 显式给出时覆盖主题
     // `body_size` 作 1rem 根，各文本类型按主题系数（标题 1.5× 等）等比换算。
-    let theme = apply_rem_root(
-        theme,
-        option.text_style.as_ref().and_then(|t| t.font_size),
-    );
+    let theme = apply_rem_root(theme, option.text_style.as_ref().and_then(|t| t.font_size));
     // 将 ChartOption 转换为 ChartSpec，然后使用新管线
     let spec = crate::pipeline::compat::chart_option_to_chart_spec(option, width, height);
     Ok(build_chart_with_layout(&spec, &theme)?.elements)

@@ -81,8 +81,8 @@ fn png_bytes(elements: &[SceneNode], width: u32, height: u32) -> Result<Vec<u8>>
     let renderer = PixmapRenderer::new(width, height);
     let pixmap = renderer.render(elements, None)?;
     let data: Vec<u8> = pixmap.pixels().to_vec();
-    let image = image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), data)
-        .ok_or_else(|| {
+    let image =
+        image::RgbaImage::from_raw(pixmap.width(), pixmap.height(), data).ok_or_else(|| {
             crate::error::ChartError::RenderError("Failed to create PNG image".to_string())
         })?;
     let mut buf = Vec::new();

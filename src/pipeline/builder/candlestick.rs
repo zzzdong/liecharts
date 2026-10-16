@@ -1,7 +1,7 @@
 //! Candlestick Builder: 将 CandlestickSeries 组装为 lievisual `SceneNode`
 
-use lievisual::scene::SceneNode;
 use lievisual::kurbo::Point;
+use lievisual::scene::SceneNode;
 
 use crate::{
     error::Result,

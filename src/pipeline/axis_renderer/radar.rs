@@ -8,9 +8,9 @@ use std::f64::consts::PI;
 
 use lievisual::{
     Color,
+    kurbo::{BezPath, Point},
     scene::{FillStrokeStyle, SceneNode, Stroke},
 };
-use lievisual::kurbo::{BezPath, Point};
 
 use crate::pipeline::{
     builder::{Z_GRID, line, path},

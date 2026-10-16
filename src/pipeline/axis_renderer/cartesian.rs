@@ -5,10 +5,10 @@
 
 use lievisual::{
     Color,
+    kurbo::{Point, Rect},
     scene::{Element, SceneNode, Stroke},
     text::{RichSpan, TextAlign, measure_text},
 };
-use lievisual::kurbo::{Point, Rect};
 
 use super::axis_ticks_with_count;
 use crate::pipeline::{
@@ -134,7 +134,11 @@ fn x_label_geom(
     let (w, h) = measurer.measure(text, &label_style(colors, font_size));
     if rotation == 0.0 {
         let x = anchor.x - w / 2.0;
-        (Point::new(x, anchor.y), 0.0, LabelBox::new(x, anchor.y, w, h))
+        (
+            Point::new(x, anchor.y),
+            0.0,
+            LabelBox::new(x, anchor.y, w, h),
+        )
     } else {
         let draw_rotation = if downward { rotation } else { -rotation };
         (
@@ -885,7 +889,12 @@ impl CartesianAxisRenderer {
                 auto_step,
                 rotation,
                 downward,
-                &|i| Point::new(bounds.x0 + axis_cfg.category_norm(i) * bounds.width(), label_y),
+                &|i| {
+                    Point::new(
+                        bounds.x0 + axis_cfg.category_norm(i) * bounds.width(),
+                        label_y,
+                    )
+                },
                 slot_w,
                 axis_cfg,
                 colors,
@@ -1099,8 +1108,8 @@ impl CartesianAxisRenderer {
 
 #[cfg(test)]
 mod tests {
-    use lievisual::scene::Element;
     use lievisual::kurbo::Rect;
+    use lievisual::scene::Element;
 
     use super::*;
     use crate::pipeline::types::{ResolvedAxisRange, ResolvedAxisRanges};

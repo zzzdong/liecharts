@@ -17,10 +17,10 @@ use std::f64::consts::PI;
 
 use lievisual::{
     Color,
+    kurbo::{Arc, BezPath, PathSeg, Point, Shape},
     scene::{Element, FillStrokeStyle, GradientStop, LinearGradient, SceneNode, Stroke},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle, measure_text},
 };
-use lievisual::kurbo::{Arc, BezPath, PathSeg, Point, Shape};
 
 use crate::{
     error::Result,

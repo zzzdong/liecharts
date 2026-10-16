@@ -1267,9 +1267,14 @@ fn materialize_one_stacked_line_group(
             baseline_points: prev_points.clone(),
             label: line_label_config(cfg, colors),
             mark_lines: compute_mark_lines(&cfg.mark_line, &values, y_range, bounds, colors),
-            mark_points: compute_mark_points(&cfg.mark_point, &points, &values, false, |v| {
-                map_y_to_pixel(v, y_range, bounds)
-            }, colors),
+            mark_points: compute_mark_points(
+                &cfg.mark_point,
+                &points,
+                &values,
+                false,
+                |v| map_y_to_pixel(v, y_range, bounds),
+                colors,
+            ),
         };
 
         prev_points = Some(points);

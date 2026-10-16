@@ -212,7 +212,14 @@ pub fn hide_overlapping_labels(elements: &mut Vec<SceneNode>, z: i32) {
     use lievisual::text::compute_text_offset;
 
     let is_target = |n: &SceneNode| {
-        n.z_index == z && matches!(n.element(), Some(Element::Text { layout: Some(_), .. }))
+        n.z_index == z
+            && matches!(
+                n.element(),
+                Some(Element::Text {
+                    layout: Some(_),
+                    ..
+                })
+            )
     };
     let boxes: Vec<LabelBox> = elements
         .iter()

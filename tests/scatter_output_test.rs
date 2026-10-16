@@ -9,8 +9,8 @@
 mod common;
 use common::*;
 use liecharts::{Fill, SceneNode};
-use lievisual::scene::FillStrokeStyle;
 use lievisual::kurbo::Point;
+use lievisual::scene::FillStrokeStyle;
 
 const W: f64 = 800.0;
 const H: f64 = 600.0;

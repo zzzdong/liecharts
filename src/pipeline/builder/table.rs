@@ -1,10 +1,10 @@
 //! Table Builder: 将 TableSeries 组装为 lievisual `SceneNode`
 
 use lievisual::{
+    kurbo::{Point, Rect},
     scene::{Element, SceneNode},
     text::{FontWeight as VisualFontWeight, RichSpan, TextAlign, TextBaseline, TextStyle},
 };
-use lievisual::kurbo::{Point, Rect};
 
 use crate::{
     error::Result,

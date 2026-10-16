@@ -820,7 +820,11 @@ fn series_label_hide_overlap_reduces_labels() {
     let values: Vec<i64> = (1..=40).map(|i| i * 1000 + 7).collect();
     let values_json = format!(
         "[{}]",
-        values.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(",")
+        values
+            .iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
     );
     let mk = |hide: bool| {
         let tpl = r#"{"xAxis":{"type":"category","data":DATA},"yAxis":{"type":"value"},
@@ -859,9 +863,15 @@ fn axis_label_show_min_max_label_is_honoured() {
     };
 
     // showMinLabel:false → 首标签不显示
-    assert_eq!(cats(&base(r#""interval":0,"showMinLabel":false"#)), vec!["b", "c", "d", "e"]);
+    assert_eq!(
+        cats(&base(r#""interval":0,"showMinLabel":false"#)),
+        vec!["b", "c", "d", "e"]
+    );
     // showMaxLabel:false → 尾标签不显示
-    assert_eq!(cats(&base(r#""interval":0,"showMaxLabel":false"#)), vec!["a", "b", "c", "d"]);
+    assert_eq!(
+        cats(&base(r#""interval":0,"showMaxLabel":false"#)),
+        vec!["a", "b", "c", "d"]
+    );
     // interval:2 默认抽稀为 a、d；showMaxLabel:true 强制补上尾标签 e
     assert_eq!(
         cats(&base(r#""interval":2,"showMaxLabel":true"#)),
@@ -1078,9 +1088,7 @@ fn legend_layout_uses_formatter_text() {
     };
 
     let short = plot_bottom(&mk(""));
-    let long = plot_bottom(&mk(
-        r#""formatter":"{b}────────────────────""#,
-    ));
+    let long = plot_bottom(&mk(r#""formatter":"{b}────────────────────""#));
     assert!(
         long < short,
         "长 formatter 使图例多占一行后，绘图区底边应上移（short={short}, long={long}）"

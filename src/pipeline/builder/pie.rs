@@ -4,10 +4,10 @@ use std::f64::consts::PI;
 
 use lievisual::{
     Color,
+    kurbo::{BezPath, Point},
     scene::{Element, FillStrokeStyle, SceneNode, Stroke},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle, measure_text},
 };
-use lievisual::kurbo::{BezPath, Point};
 
 use crate::{
     error::Result,
