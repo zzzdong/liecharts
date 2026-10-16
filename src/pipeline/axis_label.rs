@@ -30,11 +30,31 @@ pub fn format_label(value: &str, formatter: &Option<String>) -> String {
     fmt.replace("{value}", value)
 }
 
+/// 轴标签字号解析（Q2「用户显式根 + rem」模式）。
+///
+/// 完整优先级：**轴级 `axisLabel.fontSize` 显式 > 全局根 × 1.0 > 主题令牌**。
+///
+/// - 轴级显式（`axis_cfg.decor.label_font_size`）：绝对优先，不参与 rem 缩放；
+/// - 否则取 `colors.body_font_size` —— 它来自主题 `tokens.text.body_size`
+///   （= 1rem），而 `build_chart_with_theme` 已把 `option.textStyle.fontSize`
+///   （用户显式根）折算进去，故「全局根 × 1.0」与「主题令牌」两条分支在此合一。
+///
+/// 布局阶段（`GridPlanner`）与渲染阶段（`CartesianAxisRenderer`）必须共用本函数，
+/// 否则两侧测量口径不一致，边距预留会与实绘结果错位。
+pub fn resolve_axis_label_font_size(axis_cfg: &AxisSpec, colors: &ColorContext) -> f64 {
+    axis_cfg
+        .decor
+        .label_font_size
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(colors.body_font_size)
+}
+
 /// 轴标签基准样式（渲染时位置已预计算为文本块左上角，故统一使用 Left/Top 对齐）
 ///
-/// 同样为布局与渲染两侧共用，保证测量口径一致。
-pub fn label_style(colors: &ColorContext) -> TextStyle {
-    let mut s = TextStyle::new(colors.axis_label_color, 11.0, "sans-serif");
+/// 同样为布局与渲染两侧共用，保证测量口径一致。字号由调用方按
+/// [`resolve_axis_label_font_size`] 解析后传入（不在此处读取主题）。
+pub fn label_style(colors: &ColorContext, font_size: f64) -> TextStyle {
+    let mut s = TextStyle::new(colors.axis_label_color, font_size, "sans-serif");
     s.align = TextAlign::Left;
     s.baseline = TextBaseline::Top;
     s
@@ -45,8 +65,9 @@ pub fn measure_labels(
     labels: &[String],
     measurer: &mut TextMeasurer,
     colors: &ColorContext,
+    font_size: f64,
 ) -> (f64, f64) {
-    let style = label_style(colors);
+    let style = label_style(colors, font_size);
     let mut max_w: f64 = 0.0;
     let mut max_h: f64 = 0.0;
     for label in labels {

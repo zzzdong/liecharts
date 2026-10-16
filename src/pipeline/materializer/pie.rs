@@ -76,7 +76,11 @@ impl SeriesMaterializer for PieMaterializer {
             radius_outer: cfg.radius.1,
             label_show: cfg.label_show,
             label_position: map_label_position(cfg.label_position),
-            label_font_size: cfg.label_font_size,
+            // Q2：显式 > 全局根 × 1.0 > 主题令牌
+            label_font_size: crate::pipeline::materializer::resolve_label_font_size(
+                cfg.label_font_size,
+                colors,
+            ),
             label_formatter: cfg.label_formatter.clone(),
             label_line_show: cfg.label_line_show,
             clockwise: cfg.clockwise,

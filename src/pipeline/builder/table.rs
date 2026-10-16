@@ -53,6 +53,14 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
         let cell_width = total_width / col_count as f64;
         let cell_height = total_height / (row_count + 1) as f64;
 
+        // 表格排版统一走主题令牌（rem 体系）：表头套 title_size（= 1.5rem），
+        // 表体套 body_size（= 1rem），字体家族用主题字体栈（优先 CJK），
+        // 不再硬编码 "Arial" 与离散像素。整张表的字号随主题根字号等比缩放。
+        let theme_tokens = ctx.theme.tokens();
+        let table_font_family = theme_tokens.text.font_family.clone();
+        let table_header_size = theme_tokens.text.title_size;
+        let table_body_size = theme_tokens.text.body_size;
+
         // 1. 绘制表头背景
         let header_rect = Rect::new(
             start_x,
@@ -71,7 +79,8 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
             let x = start_x + col_idx as f64 * cell_width + cell_width / 2.0;
             let y = start_y + cell_height / 2.0;
 
-            let mut style = TextStyle::new(ctx.colors.text_color, 12.0, "Arial");
+            let mut style =
+                TextStyle::new(ctx.colors.text_color, table_header_size, &table_font_family);
             style.font_weight = weight_to_visual(&FontWeight::Named(FontWeightNamed::Bold));
             style.align = TextAlign::Center;
             style.baseline = TextBaseline::Middle;
@@ -140,7 +149,8 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
                 let x = start_x + col_idx as f64 * cell_width + cell_width / 2.0;
                 let text_y = y + cell_height / 2.0;
 
-                let mut style = TextStyle::new(ctx.colors.text_color, 11.0, "Arial");
+                let mut style =
+                    TextStyle::new(ctx.colors.text_color, table_body_size, &table_font_family);
                 style.font_weight = weight_to_visual(&FontWeight::Named(FontWeightNamed::Normal));
                 style.align = TextAlign::Center;
                 style.baseline = TextBaseline::Middle;

@@ -102,7 +102,7 @@ pub struct Line {
     pub grid_index: usize,
     pub sampling: Option<Sampling>,
     pub label_show: bool,
-    pub label_font_size: f64,
+    pub label_font_size: Option<f64>,
     /// 值标签位置，None = Top（数据点上方）
     pub label_position: Option<ValueLabelPos>,
     /// 值标签颜色，None = 跟随系列色
@@ -129,7 +129,7 @@ impl Line {
             grid_index: 0,
             sampling: None,
             label_show: false,
-            label_font_size: 12.0,
+            label_font_size: None,
             label_position: None,
             label_color: None,
             label_formatter: None,
@@ -202,7 +202,7 @@ impl Line {
         self
     }
     pub fn label_font_size(mut self, size: f64) -> Self {
-        self.label_font_size = size;
+        self.label_font_size = Some(size);
         self
     }
     /// 值标签位置（`Top` 上方 / `Bottom` 下方；`Inside` 在折线图回退为 `Top`）。
@@ -243,7 +243,7 @@ pub struct Bar {
     pub y_axis_index: usize,
     pub grid_index: usize,
     pub label_show: bool,
-    pub label_font_size: f64,
+    pub label_font_size: Option<f64>,
     /// 值标签位置，None = Top（柱顶外侧；负值柱在柱底外侧）
     pub label_position: Option<ValueLabelPos>,
     /// 值标签颜色，None = 柱外跟随系列色 / 柱内白字
@@ -266,7 +266,7 @@ impl Bar {
             y_axis_index: 0,
             grid_index: 0,
             label_show: false,
-            label_font_size: 12.0,
+            label_font_size: None,
             label_position: None,
             label_color: None,
             label_formatter: None,
@@ -322,7 +322,7 @@ impl Bar {
         self
     }
     pub fn label_font_size(mut self, size: f64) -> Self {
-        self.label_font_size = size;
+        self.label_font_size = Some(size);
         self
     }
     /// 值标签位置（`Top` 柱外值端 / `Inside` 柱内值端；`Bottom` 在柱状图回退为 `Top`）。
@@ -740,7 +740,7 @@ pub struct Heatmap {
     pub border_color: Option<Color>,
     pub border_width: f64,
     pub label_show: bool,
-    pub label_font_size: f64,
+    pub label_font_size: Option<f64>,
     pub y_axis_index: usize,
     pub grid_index: usize,
 }
@@ -759,7 +759,7 @@ impl Heatmap {
             border_color: None,
             border_width: 0.0,
             label_show: false,
-            label_font_size: 12.0,
+            label_font_size: None,
             y_axis_index: 0,
             grid_index: 0,
         }

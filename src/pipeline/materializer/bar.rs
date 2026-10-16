@@ -20,7 +20,7 @@ impl SeriesMaterializer for BarMaterializer {
         bounds: Rect,
         axis_ranges: &ResolvedAxisRanges,
         color: Color,
-        _colors: &ColorContext,
+        colors: &ColorContext,
     ) -> Result<TypedSeries> {
         // 验证配置类型
         let cfg = match &spec.config {
@@ -182,6 +182,7 @@ impl SeriesMaterializer for BarMaterializer {
             &bar_values,
             y_range,
             bounds,
+            colors,
         );
         // 标注点锚在「柱体值端中心」：x 取柱中心、y 由数值映射得到，
         // 与 `compute_mark_points` 的 min/max（落在数据点）语义一致。
@@ -212,6 +213,7 @@ impl SeriesMaterializer for BarMaterializer {
                 &bar_values,
                 true,
                 |v| map_x_to_pixel(v, x_range, bounds),
+                colors,
             )
         } else {
             crate::pipeline::materializer::compute_mark_points(
@@ -220,6 +222,7 @@ impl SeriesMaterializer for BarMaterializer {
                 &bar_values,
                 false,
                 |v| map_y_to_pixel(v, y_range, bounds),
+                colors,
             )
         };
 
@@ -229,7 +232,7 @@ impl SeriesMaterializer for BarMaterializer {
             border_radius: spec.item_style.border_radius.unwrap_or(0.0),
             background_color: cfg.layout.background,
             bars,
-            label: crate::pipeline::materializer::bar_label_config(cfg),
+            label: crate::pipeline::materializer::bar_label_config(cfg, colors),
             mark_lines,
             mark_points,
         }))

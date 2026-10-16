@@ -194,21 +194,73 @@ pub struct ColorTokens {
 /// 同时作为 [`TextTokens::font_family`] 的默认值（空或 `sans-serif` 时命中此栈）。
 pub const DEFAULT_FONT_STACK: &str = "Noto Sans CJK SC, sans-serif";
 
-/// 文字令牌
+/// 文字令牌（rem 体系）
+///
+/// 以 `body_size` 作为 **1rem 基准**（根字号），其余文本类型均按
+/// 「相对系数 × body_size」计算得出：
+///
+/// - `title_size`    = `title_rem`    × `body_size`  （默认 1.5 → 18px @ root 12）
+/// - `subtitle_size` = `subtitle_rem` × `body_size`  （默认 1.0 → 12px）
+/// - `body_size`     = 基准（1rem）
+/// - `caption_size`  = `caption_rem`  × `body_size`  （默认 10/12 ≈ 0.833 → 10px）
+///
+/// 这样只需调整 `body_size`（根字号），整张图的所有文字即可等比缩放
+/// （例如按画布尺寸做响应式根字号），各类型之间的层级比例保持不变。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TextTokens {
-    /// 标题字体大小
-    pub title_size: f64,
-    /// 副标题字体大小
-    pub subtitle_size: f64,
-    /// 正文字体大小
+    /// 正文字号 —— 同时作为 rem 的 1rem 基准（根字号）。
     pub body_size: f64,
-    /// 辅助文字大小
+    /// 主标题相对系数（相对 `body_size`）。
+    pub title_rem: f64,
+    /// 副标题相对系数（相对 `body_size`）。
+    pub subtitle_rem: f64,
+    /// 辅助文字相对系数（相对 `body_size`）。
+    pub caption_rem: f64,
+    /// 主标题字号（= `title_rem` × `body_size`），保留供直接读取/序列化。
+    pub title_size: f64,
+    /// 副标题字号（= `subtitle_rem` × `body_size`）。
+    pub subtitle_size: f64,
+    /// 辅助文字字号（= `caption_rem` × `body_size`）。
     pub caption_size: f64,
     /// 字体家族
     pub font_family: String,
     /// 标题字重
     pub title_weight: String,
+}
+
+impl TextTokens {
+    /// 以 `body_size` 为根字号，按相对系数构造一套 rem 文字令牌。
+    ///
+    /// 系数与 ECharts 6 对齐：标题 18px / 副标题 12px / 正文 12px / 辅助 10px
+    /// （根字号 12 时）。
+    pub fn rem(body_size: f64) -> Self {
+        let title_rem = 1.5;
+        let subtitle_rem = 1.0;
+        let caption_rem = 10.0 / 12.0;
+        Self {
+            body_size,
+            title_rem,
+            subtitle_rem,
+            caption_rem,
+            title_size: title_rem * body_size,
+            subtitle_size: subtitle_rem * body_size,
+            caption_size: caption_rem * body_size,
+            font_family: DEFAULT_FONT_STACK.to_string(),
+            title_weight: "bold".to_string(),
+        }
+    }
+
+    /// 仅替换根字号（1rem 基准 = `body_size`），按**既有**相对系数重算各类型字号。
+    ///
+    /// 用于「用户显式根」：`option.textStyle.fontSize` 给出时覆盖主题 `body_size`
+    /// 作 1rem，标题/副标题/辅助仍按主题自身系数（默认 1.5 / 1.0 / 0.833）等比
+    /// 换算，自定义主题的特殊系数不会被标准值冲掉。
+    pub fn rescale_root(&mut self, root: f64) {
+        self.body_size = root;
+        self.title_size = self.title_rem * root;
+        self.subtitle_size = self.subtitle_rem * root;
+        self.caption_size = self.caption_rem * root;
+    }
 }
 
 /// 间距令牌
@@ -369,15 +421,10 @@ impl DesignTokens {
                 warning: "#ffd10a".to_string(), // 主题色6
                 error: "#fb628b".to_string(),   // 主题色7
             },
-            text: TextTokens {
-                // v6 `title.textStyle`：18px / bold；`subtextStyle`：12px
-                title_size: 18.0,
-                subtitle_size: 12.0,
-                body_size: 12.0,
-                caption_size: 10.0,
-                font_family: DEFAULT_FONT_STACK.to_string(),
-                title_weight: "bold".to_string(),
-            },
+            // 文字令牌（rem 体系）：以 body_size=12 为 1rem 基准，各类型按相对
+            // 系数换算：标题 1.5rem(18) / 副标题 1.0rem(12) / 正文 1.0rem(12)
+            // / 辅助 10/12rem(10)。调整 body_size 即可整体等比缩放文字。
+            text: TextTokens::rem(12.0),
             spacing: SpacingTokens {
                 xs: 4.0,
                 sm: 8.0,

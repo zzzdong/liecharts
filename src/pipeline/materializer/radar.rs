@@ -20,7 +20,7 @@ impl SeriesMaterializer for RadarMaterializer {
         _bounds: Rect,
         _axis_ranges: &ResolvedAxisRanges,
         color: Color,
-        _colors: &ColorContext,
+        colors: &ColorContext,
     ) -> Result<TypedSeries> {
         // 验证配置类型
         let cfg = match &spec.config {
@@ -63,7 +63,11 @@ impl SeriesMaterializer for RadarMaterializer {
                 show: true,
                 position: crate::pipeline::typed_series::SeriesLabelPosition::Top,
                 color: None,
-                font_size: cfg.label_font_size,
+                // Q2：显式 > 全局根 × 1.0 > 主题令牌
+                font_size: crate::pipeline::materializer::resolve_label_font_size(
+                    cfg.label_font_size,
+                    colors,
+                ),
                 formatter: None,
                 hide_overlap: false,
             })

@@ -377,8 +377,9 @@ pub fn render_mark_lines(
             .with_z(Z_SERIES_LABEL + 1),
         );
 
-        // 标注线标签：放在左边界上方
-        let mut style = TextStyle::new(ml.color, 11.0, "sans-serif");
+        // 标注线标签：放在左边界上方（字号已由 materializer 按
+        // 「显式 > 全局根 × 0.833 > 主题令牌」解析）
+        let mut style = TextStyle::new(ml.color, ml.font_size, "sans-serif");
         style.align = TextAlign::Left;
         style.baseline = TextBaseline::Bottom;
         elements.push(
@@ -415,7 +416,8 @@ pub fn render_mark_points(
             Z_SERIES_LABEL + 1,
         ));
 
-        let mut style = TextStyle::new(mp.color, 11.0, "sans-serif");
+        // 标签字号已由 materializer 解析（显式 > 全局根 × 0.833 > 主题令牌）
+        let mut style = TextStyle::new(mp.color, mp.font_size, "sans-serif");
         style.align = TextAlign::Center;
         style.baseline = TextBaseline::Bottom;
         elements.push(

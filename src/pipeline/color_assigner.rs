@@ -100,6 +100,11 @@ impl ColorAssigner {
             axis_line_color,
             axis_label_color,
             grid_line_color,
+            // 基准字号（1rem）：主题 rem 根。用户显式根已在
+            // `build_chart_with_theme` 折算进主题令牌，此处直接读取即可。
+            body_font_size: theme.tokens().text.body_size,
+            // 辅助文字（0.833rem）：标注线/点等辅助文本兜底
+            caption_font_size: theme.tokens().text.caption_size,
             // 其余固定色（文字/表格/K 线涨跌）继承 `ColorContext::default()`
             ..ColorContext::default()
         }

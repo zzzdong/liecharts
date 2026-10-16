@@ -13,7 +13,8 @@ use lievisual::kurbo::{Point, Rect};
 use super::axis_ticks_with_count;
 use crate::pipeline::{
     axis_label::{
-        auto_rotate, format_label, label_step, label_style, measure_labels, rotated_bounds,
+        auto_rotate, format_label, label_step, label_style, measure_labels,
+        resolve_axis_label_font_size, rotated_bounds,
     },
     builder::{Z_AXIS, Z_GRID, Z_LABEL, text_el},
     collision::{LabelBox, hide_overlapping},
@@ -27,14 +28,18 @@ use crate::pipeline::{
 ///
 /// 优先使用用户显式配置的 `axisLabel.rotate`；未配置时根据实测文本宽度自动选择
 /// 0° → 45° → 90°，直到旋转后的投影宽度能放进一个刻度槽。
+///
+/// `font_size` 由调用方按 [`resolve_axis_label_font_size`] 解析（轴级显式 >
+/// 全局根 × 1.0 > 主题令牌），布局与渲染两侧必须同源。
 fn choose_label_layout(
     labels: &[String],
     slot_w: f64,
     user_rotate_deg: Option<f64>,
     measurer: &mut TextMeasurer,
     colors: &ColorContext,
+    font_size: f64,
 ) -> (f64, usize) {
-    let (max_w, max_h) = measure_labels(labels, measurer, colors);
+    let (max_w, max_h) = measure_labels(labels, measurer, colors, font_size);
     let rotation = match user_rotate_deg {
         Some(deg) => deg.to_radians(),
         None => auto_rotate(max_w, max_h, slot_w),
@@ -51,8 +56,9 @@ fn choose_y_label_layout(
     user_rotate_deg: Option<f64>,
     measurer: &mut TextMeasurer,
     colors: &ColorContext,
+    font_size: f64,
 ) -> (f64, usize) {
-    let (max_w, max_h) = measure_labels(labels, measurer, colors);
+    let (max_w, max_h) = measure_labels(labels, measurer, colors, font_size);
     let rotation = user_rotate_deg.map(|deg| deg.to_radians()).unwrap_or(0.0);
     let (_, projected_h) = rotated_bounds(max_w, max_h, rotation);
     (rotation, label_step(projected_h, slot_h))
@@ -123,8 +129,9 @@ fn x_label_geom(
     downward: bool,
     colors: &ColorContext,
     measurer: &mut TextMeasurer,
+    font_size: f64,
 ) -> (Point, f64, LabelBox) {
-    let (w, h) = measurer.measure(text, &label_style(colors));
+    let (w, h) = measurer.measure(text, &label_style(colors, font_size));
     if rotation == 0.0 {
         let x = anchor.x - w / 2.0;
         (Point::new(x, anchor.y), 0.0, LabelBox::new(x, anchor.y, w, h))
@@ -167,7 +174,8 @@ fn render_x_tick_labels(
         return;
     }
     let step = explicit_step.unwrap_or(auto_step);
-    let (w_end, h_end) = measurer.measure(&labels[n - 1], &label_style(colors));
+    let font_size = resolve_axis_label_font_size(axis_cfg, colors);
+    let (w_end, h_end) = measurer.measure(&labels[n - 1], &label_style(colors, font_size));
     let (end_projected, _) = rotated_bounds(w_end, h_end, rotation);
     let cands = select_axis_label_indices(
         n,
@@ -184,7 +192,17 @@ fn render_x_tick_labels(
 
     let geoms: Vec<(Point, f64, LabelBox)> = cands
         .iter()
-        .map(|&i| x_label_geom(&labels[i], anchor_of(i), rotation, downward, colors, measurer))
+        .map(|&i| {
+            x_label_geom(
+                &labels[i],
+                anchor_of(i),
+                rotation,
+                downward,
+                colors,
+                measurer,
+                font_size,
+            )
+        })
         .collect();
 
     let keep = if axis_cfg.decor.label_hide_overlap {
@@ -206,7 +224,7 @@ fn render_x_tick_labels(
             continue;
         }
         let (pos, rot, _) = geoms[k];
-        let mut s = label_style(colors);
+        let mut s = label_style(colors, font_size);
         s.rotation = rot;
         elements.push(text_el(labels[i].clone(), pos, s, Z_LABEL));
     }
@@ -246,13 +264,14 @@ fn y_label_geom(
     rotation: f64,
     colors: &ColorContext,
     is_right: bool,
+    font_size: f64,
 ) -> (
     Point,
     lievisual::text::TextStyle,
     std::sync::Arc<lievisual::text::TextLayout>,
     LabelBox,
 ) {
-    let mut style = label_style(colors); // Left/Top 语义：位置即预计算的块左上角
+    let mut style = label_style(colors, font_size); // Left/Top 语义：位置即预计算的块左上角
     // 贴轴侧锚定：左轴文字向左伸展（advance 右缘 = 锚点），右轴相反
     style.align = if is_right {
         TextAlign::Left
@@ -316,7 +335,8 @@ fn render_y_tick_labels(
         return;
     }
     let step = explicit_step.unwrap_or(auto_step);
-    let style = label_style(colors);
+    let font_size = resolve_axis_label_font_size(axis_cfg, colors);
+    let style = label_style(colors, font_size);
     let (w_end, h_end) = measurer.measure(&labels[n - 1], &style);
     let (_, end_projected) = rotated_bounds(w_end, h_end, rotation);
     let cands = select_axis_label_indices(
@@ -340,7 +360,16 @@ fn render_y_tick_labels(
         LabelBox,
     )> = cands
         .iter()
-        .map(|&i| y_label_geom(&labels[i], Point::new(x, anchor_y_of(i)), rotation, colors, is_right))
+        .map(|&i| {
+            y_label_geom(
+                &labels[i],
+                Point::new(x, anchor_y_of(i)),
+                rotation,
+                colors,
+                is_right,
+                font_size,
+            )
+        })
         .collect();
 
     let keep = if axis_cfg.decor.label_hide_overlap {
@@ -818,6 +847,8 @@ impl CartesianAxisRenderer {
         if !axis_cfg.label_show {
             return;
         }
+        // Q2 字体解析：轴级 `axisLabel.fontSize` 显式 > 全局根 × 1.0 > 主题令牌
+        let font_size = resolve_axis_label_font_size(axis_cfg, colors);
         // 顶部 X 轴的标签绘制在绘图区上方，其余绘制在下方
         let label_y = if axis_cfg.position == AxisPosition::Top {
             bounds.y0 - 14.0
@@ -844,6 +875,7 @@ impl CartesianAxisRenderer {
                 axis_cfg.label_rotate,
                 text_measurer,
                 colors,
+                font_size,
             );
             // `axisLabel.interval`（ECharts：跳过的标签数）优先于自动抽稀
             render_x_tick_labels(
@@ -899,6 +931,7 @@ impl CartesianAxisRenderer {
                 axis_cfg.label_rotate,
                 text_measurer,
                 colors,
+                font_size,
             );
             // `axisLabel.interval`（ECharts：跳过的标签数）优先于自动抽稀
             render_x_tick_labels(
@@ -931,6 +964,8 @@ impl CartesianAxisRenderer {
         if !axis_cfg.label_show {
             return;
         }
+        // Q2 字体解析：轴级 `axisLabel.fontSize` 显式 > 全局根 × 1.0 > 主题令牌
+        let font_size = resolve_axis_label_font_size(axis_cfg, colors);
         let mut x = if is_right {
             bounds.x1 + 8.0
         } else {
@@ -949,7 +984,7 @@ impl CartesianAxisRenderer {
             if is_right {
                 return;
             }
-            let style = label_style(colors);
+            let style = label_style(colors, font_size);
             let mut max_proj_w: f64 = 0.0;
             for l in labels {
                 let (w, h) = text_measurer.measure(l, &style);
@@ -982,6 +1017,7 @@ impl CartesianAxisRenderer {
                 axis_cfg.label_rotate,
                 text_measurer,
                 colors,
+                font_size,
             );
             adjust_left_anchor(&labels, rotation, text_measurer, colors);
 
@@ -1040,6 +1076,7 @@ impl CartesianAxisRenderer {
             axis_cfg.label_rotate,
             text_measurer,
             colors,
+            font_size,
         );
         adjust_left_anchor(&labels, rotation, text_measurer, colors);
 

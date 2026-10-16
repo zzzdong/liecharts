@@ -380,11 +380,9 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         symbol_show: ls.show_symbol.unwrap_or(true),
                         show_all_symbol: parse_show_all_symbol(ls.show_all_symbol.as_ref()),
                         label_show: ls.label.as_ref().and_then(|l| l.show).unwrap_or(false),
-                        label_font_size: ls
-                            .label
-                            .as_ref()
-                            .and_then(|l| l.font_size)
-                            .unwrap_or(12.0),
+                        // Q2：`None` = 未显式指定，materializer 按「全局根 × 1.0 >
+                        // 主题令牌」兜底（不再在此处硬编码 12.0）
+                        label_font_size: ls.label.as_ref().and_then(|l| l.font_size),
                         label_formatter: ls.label.as_ref().and_then(|l| l.formatter.clone()),
                         label_position: parse_value_label_position(ls.label.as_ref()),
                         label_color: parse_label_color(ls.label.as_ref()),
@@ -482,11 +480,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                             y_col,
                             layout: parse_bar_layout(bs),
                             label_show: bs.label.as_ref().and_then(|l| l.show).unwrap_or(false),
-                            label_font_size: bs
-                                .label
-                                .as_ref()
-                                .and_then(|l| l.font_size)
-                                .unwrap_or(12.0),
+                            // Q2：`None` = 未显式指定，materializer 兜底解析
+                            label_font_size: bs.label.as_ref().and_then(|l| l.font_size),
                             label_formatter: bs.label.as_ref().and_then(|l| l.formatter.clone()),
                             label_position: parse_value_label_position(bs.label.as_ref()),
                             label_color: parse_label_color(bs.label.as_ref()),
@@ -561,7 +556,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                                 _ => crate::pipeline::types::LabelPosition::Outside,
                             })
                             .unwrap_or(crate::pipeline::types::LabelPosition::Outside),
-                        label_font_size: label.and_then(|l| l.font_size).unwrap_or(12.0),
+                        // Q2：`None` = 未显式指定，materializer 兜底解析
+                        label_font_size: label.and_then(|l| l.font_size),
                         label_formatter: label.and_then(|l| l.formatter.clone()),
                         label_line_show: ps
                             .label_line
@@ -909,11 +905,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         border_color: item_style.border_color,
                         border_width: item_style.border_width.unwrap_or(0.0),
                         label_show: hs.label.as_ref().and_then(|l| l.show).unwrap_or(false),
-                        label_font_size: hs
-                            .label
-                            .as_ref()
-                            .and_then(|l| l.font_size)
-                            .unwrap_or(12.0),
+                        // Q2：`None` = 未显式指定，materializer 兜底解析
+                        label_font_size: hs.label.as_ref().and_then(|l| l.font_size),
                     };
                     SeriesSpec {
                         name,
@@ -965,11 +958,8 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         indicators,
                         maxes,
                         label_show: rs.label.as_ref().and_then(|l| l.show).unwrap_or(false),
-                        label_font_size: rs
-                            .label
-                            .as_ref()
-                            .and_then(|l| l.font_size)
-                            .unwrap_or(12.0),
+                        // Q2：`None` = 未显式指定，materializer 兜底解析
+                        label_font_size: rs.label.as_ref().and_then(|l| l.font_size),
                     };
                     let grid_index = 0;
                     SeriesSpec {
@@ -1062,6 +1052,23 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         start_angle: gs.start_angle.unwrap_or(225.0),
                         end_angle: gs.end_angle.unwrap_or(-45.0),
                         split_number: gs.split_number.unwrap_or(10),
+                        // Q2：`axisLabel` / `title` / `detail` 的显式字号
+                        // （此前解析后从未被读取，渲染层硬编码 12/16/30）
+                        axis_label_font_size: gs
+                            .axis_label
+                            .as_ref()
+                            .and_then(|l| l.font_size)
+                            .filter(|s| s.is_finite() && *s > 0.0),
+                        title_font_size: gs
+                            .title
+                            .as_ref()
+                            .and_then(|t| t.font_size)
+                            .filter(|s| s.is_finite() && *s > 0.0),
+                        detail_font_size: gs
+                            .detail
+                            .as_ref()
+                            .and_then(|d| d.font_size)
+                            .filter(|s| s.is_finite() && *s > 0.0),
                     };
                     SeriesSpec {
                         name,
@@ -1195,6 +1202,13 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
             right: l.right.as_ref().map(position_option_to_string),
             top: l.top.as_ref().map(position_option_to_string),
             bottom: l.bottom.as_ref().map(position_option_to_string),
+            // Q2：`legend.textStyle.fontSize` 显式优先，不参与 rem 缩放；
+            // `None` = 未显式指定（`TextStyleOption::default()` 不再预填 12）
+            font_size: l
+                .text_style
+                .as_ref()
+                .and_then(|s| s.font_size)
+                .filter(|s| s.is_finite() && *s > 0.0),
         }),
         background: Color::rgb(255, 255, 255),
         palette: vec![],
@@ -1591,6 +1605,10 @@ fn parse_axis_decor(
         d.label_hide_overlap = al.hide_overlap.unwrap_or(false);
         d.label_show_min = al.show_min_label;
         d.label_show_max = al.show_max_label;
+        // `axisLabel.fontSize`：轴级显式字号（Q2 绝对优先，不参与 rem 缩放）。
+        // `AxisLabelOption::default()` 的 font_size 为 None（语义=继承），故此处
+        // `Some` 当且仅当用户真写了 fontSize。
+        d.label_font_size = al.font_size.filter(|s| s.is_finite() && *s > 0.0);
     }
 
     d
@@ -1652,6 +1670,13 @@ fn parse_mark_point(
             data_type,
             name: d.name.clone(),
             value: d.value,
+            // Q2：数据级 `label.fontSize` 优先于系列级（ECharts 覆盖语义）
+            label_font_size: d
+                .label
+                .as_ref()
+                .and_then(|l| l.font_size)
+                .or_else(|| mp.label.as_ref().and_then(|l| l.font_size))
+                .filter(|s| s.is_finite() && *s > 0.0),
         });
     }
     specs
@@ -1684,6 +1709,13 @@ fn parse_mark_line(
             specs.push(MarkLineSpec {
                 data_type,
                 name: d.name.clone(),
+                // Q2：数据级 `label.fontSize` 优先于系列级（ECharts 覆盖语义）
+                label_font_size: d
+                    .label
+                    .as_ref()
+                    .and_then(|l| l.font_size)
+                    .or_else(|| ml.label.as_ref().and_then(|l| l.font_size))
+                    .filter(|s| s.is_finite() && *s > 0.0),
             });
         }
     }

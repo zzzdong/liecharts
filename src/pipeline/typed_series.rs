@@ -108,6 +108,8 @@ pub struct MarkLineRender {
     pub label: String,
     /// 标注线颜色
     pub color: Color,
+    /// 标签字号（materializer 已按「显式 > 全局根 × 0.833 > 主题令牌」解析）
+    pub font_size: f64,
 }
 
 /// 渲染用标注点（`series.markPoint`）
@@ -119,6 +121,8 @@ pub struct MarkPointRender {
     pub label: String,
     /// 颜色
     pub color: Color,
+    /// 标签字号（materializer 已按「显式 > 全局根 × 0.833 > 主题令牌」解析）
+    pub font_size: f64,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -417,6 +421,12 @@ pub struct GaugeSeries {
     pub split_number: usize,
     pub value: f64,
     pub color: Color,
+    /// `series[].axisLabel.fontSize`：刻度标签显式字号（None = 跟随 1rem）
+    pub axis_label_font_size: Option<f64>,
+    /// `series[].title.fontSize`：标题显式字号（None = 根 × TITLE_REM）
+    pub title_font_size: Option<f64>,
+    /// `series[].detail.fontSize`：中心数值显式字号（None = 根 × DETAIL_REM）
+    pub detail_font_size: Option<f64>,
 }
 
 // ═══════════════════════════════════════════════════════════════════

@@ -52,6 +52,10 @@ impl SeriesMaterializer for GaugeMaterializer {
             split_number: cfg.split_number,
             value,
             color,
+            // Q2：显式字号原样透传，由 builder 按「显式 > 根 × 系数」解析
+            axis_label_font_size: cfg.axis_label_font_size,
+            title_font_size: cfg.title_font_size,
+            detail_font_size: cfg.detail_font_size,
         }))
     }
 }

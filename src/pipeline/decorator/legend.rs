@@ -40,9 +40,27 @@ pub fn resolve_legend(spec: &ChartSpec) -> Option<LegendSpec> {
             right: None,
             top: None,
             bottom: None,
+            font_size: None,
         }),
         None => None,
     }
+}
+
+/// 图例文本字号解析（Q2「用户显式根 + rem」模式）。
+///
+/// 完整优先级：**`legend.textStyle.fontSize` 显式 > 全局根 × 1.0 > 主题令牌**。
+///
+/// - 图例显式给出：绝对优先，不参与 rem 缩放；
+/// - 否则取主题图例文本样式（`get_legend_text_style` 读 `tokens.text.body_size`
+///   = 1rem，用户显式根已由 `build_chart_with_theme` 折算进去）。
+///
+/// 布局（`measure_legend_layout` / `estimate_footer_height`）与渲染
+/// （`render_legend`）必须共用本函数，否则行高/换行预留与实绘不一致。
+pub fn resolve_legend_font_size(legend: &LegendSpec, theme: &Theme) -> f64 {
+    legend
+        .font_size
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or_else(|| theme.get_legend_text_style().font_size)
 }
 
 /// 构建图例元素
@@ -63,6 +81,9 @@ pub fn render_legend(
 
     let legend_style = theme.get_legend_text_style();
     let legend_color = Color::from_hex(&legend_style.color).unwrap_or(colors.text_color);
+    // Q2：图例文本字号解析（`legend.textStyle.fontSize` 显式 > 全局根 × 1.0 >
+    // 主题令牌），与 `measure_legend_layout` 共用同一口径
+    let legend_font_size = resolve_legend_font_size(&legend, theme);
 
     let data = &legend.data;
     // 符号框：`itemWidth` / `itemHeight`（ECharts v6 默认 25×14）；
@@ -97,7 +118,7 @@ pub fn render_legend(
     for name in &display_texts {
         let text_style = TextStyle::new(
             legend_color,
-            legend_style.font_size,
+            legend_font_size,
             legend_style.font_family.clone(),
         );
         let mut lv_style = text_style.clone();
@@ -134,7 +155,7 @@ pub fn render_legend(
     // 第三步：逐行布局 item。整块位置：水平默认居中（v6 `left:'center'`）、
     // 垂直默认贴画布底部（v6 `bottom: tokens.size.m`），`left/right/top/bottom`
     // 显式配置时按配置定位。
-    let (row_height, row_advance) = legend_row_metrics(&legend, legend_style.font_size);
+    let (row_height, row_advance) = legend_row_metrics(&legend, legend_font_size);
     let total_height =
         rows.len() as f64 * row_height + rows.len().saturating_sub(1) as f64 * legend.item_gap;
     let block_top = resolve_block_top(
@@ -280,7 +301,7 @@ pub fn render_legend(
             let text_x = symbol_x + icon_w + LEGEND_SYMBOL_TEXT_GAP;
             let mut style = TextStyle::new(
                 legend_color,
-                legend_style.font_size,
+                legend_font_size,
                 legend_style.font_family.clone(),
             );
             style.align = TextAlign::Left;
@@ -732,6 +753,8 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
     let legend = resolve_legend(spec)?;
 
     let legend_style = theme.get_legend_text_style();
+    // 与 `render_legend` 同口径：图例文本字号解析（显式 > 全局根 × 1.0 > 主题令牌）
+    let legend_font_size = resolve_legend_font_size(&legend, theme);
     // 与 `render_legend` 同口径：符号框 = itemWidth/itemHeight（或 symbolSize 覆盖），
     // item_gap 为相邻项间隔（用户字段），符号↔文本间距用 LEGEND_SYMBOL_TEXT_GAP 常量
     let icon_w = match legend.symbol_size {
@@ -746,7 +769,7 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
     for name in legend_display_texts(spec, &legend) {
         let mut lv_style = TextStyle::new(
             legend_color,
-            legend_style.font_size,
+            legend_font_size,
             legend_style.font_family.clone(),
         );
         if lv_style.font_family.trim().is_empty()
@@ -766,7 +789,7 @@ pub fn measure_legend_layout(spec: &ChartSpec, width: u32, theme: &Theme) -> Opt
     }
 
     // 行盒高 / 行进距离与 `render_legend` 同源（ECharts：max(itemHeight, 字号) + itemGap）
-    let (row_height, _) = legend_row_metrics(&legend, legend_style.font_size);
+    let (row_height, _) = legend_row_metrics(&legend, legend_font_size);
     let rows = if legend.orient == LegendOrient::Vertical {
         // 垂直：每项独占一行（单列），高度随项数线性增长
         item_widths.len()

@@ -117,6 +117,12 @@ pub struct AxisDecor {
     pub label_show_min: Option<bool>,
     /// `axisLabel.showMaxLabel`：同 [`Self::label_show_min`]
     pub label_show_max: Option<bool>,
+    /// `axisLabel.fontSize`：轴级显式字号。`None` = 未指定，渲染时按
+    /// 「全局根 × 1.0 > 主题令牌」解析（见 `axis_label::resolve_axis_label_font_size`）。
+    ///
+    /// ⚠️ 语义必须是「用户真没设」：`AxisLabelOption` 的 `Default` 故不可预填
+    /// `Some(12.0)`，否则 serde 会把未写字段误判为显式指定。
+    pub label_font_size: Option<f64>,
 }
 
 impl AxisDecor {
@@ -137,6 +143,7 @@ impl AxisDecor {
             label_hide_overlap: false,
             label_show_min: None,
             label_show_max: None,
+            label_font_size: None,
         }
     }
 
@@ -309,6 +316,9 @@ pub enum MarkLineType {
 pub struct MarkLineSpec {
     pub data_type: MarkLineType,
     pub name: Option<String>,
+    /// 标注标签显式字号（`markLine.label.fontSize`，数据级优先于系列级）。
+    /// `None` = 未显式指定，materializer 按「全局根 × 0.833 > 主题令牌」解析。
+    pub label_font_size: Option<f64>,
 }
 
 // ── MarkPoint ──
@@ -328,6 +338,9 @@ pub struct MarkPointSpec {
     pub name: Option<String>,
     /// 显式覆盖值（`markPoint.data[].value`），`None` 时按类型统计
     pub value: Option<f64>,
+    /// 标注标签显式字号（`markPoint.label.fontSize`，数据级优先于系列级）。
+    /// `None` = 未显式指定，materializer 按「全局根 × 0.833 > 主题令牌」解析。
+    pub label_font_size: Option<f64>,
 }
 
 // ── LineConfig ──
@@ -371,7 +384,11 @@ pub struct LineConfig {
     pub show_all_symbol: ShowAllSymbol,
     /// 是否显示值标签
     pub label_show: bool,
-    pub label_font_size: f64,
+    /// 值标签字号（`series[].label.fontSize`）。
+    ///
+    /// `None` = 用户未显式指定，materializer 按「全局根 × 1.0 > 主题令牌」
+    /// 解析（= 主题 `tokens.text.body_size`，已含用户显式根折算）。
+    pub label_font_size: Option<f64>,
     /// 值标签模板（支持 `{a}`/`{b}`/`{c}`/`{value}`）
     pub label_formatter: Option<String>,
     /// 值标签位置（None = Top，ECharts 默认）
@@ -415,7 +432,7 @@ impl Default for LineConfig {
             symbol_show: true,
             show_all_symbol: ShowAllSymbol::Auto,
             label_show: false,
-            label_font_size: 12.0,
+            label_font_size: None,
             label_formatter: None,
             label_position: None,
             label_color: None,
@@ -524,7 +541,11 @@ pub struct BarConfig {
     pub layout: BarLayout,
     /// 是否显示值标签
     pub label_show: bool,
-    pub label_font_size: f64,
+    /// 值标签字号（`series[].label.fontSize`）。
+    ///
+    /// `None` = 用户未显式指定，materializer 按「全局根 × 1.0 > 主题令牌」
+    /// 解析（= 主题 `tokens.text.body_size`，已含用户显式根折算）。
+    pub label_font_size: Option<f64>,
     /// 值标签模板（支持 `{a}`/`{b}`/`{c}`/`{value}`）
     pub label_formatter: Option<String>,
     /// 值标签位置（None = Top，ECharts 默认；柱状图 Top = 值端外侧）
@@ -546,7 +567,7 @@ impl Default for BarConfig {
             y_col: "y".into(),
             layout: BarLayout::default(),
             label_show: false,
-            label_font_size: 12.0,
+            label_font_size: None,
             label_formatter: None,
             label_position: None,
             label_color: None,
@@ -582,7 +603,8 @@ pub struct PieConfig {
     pub radius: (f64, f64),
     pub label_show: bool,
     pub label_position: LabelPosition,
-    pub label_font_size: f64,
+    /// 标签字号（`series[].label.fontSize`）；`None` = 按「全局根 × 1.0 > 主题令牌」解析
+    pub label_font_size: Option<f64>,
     /// 标签格式化模板，支持 `{b}`（名称）、`{c}`（数值）、`{d}`（百分比）
     pub label_formatter: Option<String>,
     /// `labelLine.show`：外部标签的引导线（默认 true）
@@ -612,7 +634,7 @@ impl Default for PieConfig {
             radius: (0.0, 0.0),
             label_show: false,
             label_position: LabelPosition::Outside,
-            label_font_size: 12.0,
+            label_font_size: None,
             label_formatter: None,
             label_line_show: true,
             clockwise: true,
@@ -740,7 +762,8 @@ pub struct HeatmapConfig {
     pub border_width: f64,
     /// 是否显示单元格数值标签
     pub label_show: bool,
-    pub label_font_size: f64,
+    /// 数值标签字号；`None` = 按「全局根 × 1.0 > 主题令牌」解析
+    pub label_font_size: Option<f64>,
 }
 
 impl Default for HeatmapConfig {
@@ -759,7 +782,7 @@ impl Default for HeatmapConfig {
             border_color: None,
             border_width: 0.0,
             label_show: false,
-            label_font_size: 12.0,
+            label_font_size: None,
         }
     }
 }
@@ -775,7 +798,8 @@ pub struct RadarConfig {
     pub maxes: Vec<f64>,
     /// 是否显示各顶点的数值标签（`series[].label.show`）
     pub label_show: bool,
-    pub label_font_size: f64,
+    /// 数值标签字号；`None` = 按「全局根 × 1.0 > 主题令牌」解析
+    pub label_font_size: Option<f64>,
 }
 
 impl Default for RadarConfig {
@@ -785,7 +809,7 @@ impl Default for RadarConfig {
             indicators: vec![],
             maxes: vec![],
             label_show: false,
-            label_font_size: 12.0,
+            label_font_size: None,
         }
     }
 }
@@ -850,6 +874,12 @@ pub struct GaugeConfig {
     pub start_angle: f64,
     pub end_angle: f64,
     pub split_number: usize,
+    /// `series[].axisLabel.fontSize`：刻度标签显式字号（`None` = 跟随 1rem）
+    pub axis_label_font_size: Option<f64>,
+    /// `series[].title.fontSize`：标题（系列名）显式字号（`None` = 跟随根 × TITLE_REM）
+    pub title_font_size: Option<f64>,
+    /// `series[].detail.fontSize`：中心数值显式字号（`None` = 跟随根 × DETAIL_REM）
+    pub detail_font_size: Option<f64>,
 }
 
 impl Default for GaugeConfig {
@@ -864,6 +894,9 @@ impl Default for GaugeConfig {
             start_angle: -225.0,
             end_angle: 45.0,
             split_number: 10,
+            axis_label_font_size: None,
+            title_font_size: None,
+            detail_font_size: None,
         }
     }
 }
@@ -1109,6 +1142,12 @@ pub struct LegendSpec {
     /// （未指定时贴画布底部，ECharts v6 默认 `bottom: tokens.size.m`）
     pub top: Option<String>,
     pub bottom: Option<String>,
+    /// `legend.textStyle.fontSize`：图例文本显式字号。
+    ///
+    /// `None` = 未显式指定，按「全局根 × 1.0 > 主题令牌」解析
+    /// （见 `decorator::legend::resolve_legend_font_size`）。⚠️ 语义必须是
+    /// 「用户真没设」——`TextStyleOption` 的 `Default` 故不可预填 `Some(12.0)`。
+    pub font_size: Option<f64>,
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1265,6 +1304,18 @@ pub struct ColorContext {
     pub table_header_bg: Color,      // 表格表头背景
     pub table_row_even_bg: Color,    // 表格偶数行背景
     pub table_row_odd_bg: Color,     // 表格奇数行背景
+    /// 基准字号（rem 的 1rem 根）：取自主题 `tokens.text.body_size`
+    /// （已含「用户显式根」`option.textStyle.fontSize` 覆盖）。
+    ///
+    /// 作为 ×1.0 系数分支的兜底值：轴标签（`axisLabel.fontSize` 未显式时）与
+    /// 系列值标签（`series[].label.fontSize` 未显式时）均回退到此值，
+    /// 见 `axis_label::resolve_axis_label_font_size` 与
+    /// `materializer::resolve_label_font_size`。
+    pub body_font_size: f64,
+    /// 辅助文字字号（rem 根 × 0.833）：取自主题 `tokens.text.caption_size`
+    /// （已含「用户显式根」覆盖）。作为标注线/标注点等**辅助文本**的兜底，
+    /// 显式 `label.fontSize` 优先于此值。
+    pub caption_font_size: f64,
 }
 
 /// ECharts v6 浅色主题下**与调色板无关**的固定颜色。
@@ -1290,6 +1341,10 @@ impl Default for ColorContext {
             table_header_bg: Color::rgb(220, 220, 220),
             table_row_even_bg: Color::rgb(248, 248, 248),
             table_row_odd_bg: Color::rgb(255, 255, 255),
+            // 与 `DesignTokens::echarts_v6()` 的 `text.body_size`（1rem）同源
+            body_font_size: 12.0,
+            // 辅助文字 = 0.833rem（10px @ 根 12）
+            caption_font_size: 10.0,
         }
     }
 }

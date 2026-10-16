@@ -445,6 +445,8 @@ pub struct Chart {
     background_color: Option<Color>,
     theme_name: Option<String>,
     fit_mode: FitMode,
+    /// 全局正文字号（rem 根，1rem = 此值）；`None` = 用主题自身 `body_size`
+    body_font_size: Option<f64>,
 }
 
 impl Chart {
@@ -463,6 +465,7 @@ impl Chart {
             background_color: None,
             theme_name: None,
             fit_mode: FitMode::Fixed,
+            body_font_size: None,
         }
     }
 
@@ -477,6 +480,25 @@ impl Chart {
     ///   与线宽随缩放缩小）。
     pub fn fit(mut self, mode: FitMode) -> Self {
         self.fit_mode = mode;
+        self
+    }
+
+    /// 设置全局正文字号（rem 根，`1rem` = `size`）。
+    ///
+    /// 等价于 ECharts JSON 的 `option.textStyle.fontSize`：整图文字按主题
+    /// 系数**等比缩放**，各类型相对层级不变——
+    ///
+    /// - 标题 / 副标题：`1.5×` / `1.0×`
+    /// - 图例 / 轴标签 / 表体 / 系列值标签：`1.0×`
+    /// - 辅助文字（标注线/点标签等）：`0.833×`
+    ///
+    /// 未设置时用主题自身的 `body_size`（echarts 主题默认 12）。
+    ///
+    /// 注意本设置是**根字号**而非绝对字号：各组件若另有显式 `fontSize`
+    /// （如 [`Line::label_font_size`](super::layer::Line::label_font_size)），
+    /// 仍按「组件显式 > 全局根 × 系数 > 主题令牌」绝对优先，不参与本缩放。
+    pub fn body_font_size(mut self, size: f64) -> Self {
+        self.body_font_size = Some(size);
         self
     }
 
@@ -613,6 +635,9 @@ impl Chart {
             Some("dark") => Theme::dark(),
             _ => Theme::echarts(),
         };
+        // Q2「用户显式根 + rem」：`body_font_size` 覆盖主题 `body_size` 作 1rem 根，
+        // 整图文字按主题系数等比缩放（标题 1.5×、轴/值标签 1.0×、辅助 0.833×）。
+        let theme = crate::pipeline::chart_pipeline::apply_rem_root(&theme, self.body_font_size);
         crate::pipeline::chart_pipeline::build_chart_with_layout(&spec, &theme)
     }
 
@@ -921,6 +946,7 @@ impl Chart {
                             symbol_show: true,
                             show_all_symbol: crate::pipeline::types::ShowAllSymbol::Auto,
                             label_show: l.label_show,
+                            // 已改为 Option<f64>：未设置=继承根（此前默认 12 误判显式）
                             label_font_size: l.label_font_size,
                             label_formatter: l.label_formatter.clone(),
                             label_position: l.label_position,
@@ -957,6 +983,7 @@ impl Chart {
                                 ..Default::default()
                             },
                             label_show: l.label_show,
+                            // 已改为 Option<f64>：未设置=继承根（此前默认 12 误判显式）
                             label_font_size: l.label_font_size,
                             label_formatter: l.label_formatter.clone(),
                             label_position: l.label_position,
@@ -1010,6 +1037,7 @@ impl Chart {
                         border_color: l.border_color,
                         border_width: l.border_width,
                         label_show: l.label_show,
+                        // 已改为 Option<f64>：未设置=继承根（此前默认 12 误判显式）
                         label_font_size: l.label_font_size,
                     }),
                     LayerSpec::Pie(l) => {
@@ -1030,7 +1058,8 @@ impl Chart {
                             ),
                             label_show: l.label_show,
                             label_position: l.label_position,
-                            label_font_size: 12.0,
+                            // 未设置=继承根（此前硬编码 Some(12.0) 永不跟随 rem 根）
+                            label_font_size: None,
                             label_formatter: None,
                             ..Default::default()
                         })
@@ -1040,7 +1069,8 @@ impl Chart {
                         indicators: l.indicators.clone(),
                         maxes: vec![],
                         label_show: false,
-                        label_font_size: 12.0,
+                        // 未设置=继承根（此前硬编码 Some(12.0) 永不跟随 rem 根）
+                        label_font_size: None,
                     }),
                     LayerSpec::PolarBar(l) => SeriesConfig::PolarBar(PolarBarConfig {
                         angle_col: l.angle.clone(),
@@ -1069,6 +1099,11 @@ impl Chart {
                             start_angle: l.start_angle,
                             end_angle: l.end_angle,
                             split_number: l.split_number,
+                            // api 入口无 `axisLabel/title/detail.fontSize` 概念，
+                            // 字号一律走 rem 令牌（builder 层按系数解析）
+                            axis_label_font_size: None,
+                            title_font_size: None,
+                            detail_font_size: None,
                         })
                     }
                     LayerSpec::Table(_) => SeriesConfig::Table(TableConfig),
@@ -1302,6 +1337,8 @@ impl Chart {
                 right: None,
                 top: v_position_literal(l.top),
                 bottom: None,
+                // api 入口无 `legend.textStyle` 概念，字号一律跟随主题令牌
+                font_size: None,
             }),
             background: self.background_color.unwrap_or(Color::rgb(255, 255, 255)),
             palette: vec![],

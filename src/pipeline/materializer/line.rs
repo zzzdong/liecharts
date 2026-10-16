@@ -21,7 +21,7 @@ impl SeriesMaterializer for LineMaterializer {
         bounds: Rect,
         axis_ranges: &ResolvedAxisRanges,
         color: Color,
-        _colors: &ColorContext,
+        colors: &ColorContext,
     ) -> Result<TypedSeries> {
         // 验证配置类型
         let cfg = match &spec.config {
@@ -135,6 +135,7 @@ impl SeriesMaterializer for LineMaterializer {
             &values,
             y_range,
             bounds,
+            colors,
         );
         let mark_points = crate::pipeline::materializer::compute_mark_points(
             &cfg.mark_point,
@@ -142,6 +143,7 @@ impl SeriesMaterializer for LineMaterializer {
             &values,
             false,
             |v| map_y_to_pixel(v, y_range, bounds),
+            colors,
         );
 
         Ok(TypedSeries::Line(LineSeries {
@@ -170,7 +172,7 @@ impl SeriesMaterializer for LineMaterializer {
             values,
             baseline_y,
             baseline_points: None,
-            label: crate::pipeline::materializer::line_label_config(cfg),
+            label: crate::pipeline::materializer::line_label_config(cfg, colors),
             mark_lines,
             mark_points,
         }))

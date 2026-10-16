@@ -21,7 +21,7 @@ impl SeriesMaterializer for HeatmapMaterializer {
         bounds: Rect,
         axis_ranges: &ResolvedAxisRanges,
         _color: Color,
-        _colors: &ColorContext,
+        colors: &ColorContext,
     ) -> Result<TypedSeries> {
         let cfg = match &spec.config {
             SeriesConfig::Heatmap(c) => c,
@@ -120,7 +120,11 @@ impl SeriesMaterializer for HeatmapMaterializer {
                 show: true,
                 position: crate::pipeline::typed_series::SeriesLabelPosition::Inside,
                 color: None,
-                font_size: cfg.label_font_size,
+                // Q2：显式 > 全局根 × 1.0 > 主题令牌
+                font_size: crate::pipeline::materializer::resolve_label_font_size(
+                    cfg.label_font_size,
+                    colors,
+                ),
                 formatter: None,
                 hide_overlap: false,
             })

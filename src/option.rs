@@ -2346,7 +2346,10 @@ impl Default for AxisLabelOption {
             rotate: None,
             formatter: None,
             color: None,
-            font_size: Some(12.0),
+            // 语义 = 「继承」：未显式给出时走「全局根 × 系数 > 主题令牌」解析
+            // （见 pipeline 字体解析）。不可预填 Some(12.0)——serde 对用户未写的
+            // 字段套 Default，会将其误判为显式指定，导致全局根无法向下传播。
+            font_size: None,
             font_family: None,
             font_weight: None,
             align: None,
@@ -2607,7 +2610,10 @@ impl Default for TextStyleOption {
     fn default() -> Self {
         Self {
             color: None,
-            font_size: Some(12.0),
+            // 语义 = 「继承」：未显式给出时走「全局根 × 系数 > 主题令牌」解析
+            // （见 pipeline 字体解析）。不可预填 Some(12.0)——serde 对用户未写的
+            // 字段套 Default，会将其误判为显式指定，导致全局根无法向下传播。
+            font_size: None,
             font_family: None,
             font_weight: Some(FontWeight::Named(FontWeightNamed::Normal)),
             font_style: None,
@@ -2787,10 +2793,14 @@ impl Default for TableHeaderOption {
         Self {
             show: Some(true),
             height: Some(40.0),
+            // 表格排版统一走主题令牌（`builder/table.rs` 渲染时从 `Theme` 读取
+            // `text.body_size` 与 `text.font_family`，表头以 bold 区分），此处不
+            // 再硬编码 "Arial" / 离散像素。`style` 目前不驱动渲染，保留为可选项，
+            // 字段缺省即表示「跟随主题」。
             style: Some(TextStyleOption {
-                color: Some(ColorOption::new(51, 51, 51)),
-                font_size: Some(14.0),
-                font_family: Some("Arial, sans-serif".to_string()),
+                color: None,
+                font_size: None,
+                font_family: None,
                 font_weight: Some(FontWeight::Named(FontWeightNamed::Bold)),
                 font_style: None,
                 align: None,
@@ -2818,10 +2828,12 @@ impl Default for TableBodyOption {
     fn default() -> Self {
         Self {
             show: Some(true),
+            // 表体排版统一走主题令牌（见 `TableHeaderOption` 说明）：字号跟随
+            // `text.body_size`、字体跟随主题字体栈，此处不再硬编码。
             style: Some(TextStyleOption {
-                color: Some(ColorOption::new(51, 51, 51)),
-                font_size: Some(12.0),
-                font_family: Some("Arial, sans-serif".to_string()),
+                color: None,
+                font_size: None,
+                font_family: None,
                 font_weight: Some(FontWeight::Named(FontWeightNamed::Normal)),
                 font_style: None,
                 align: None,

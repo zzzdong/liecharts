@@ -281,6 +281,7 @@ pub fn compute_mark_lines(
     values: &[f64],
     y_range: &crate::pipeline::types::ResolvedAxisRange,
     bounds: Rect,
+    colors: &ColorContext,
 ) -> Vec<crate::pipeline::typed_series::MarkLineRender> {
     use crate::pipeline::{typed_series::MarkLineRender, types::MarkLineType};
 
@@ -317,6 +318,8 @@ pub fn compute_mark_lines(
             y: map_y_to_pixel(value, y_range, bounds),
             label: format!("{}: {}", name, text),
             color: Color::rgb(220, 60, 60),
+            // Q2：显式 > 全局根 × 0.833 > 主题令牌（标注属辅助文本）
+            font_size: resolve_mark_label_font_size(spec.label_font_size, colors),
         });
     }
     result
@@ -335,6 +338,7 @@ pub fn compute_mark_points(
     values: &[f64],
     horizontal: bool,
     map_value: impl Fn(f64) -> f64,
+    colors: &ColorContext,
 ) -> Vec<crate::pipeline::typed_series::MarkPointRender> {
     use crate::pipeline::{typed_series::MarkPointRender, types::MarkPointType};
 
@@ -391,6 +395,8 @@ pub fn compute_mark_points(
             point,
             label: format!("{}: {}", name, format_value(value)),
             color: Color::rgb(220, 60, 60),
+            // Q2：显式 > 全局根 × 0.833 > 主题令牌（标注属辅助文本）
+            font_size: resolve_mark_label_font_size(spec.label_font_size, colors),
         });
     }
     result
@@ -626,7 +632,7 @@ fn materialize_bar_group(
                 colors,
             )?;
 
-            let label = first_bar_label_config(spec, &plan.series_indices);
+            let label = first_bar_label_config(spec, &plan.series_indices, colors);
             let border_radius = group_bar_border_radius(spec, &plan.series_indices);
             let background_color = bar_layout_of(&spec.series[plan.series_indices[0]]).background;
 
@@ -656,7 +662,7 @@ fn materialize_bar_group(
             let rows =
                 materialize_stacked_bars(&plan.series_indices, spec, axis_ranges, bounds, colors)?;
 
-            let label = first_bar_label_config(spec, &plan.series_indices);
+            let label = first_bar_label_config(spec, &plan.series_indices, colors);
             let border_radius = group_bar_border_radius(spec, &plan.series_indices);
             let background_color = bar_layout_of(&spec.series[plan.series_indices[0]]).background;
 
@@ -688,9 +694,35 @@ pub(crate) fn map_label_position(
     }
 }
 
+/// 系列值标签字号解析（Q2「用户显式根 + rem」模式）。
+///
+/// 完整优先级：**`series[].label.fontSize` 显式 > 全局根 × 1.0 > 主题令牌**。
+///
+/// ×1.0 的兜底值即 [`ColorContext::body_font_size`]（主题 `tokens.text.body_size`，
+/// `build_chart_with_theme` 已把用户显式根 `option.textStyle.fontSize` 折算进去），
+/// 故「全局根 × 系数」与「主题令牌」两条分支在此合一。
+pub(crate) fn resolve_label_font_size(explicit: Option<f64>, colors: &ColorContext) -> f64 {
+    explicit
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(colors.body_font_size)
+}
+
+/// 标注（markLine / markPoint）标签字号解析（Q2「用户显式根 + rem」模式）。
+///
+/// 完整优先级：**`label.fontSize` 显式 > 全局根 × 0.833 > 主题令牌**。
+///
+/// 标注属**辅助文本**，兜底取 `caption_font_size`（主题 `tokens.text.caption_size`，
+/// 用户显式根已折算），替代此前的硬编码 11.0。
+pub(crate) fn resolve_mark_label_font_size(explicit: Option<f64>, colors: &ColorContext) -> f64 {
+    explicit
+        .filter(|s| s.is_finite() && *s > 0.0)
+        .unwrap_or(colors.caption_font_size)
+}
+
 /// 构造折线系列的值标签配置。未开启 label 时返回 None，Builder 不渲染标签。
 pub(crate) fn line_label_config(
     cfg: &crate::pipeline::types::LineConfig,
+    colors: &ColorContext,
 ) -> Option<crate::pipeline::typed_series::SeriesLabelConfig> {
     if !cfg.label_show {
         return None;
@@ -699,7 +731,7 @@ pub(crate) fn line_label_config(
         show: true,
         position: map_label_position(cfg.label_position),
         color: cfg.label_color,
-        font_size: cfg.label_font_size,
+        font_size: resolve_label_font_size(cfg.label_font_size, colors),
         formatter: cfg.label_formatter.clone(),
         hide_overlap: cfg.label_hide_overlap,
     })
@@ -708,6 +740,7 @@ pub(crate) fn line_label_config(
 /// 构造柱状系列的值标签配置。未开启 label 时返回 None，Builder 不渲染标签。
 pub(crate) fn bar_label_config(
     cfg: &crate::pipeline::types::BarConfig,
+    colors: &ColorContext,
 ) -> Option<crate::pipeline::typed_series::SeriesLabelConfig> {
     if !cfg.label_show {
         return None;
@@ -716,7 +749,7 @@ pub(crate) fn bar_label_config(
         show: true,
         position: map_label_position(cfg.label_position),
         color: cfg.label_color,
-        font_size: cfg.label_font_size,
+        font_size: resolve_label_font_size(cfg.label_font_size, colors),
         formatter: cfg.label_formatter.clone(),
         hide_overlap: cfg.label_hide_overlap,
     })
@@ -729,6 +762,7 @@ pub(crate) fn bar_label_config(
 fn first_bar_label_config(
     spec: &ChartSpec,
     series_indices: &[usize],
+    colors: &ColorContext,
 ) -> Option<crate::pipeline::typed_series::SeriesLabelConfig> {
     use crate::pipeline::types::SeriesConfig;
 
@@ -738,7 +772,7 @@ fn first_bar_label_config(
             Some(SeriesConfig::Bar(c)) => Some(c),
             _ => None,
         })
-        .and_then(bar_label_config)
+        .and_then(|c| bar_label_config(c, colors))
 }
 
 /// 从分组柱状图中提取柱体圆角半径（取组内第一个系列）。
@@ -1231,11 +1265,11 @@ fn materialize_one_stacked_line_group(
             values: values.clone(),
             baseline_y,
             baseline_points: prev_points.clone(),
-            label: line_label_config(cfg),
-            mark_lines: compute_mark_lines(&cfg.mark_line, &values, y_range, bounds),
+            label: line_label_config(cfg, colors),
+            mark_lines: compute_mark_lines(&cfg.mark_line, &values, y_range, bounds, colors),
             mark_points: compute_mark_points(&cfg.mark_point, &points, &values, false, |v| {
                 map_y_to_pixel(v, y_range, bounds)
-            }),
+            }, colors),
         };
 
         prev_points = Some(points);

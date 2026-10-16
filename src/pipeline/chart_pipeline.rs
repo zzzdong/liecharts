@@ -94,9 +94,41 @@ pub fn build_chart_with_theme(
     height: u32,
     theme: &Theme,
 ) -> Result<Vec<SceneNode>> {
+    // 「用户显式根 + rem」：`option.textStyle.fontSize` 显式给出时覆盖主题
+    // `body_size` 作 1rem 根，各文本类型按主题系数（标题 1.5× 等）等比换算。
+    let theme = apply_rem_root(
+        theme,
+        option.text_style.as_ref().and_then(|t| t.font_size),
+    );
     // 将 ChartOption 转换为 ChartSpec，然后使用新管线
     let spec = crate::pipeline::compat::chart_option_to_chart_spec(option, width, height);
-    Ok(build_chart_with_layout(&spec, theme)?.elements)
+    Ok(build_chart_with_layout(&spec, &theme)?.elements)
+}
+
+/// 把显式 rem 根字号应用到主题（Q2「用户显式根 + rem」）。
+///
+/// `root` 是用户显式给出的 1rem 基准：JSON 路径取 `option.textStyle.fontSize`，
+/// api builder 路径取 [`Chart::body_font_size`](crate::api::Chart::body_font_size)。
+/// `None` / 非正数 / 非有限值时原样返回主题（即回退主题自身的根字号）。
+///
+/// 应用方式：克隆主题并**仅重标** `tokens.text`——保留主题自身的 `*_rem` 系数、
+/// `font_family`、`title_weight`，只把 `body_size` 换成根并按系数重算派生字号：
+/// `title_size` = 根 × 1.5、`subtitle_size` = 根 × 1.0、`caption_size` = 根 × 0.833，
+/// 整图文字随之等比缩放。
+///
+/// 注意：组件级显式 `fontSize`（如 `title.textStyle.fontSize`）不在此处折算，
+/// 由各渲染解析层优先消费（完整优先级：组件显式 > 全局根 × 系数 > 主题令牌）。
+pub fn apply_rem_root(theme: &Theme, root: Option<f64>) -> Theme {
+    let root = root.filter(|r| r.is_finite() && *r > 0.0);
+    let Some(root) = root else {
+        return theme.clone();
+    };
+    let mut theme = theme.clone();
+    let tokens = theme
+        .tokens
+        .get_or_insert_with(crate::theme::DesignTokens::echarts_v6);
+    tokens.text.rescale_root(root);
+    theme
 }
 
 /// 一轮布局求解的全部中间产物

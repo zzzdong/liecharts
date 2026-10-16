@@ -58,6 +58,12 @@ mod spec {
     pub const TITLE_OFFSET: f64 = 20.0;
     /// 数值 offsetCenter [0,'40%']
     pub const DETAIL_OFFSET: f64 = 40.0;
+    /// 刻度标签字号系数（rem）：12px @ 根 12，与笛卡尔轴标签同口径
+    pub const AXIS_LABEL_REM: f64 = 1.0;
+    /// 标题（系列名）字号系数（rem）：16px @ 根 12（保留历史观感）
+    pub const TITLE_REM: f64 = 16.0 / 12.0;
+    /// 中心数值字号系数（rem）：30px @ 根 12（保留历史观感）
+    pub const DETAIL_REM: f64 = 30.0 / 12.0;
 }
 
 pub struct GaugeBuilder;
@@ -104,6 +110,24 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             0.0
         };
         let value_angle = start_angle + total_sweep * value_ratio;
+
+        // Q2「用户显式根 + rem」：三处字号按「组件显式 > 全局根 × 系数」解析。
+        // 系数取自历史默认观感（刻度 12 / 标题 16 / 数值 30 @ 根 12），
+        // 用户设 `option.textStyle.fontSize` 时整体等比缩放；`series[].axisLabel
+        // /title/detail.fontSize` 显式给出时绝对优先，不参与缩放。
+        let rem_root = ctx.theme.tokens().text.body_size;
+        let axis_label_size = series
+            .axis_label_font_size
+            .filter(|s| s.is_finite() && *s > 0.0)
+            .unwrap_or(rem_root * spec::AXIS_LABEL_REM);
+        let gauge_title_size = series
+            .title_font_size
+            .filter(|s| s.is_finite() && *s > 0.0)
+            .unwrap_or(rem_root * spec::TITLE_REM);
+        let detail_size = series
+            .detail_font_size
+            .filter(|s| s.is_finite() && *s > 0.0)
+            .unwrap_or(rem_root * spec::DETAIL_REM);
 
         // 轴环：外缘 = radius，厚 spec::RING_WIDTH%
         let ring_width = spec::RING_WIDTH * unit;
@@ -180,7 +204,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
                 format!("{:.1}", label_val)
             };
 
-            let mut style = TextStyle::new(Color::rgb(84, 85, 90), 12.0, "sans-serif");
+            let mut style = TextStyle::new(Color::rgb(84, 85, 90), axis_label_size, "sans-serif");
             style.align = if cos > 1e-3 {
                 TextAlign::Left
             } else if cos < -1e-3 {
@@ -256,7 +280,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
 
         // 中心数值显示（detail，offsetCenter [0,'40%']，墨迹盒中心对齐）
         let value_text = format!("{:.1}%", series.value);
-        let value_style = TextStyle::new(Color::rgb(60, 60, 65), 30.0, "sans-serif");
+        let value_style = TextStyle::new(Color::rgb(60, 60, 65), detail_size, "sans-serif");
         push_ink_centered_text(
             &mut elements,
             &value_text,
@@ -265,7 +289,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             Z_SERIES_LABEL,
         );
         // 标题（title，offsetCenter [0,'20%']，位于数值上方）
-        let title_style = TextStyle::new(Color::rgb(132, 132, 138), 16.0, "sans-serif");
+        let title_style = TextStyle::new(Color::rgb(132, 132, 138), gauge_title_size, "sans-serif");
         push_ink_centered_text(
             &mut elements,
             &series.name,

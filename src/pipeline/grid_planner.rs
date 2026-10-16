@@ -1,7 +1,9 @@
 use lievisual::kurbo::Rect;
 
 use crate::pipeline::{
-    axis_label::{AxisLabelSet, auto_rotate, measure_labels, rotated_bounds},
+    axis_label::{
+        AxisLabelSet, auto_rotate, measure_labels, resolve_axis_label_font_size, rotated_bounds,
+    },
     types::{
         AxisPosition, AxisSpec, AxisType, ColorContext, FitMode, GridEdge, GridSpec, SeriesSpec,
         SubplotSpec, TextMeasurer,
@@ -352,7 +354,9 @@ impl<'a> GridPlanner<'a> {
                 }
                 let n = axis_labels.len();
                 let slot_w = spec.bounds.width() / n as f64;
-                let (max_w, max_h) = measure_labels(axis_labels, measurer, colors);
+                // 与渲染侧同源：轴级显式 > 全局根 × 1.0 > 主题令牌
+                let font_size = resolve_axis_label_font_size(axis, colors);
+                let (max_w, max_h) = measure_labels(axis_labels, measurer, colors, font_size);
                 let rotation = axis
                     .label_rotate
                     .map(|deg| deg.to_radians())
@@ -425,7 +429,9 @@ impl<'a> GridPlanner<'a> {
                 if axis_labels.is_empty() {
                     continue;
                 }
-                let (max_w, max_h) = measure_labels(axis_labels, measurer, colors);
+                // 与渲染侧同源：轴级显式 > 全局根 × 1.0 > 主题令牌
+                let font_size = resolve_axis_label_font_size(axis, colors);
+                let (max_w, max_h) = measure_labels(axis_labels, measurer, colors, font_size);
                 // Y 轴不自动旋转，仅尊重用户配置
                 let rotation = axis.label_rotate.map(|deg| deg.to_radians()).unwrap_or(0.0);
                 let (rotated_w, _) = rotated_bounds(max_w, max_h, rotation);
