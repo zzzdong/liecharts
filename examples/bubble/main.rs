@@ -1,7 +1,18 @@
+//! 气泡图示例（Rust API 构建）。
+//!
+//! 配置：编程语言生态（x=诞生年份、y=TIOBE 指数、气泡大小=岗位相对数量）。
+//!
+//! 说明：本示例仅提供 API 版本 —— ECharts option JSON 的 bubble 路径在
+//! 兼容层（`pipeline::compat`）尚未实现（series 数据被置为空 DataFrame，
+//! 直接渲染会因缺列报错），待兼容层补齐后可参照其它示例补上 `via_json`。
+//!
+//! 运行：cargo run --example bubble
+
 use liecharts::api::*;
 
-#[path = "common/mod.rs"]
+#[path = "../common/mod.rs"]
 mod common;
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let chart = Chart::new(common::DEFAULT_W, common::DEFAULT_H)
         .title(Title::new("编程语言生态分析").subtext("气泡大小表示就业岗位相对数量"))
@@ -16,11 +27,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     "name" => ["Python", "Java", "C", "C++", "JavaScript", "Go", "Rust", "Swift", "Kotlin", "TypeScript"],
                 ))
                 .name("编程语言")
+                // x/y 列固定为 "x" / "y"（BubbleConfig 默认），只需指定大小与名称列
                 .size_col("size")
                 .name_col("name"),
-        )
-    ;
-    common::save(&chart, "scatter.svg")?;
-
+        );
+    common::save(&chart, "bubble")?;
     Ok(())
 }
