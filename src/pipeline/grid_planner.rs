@@ -121,6 +121,14 @@ pub struct PlanOutput {
 /// 在两轮之间跳动。
 const HEADER_MIN_TOP: f64 = 65.0;
 
+/// 绘图区上沿与头部（标题块）下缘之间的呼吸间距。
+///
+/// 与底部的图例间距（`LEGEND_PLOT_GAP`，见 `footer_height`）对称：表格顶边框、
+/// gauge 顶部刻度标签、极坐标顶部标签等内容都画在绘图区上沿，贴齐头部下缘会
+/// 与副标题相贴。头部占用为 0（无标题 / 无顶部图例）时该间距自然不生效，
+/// 退化为 v6 `grid.top` 下限 65。
+const HEADER_GAP: f64 = 8.0;
+
 /// 绘图区底部的最小留白（像素）= ECharts v6 `grid.bottom` 默认值。
 ///
 /// v6 起图例默认贴画布底部（`legend.bottom` = 15），图例高度由
@@ -172,9 +180,10 @@ impl<'a> GridPlanner<'a> {
         self
     }
 
-    /// 默认顶部边距：标题占用与 v6 `grid.top` 下限取 max。
+    /// 默认顶部边距：标题占用 + [`HEADER_GAP`] 呼吸间距，与 v6 `grid.top`
+    /// 下限取 max。
     fn top_default(&self) -> f64 {
-        self.header_height.max(HEADER_MIN_TOP)
+        (self.header_height + HEADER_GAP).max(HEADER_MIN_TOP)
     }
 
     /// 默认底部边距：图例占用与 v6 `grid.bottom` 下限取 max。
@@ -1050,7 +1059,7 @@ mod tests {
 
         assert!((s.bounds.x0 - 120.0).abs() < 1.0); // 800 × 15%
         assert!((s.bounds.x1 - 720.0).abs() < 1.0); // 800 - 800×10%
-        assert!((s.bounds.y0 - 100.0).abs() < 1.0); // max(header 100, v6 65)
+        assert!((s.bounds.y0 - 108.0).abs() < 1.0); // header 100 + HEADER_GAP 8
         assert!((s.bounds.y1 - 520.0).abs() < 1.0); // 600 - max(footer 0, v6 80)
 
         let grids_false = grids_for(false);

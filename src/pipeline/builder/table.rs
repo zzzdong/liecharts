@@ -42,7 +42,9 @@ impl SeriesBuilder<TableSeries> for TableBuilder {
     fn build(series: &TableSeries, ctx: &RenderContext) -> Result<Vec<SceneNode>> {
         let mut elements = Vec::new();
 
-        // 表格布局：使用子图 bounds 定位，动态计算单元格尺寸
+        // 表格布局：使用子图 bounds 定位，动态计算单元格尺寸。
+        // 与头部（标题/副标题）的间距由布局流水线统一给出（`GridPlanner` 的
+        // `HEADER_GAP`），builder 不再自行 inset。
         let start_x = ctx.bounds.x0;
         let start_y = ctx.bounds.y0;
         let total_width = ctx.bounds.width();

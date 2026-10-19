@@ -329,13 +329,20 @@ fn resolve_sampling_thresholds(
     }
 }
 
-/// 极坐标类系列（饼图 / 极坐标柱 / 极坐标散点）的布局基准矩形。
+/// 极坐标类系列的布局基准矩形。
 ///
-/// ECharts 语义：这些系列**不参与 `grid`**——`center` 相对画布取百分比，
-/// `radius` 的基准是 `min(画布宽, 画布高)/2`，标题/图例/轴标签都不会把它们
-/// 挤小。历史实现把它们塞进默认 grid 再 clamp 到「grid 内接半径」：竖向图例
-/// 的 footer 预留把 grid 压扁后，`radius: ['0%','70%']` 在 800×600 下本应
-/// 是 210px，实际被砍到 ~104px（官方同一份配置的输出是 263.2px / 70%）。
+/// - **饼图**：以**画布**为基准（ECharts 语义：饼图不参与 `grid`——`center`
+///   相对画布取百分比，`radius` 的基准是 `min(画布宽, 画布高)/2`，标题/图例/
+///   轴标签都不会把它挤小）。历史实现曾把它们塞进默认 grid 再 clamp 到「grid
+///   内接半径」：竖向图例的 footer 预留把 grid 压扁后，`radius: ['0%','70%']`
+///   在 800×600 下本应是 210px，实际被砍到 ~104px（官方同一份配置的输出是
+///   263.2px / 70%）。
+/// - **极坐标柱 / 极坐标散点**：以**绘图区**（planner bounds）为基准。与
+///   `type:"bar" + coordinateSystem:"polar"` 的 JSON 路径一致——compat 对未显式
+///   配 `grid` 的 JSON 套用 v6 默认边距（left 15% / right 10%），JSON 版因此
+///   inset 于画布、顶部标签不侵入标题区；而 API 路径走整画布，同配置下两版
+///   圆心/半径都不同（API 版顶部标签还会与副标题相撞）。统一到绘图区后两端
+///   一致，且观感以 JSON 版（inset、不撞标题）为准。
 ///
 /// 用户显式配置过 grid（任一边缘非 `None`，典型是多子图）时保持 grid 语义，
 /// 既有多子图输出不受影响。
@@ -349,19 +356,17 @@ fn polar_series_bounds(subplot: &SubplotSpec, spec: &ChartSpec, width: u32, heig
             .or(g.height)
             .is_some()
     });
-    let all_polar = !subplot.series_indices.is_empty()
+    // 仅饼图享有画布基准；极坐标柱/散点以绘图区为准（见上方文档）。
+    let canvas_basis = !subplot.series_indices.is_empty()
         && subplot.series_indices.iter().all(|&idx| {
-            spec.series.get(idx).is_some_and(|s| {
-                matches!(
-                    s.config.chart_type(),
-                    ChartType::Pie | ChartType::PolarBar | ChartType::PolarScatter
-                )
-            })
+            spec.series
+                .get(idx)
+                .is_some_and(|s| matches!(s.config.chart_type(), ChartType::Pie))
         });
-    if grid_explicit || !all_polar {
-        subplot.bounds
-    } else {
+    if canvas_basis && !grid_explicit {
         Rect::new(0.0, 0.0, width as f64, height as f64)
+    } else {
+        subplot.bounds
     }
 }
 
@@ -427,7 +432,7 @@ fn render_chart(
 
     // 渲染系列数据（新流程：Materialize + Build）
     for subplot in specs {
-        // 极坐标类系列以**画布**为基准（见 [`polar_series_bounds`]）
+        // 极坐标类系列的布局基准（饼图画布 / 极坐标柱散点绘图区，见 [`polar_series_bounds`]）
         let bounds = polar_series_bounds(subplot, spec, width, height);
         // 创建渲染上下文
         let ctx = RenderContext {
@@ -688,6 +693,78 @@ mod tests {
         series[0].sampling = Some((SamplingType::Lttb, 123));
         resolve_sampling_thresholds(&mut series, &specs);
         assert_eq!(series[0].sampling.unwrap().1, 123, "显式阈值不应被覆盖");
+    }
+
+    /// 回归：极坐标系列的布局基准——饼图以**画布**为基准（ECharts 语义：防
+    /// grid 的 footer 预留把半径压扁）；极坐标柱/散点以**绘图区**为基准。
+    ///
+    /// 后者修复了 API 与 JSON 两路径的同配置不一致：compat 对未显式配 `grid`
+    /// 的 JSON 套用 v6 默认边距（15%/10%），JSON 版 inset 于画布；而 API 版曾
+    /// 走整画布基准，圆心/半径都不同（且顶部标签侵入副标题区）。
+    #[test]
+    fn polar_series_bounds_pie_uses_canvas_polar_bar_uses_plot_area() {
+        use crate::pipeline::dataframe::DataFrame;
+        use crate::pipeline::types::{
+            GridEdge, GridSpec, ItemStyleSpec, PieConfig, PolarBarConfig, SeriesConfig, SeriesSpec,
+            SubplotSpec,
+        };
+
+        let plot = Rect::new(120.0, 67.0, 720.0, 520.0);
+        let canvas = Rect::new(0.0, 0.0, 800.0, 600.0);
+        let subplot = SubplotSpec {
+            id: 0,
+            bounds: plot,
+            series_indices: vec![0],
+            x_axis_indices: vec![],
+            y_axis_indices: vec![],
+        };
+
+        let mut spec = make_spec(FitMode::Fixed);
+        spec.grids = vec![GridSpec {
+            left: None,
+            right: None,
+            top: None,
+            bottom: None,
+            width: None,
+            height: None,
+            contain_label: false,
+        }];
+        spec.series = vec![SeriesSpec {
+            name: "s".into(),
+            data: DataFrame::new(),
+            grid_index: 0,
+            x_axis_index: 0,
+            y_axis_index: 0,
+            stack: None,
+            group_index: 0,
+            sampling: None,
+            item_style: ItemStyleSpec::default(),
+            config: SeriesConfig::PolarBar(PolarBarConfig {
+                angle_col: "angle".into(),
+                radius_col: "radius".into(),
+                category_col: None,
+                pad_angle: 2.0,
+                start_angle: 0.0,
+            }),
+        }];
+
+        // 极坐标柱：grid 未显式配置 → 绘图区（而非整画布）
+        assert_eq!(polar_series_bounds(&subplot, &spec, 800, 600), plot);
+
+        // 饼图：grid 未显式配置 → 画布（ECharts 饼图语义）
+        spec.series[0].config = SeriesConfig::Pie(PieConfig::default());
+        assert_eq!(polar_series_bounds(&subplot, &spec, 800, 600), canvas);
+
+        // 显式配置过 grid（典型多子图）→ 绘图区
+        spec.series[0].config = SeriesConfig::PolarBar(PolarBarConfig {
+            angle_col: "angle".into(),
+            radius_col: "radius".into(),
+            category_col: None,
+            pad_angle: 2.0,
+            start_angle: 0.0,
+        });
+        spec.grids[0].left = Some(GridEdge::Pct(15.0));
+        assert_eq!(polar_series_bounds(&subplot, &spec, 800, 600), plot);
     }
 
     #[test]
