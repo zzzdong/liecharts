@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2] - 2026-10-19
+
+Patch release: cross-path layout consistency fixes (gauge / polar), a unified
+header breathing gap in the layout pipeline, and an examples reorganisation.
+Requires `lievisual` 0.3.1 (rotated-text fix on the raster backend).
+
+### Fixed
+
+- **Gauge JSON path was vertically mirrored relative to the API path.** ECharts
+  gauge angles use the mathematical convention (y up, counter-clockwise
+  positive: `225°` = lower-left), while `GaugeConfig` uses the screen
+  convention (y down, clockwise positive, matching the api builder defaults
+  `start = -225°` / `end = 45°`). The compat layer passed the ECharts angles
+  through unchanged, so the JSON-built gauge was mirrored — the start tick sat
+  at the upper-left and the arc ran the other way. The angles are now negated
+  on conversion. Regression test:
+  `tests/echarts_compat_test.rs::test_gauge_json_angles_convert_to_screen_convention`.
+- **Gauge tick labels poked into the title area.** `resolve_radius` clamps only
+  the ring to the inscribed circle, but ticks (+11.5%) and labels (+2.5%) sit
+  outside the ring and the label ink extends radially beyond that — at
+  `radius: 75%` the top label crossed the plot-area top edge and collided with
+  the subtitle. The radius is now additionally converged by
+  `clamp_radius_to_visual`, which computes the four directional extremes over
+  the swept arc (top 270° / bottom 90° / left 180° / right 0°, falling back to
+  the endpoints when the extreme angle is not swept) and shrinks the radius —
+  never grows it — so ring + ticks + label ink stay inside the plot area.
+  Regression tests in `pipeline/builder/gauge.rs`.
+- **Polar bar / scatter used different layout bases on the two build paths.**
+  The compat layer applies the v6 default grid margins (left 15% / right 10%)
+  to JSON without an explicit `grid`, so the JSON path rendered inset in the
+  plot area; the api path used the whole canvas, producing a different centre
+  and radius for the same configuration (and top labels reaching into the
+  subtitle zone). Polar bar/scatter now use the planned plot area on both
+  paths. Pie keeps the canvas basis (ECharts semantics: the grid footer
+  reservation must not flatten the pie radius). Regression test:
+  `chart_pipeline::tests::polar_series_bounds_pie_uses_canvas_polar_bar_uses_plot_area`.
+- **No breathing gap between the header and the plot area.**
+  `GridPlanner::top_default` was `max(header_height, 65)`, i.e. the plot-area
+  top edge sat flush against the title block's bottom edge — content drawn on
+  that edge (table top border, gauge top tick, polar top label) touched the
+  subtitle. It is now `max(header_height + HEADER_GAP, 65)` with
+  `HEADER_GAP = 8`, symmetric with the bottom legend gap
+  (`LEGEND_PLOT_GAP`); without a title it degrades to the v6 `grid.top`
+  default of 65. The ad-hoc top inset in the table builder was removed — the
+  spacing now comes from the layout pipeline.
+
+### Changed
+
+- **Examples reorganised by chart type** (not part of the published crate):
+  `examples/<type>/main.rs` for bar / line / pie / scatter / bubble / radar /
+  gauge / heatmap / boxplot / candlestick / table / polar, plus `combo`
+  (dual-axis + multi-grid) and `showcase` (dark theme / value labels /
+  function curve with LTTB sampling / Hug fit). Each type file exposes
+  `via_api()` and `via_json()` with identical configuration, and
+  `common::save` now writes both SVG and PNG into `svg_output/` and
+  `png_output/` respectively.
+
 ## [0.3.1] - 2026-10-16
 
 ### Added
