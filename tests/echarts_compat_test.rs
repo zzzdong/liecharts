@@ -5,7 +5,7 @@
 
 use liecharts::{
     option::{ChartOption, SeriesOption, TooltipTrigger},
-    pipeline::compat::chart_option_to_chart_spec,
+    pipeline::{SeriesConfig, compat::chart_option_to_chart_spec},
 };
 
 /// 读取 JSON 文件内容
@@ -471,6 +471,78 @@ fn test_gauge_detailed() {
     assert_eq!(series_type_name(&option.series[0]), "gauge");
     let spec = chart_option_to_chart_spec(&option, 800, 600);
     assert_eq!(spec.series.len(), 1);
+}
+
+/// 回归：gauge JSON 角度从 ECharts 数学坐标系转换为屏幕坐标系（取负）。
+///
+/// ECharts 角度 y 向上、逆时针为正（225° = 左下）；`GaugeConfig` 用屏幕坐标系
+/// （y 向下、顺时针为正，与 api 层默认 start=-225°/end=45° 一致）。 compat 曾
+/// 直接透传，导致 JSON 版仪表盘相对 API 版**垂直镜像**（起点标签落到左上）。
+#[test]
+fn test_gauge_json_angles_convert_to_screen_convention() {
+    // 默认 270° 弧：ECharts 225°/-45° → 屏幕 -225°/45°
+    let json = r#"
+{
+  "series": [
+    {
+      "type": "gauge",
+      "startAngle": 225,
+      "endAngle": -45,
+      "data": [{ "name": "完成率", "value": 75.5 }]
+    }
+  ]
+}"#;
+    let option: ChartOption = serde_json::from_str(json).unwrap();
+    let spec = chart_option_to_chart_spec(&option, 800, 600);
+    match &spec.series[0].config {
+        SeriesConfig::Gauge(c) => {
+            assert_eq!(c.start_angle, -225.0);
+            assert_eq!(c.end_angle, 45.0);
+        }
+        other => panic!("expected gauge series config, got {other:?}"),
+    }
+
+    // 未显式指定时走 ECharts 默认（225°/-45°），同样转换
+    let json_default = r#"
+{
+  "series": [
+    {
+      "type": "gauge",
+      "data": [{ "name": "完成率", "value": 75.5 }]
+    }
+  ]
+}"#;
+    let option: ChartOption = serde_json::from_str(json_default).unwrap();
+    let spec = chart_option_to_chart_spec(&option, 800, 600);
+    match &spec.series[0].config {
+        SeriesConfig::Gauge(c) => {
+            assert_eq!(c.start_angle, -225.0);
+            assert_eq!(c.end_angle, 45.0);
+        }
+        other => panic!("expected gauge series config, got {other:?}"),
+    }
+
+    // 显式半环（180°→0°）同样取负转换
+    let json_half = r#"
+{
+  "series": [
+    {
+      "type": "gauge",
+      "startAngle": 180,
+      "endAngle": 0,
+      "data": [{ "name": "完成率", "value": 75.5 }]
+    }
+  ]
+}"#;
+    let option: ChartOption = serde_json::from_str(json_half).unwrap();
+    let spec = chart_option_to_chart_spec(&option, 800, 600);
+    match &spec.series[0].config {
+        SeriesConfig::Gauge(c) => {
+            assert_eq!(c.start_angle, -180.0);
+            assert_eq!(c.end_angle, 0.0);
+        }
+        other => panic!("expected gauge series config, got {other:?}"),
+    }
 }
 
 // ── 批量兼容性测试 ──

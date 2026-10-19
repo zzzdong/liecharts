@@ -17,7 +17,7 @@ use std::f64::consts::PI;
 
 use lievisual::{
     Color,
-    kurbo::{Arc, BezPath, PathSeg, Point, Shape},
+    kurbo::{Arc, BezPath, PathSeg, Point, Rect, Shape},
     scene::{Element, FillStrokeStyle, GradientStop, LinearGradient, SceneNode, Stroke},
     text::{RichSpan, TextAlign, TextBaseline, TextStyle, measure_text},
 };
@@ -85,8 +85,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
         // P2a：radius 为**绝对像素**（api/compat 层按「画布 min/2」折算）；
         // P5 起由 `resolve_radius` 统一 clamp 到绘图区内接半径，
         // 未指定时按内接半径的 75% 自适应。
-        let radius = resolve_radius(series.radius, width, height, 75.0);
-        let unit = radius / 100.0; // ECharts 尺寸单位
+        let mut radius = resolve_radius(series.radius, width, height, 75.0);
 
         // 转换角度为弧度
         let start_angle = series.start_angle * PI / 180.0;
@@ -128,6 +127,34 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             .detail_font_size
             .filter(|s| s.is_finite() && *s > 0.0)
             .unwrap_or(rem_root * spec::DETAIL_REM);
+
+        // 刻度标签文本（提前生成：收敛半径时需要最长标签的墨迹尺寸）
+        let split_number = series.split_number.max(1);
+        let tick_labels: Vec<String> = (0..=split_number)
+            .map(|i| {
+                let label_val =
+                    series.min + (series.max - series.min) * i as f64 / split_number as f64;
+                if label_val.fract() == 0.0 {
+                    format!("{:.0}", label_val)
+                } else {
+                    format!("{:.1}", label_val)
+                }
+            })
+            .collect();
+
+        // 半径二次收敛：视觉外缘（环 + 刻度 + 标签 + 标签墨迹）不得越出绘图区。
+        // `resolve_radius` 只按内接圆 clamp 环体，而刻度/标签在环外再伸 14%，
+        // 顶部标签会侵入标题区与副标题相撞（详见 `clamp_radius_to_visual`）。
+        radius = clamp_radius_to_visual(
+            radius,
+            center,
+            bounds,
+            start_angle,
+            total_sweep,
+            &tick_labels,
+            axis_label_size,
+        );
+        let unit = radius / 100.0; // ECharts 尺寸单位
 
         // 轴环：外缘 = radius，厚 spec::RING_WIDTH%
         let ring_width = spec::RING_WIDTH * unit;
@@ -172,12 +199,11 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
         }
 
         // 主刻度（splitLine）与标签
-        let split_number = series.split_number.max(1);
         let tick_start_r = outer_r + spec::SPLIT_LINE_GAP * unit;
         let tick_end_r = tick_start_r + spec::SPLIT_LINE_LENGTH * unit;
         let label_r = tick_end_r + spec::LABEL_GAP * unit;
 
-        for i in 0..=split_number {
+        for (i, label_text) in tick_labels.iter().enumerate() {
             let angle = start_angle + total_sweep * i as f64 / split_number as f64;
             let (sin, cos) = angle.sin_cos();
 
@@ -197,13 +223,6 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             // 标签：ECharts GaugeView 的径向对齐——
             // cos>0（右半）→ Left（文字向外/右伸展），cos<0 → Right；
             // sin>0（下半，屏幕坐标 y 向下）→ Top，sin<0 → Bottom。
-            let label_val = series.min + (series.max - series.min) * i as f64 / split_number as f64;
-            let label_text = if label_val.fract() == 0.0 {
-                format!("{:.0}", label_val)
-            } else {
-                format!("{:.1}", label_val)
-            };
-
             let mut style = TextStyle::new(Color::rgb(84, 85, 90), axis_label_size, "sans-serif");
             style.align = if cos > 1e-3 {
                 TextAlign::Left
@@ -221,7 +240,7 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
             };
             elements.push(
                 SceneNode::new(Element::Text {
-                    spans: vec![RichSpan::new(label_text, style.clone())],
+                    spans: vec![RichSpan::new(label_text.clone(), style.clone())],
                     position: Point::new(center.x + label_r * cos, center.y + label_r * sin),
                     style,
                     layout: None,
@@ -300,6 +319,78 @@ impl SeriesBuilder<GaugeSeries> for GaugeBuilder {
 
         Ok(elements)
     }
+}
+
+/// 扫过范围 `[start, start+sweep]` 内 `f(θ)` 的最大值。
+///
+/// `f` 在 `best`（轴向极值角）处取 1；极值角被扫过时直接返回 1.0，
+/// 否则退化为起止点两者中的较大者。
+fn sweep_extreme(start: f64, sweep: f64, best: f64, f: impl Fn(f64) -> f64) -> f64 {
+    let two_pi = 2.0 * PI;
+    if (best - start).rem_euclid(two_pi) <= sweep {
+        1.0
+    } else {
+        f(start).max(f(start + sweep))
+    }
+}
+
+/// 把 gauge 半径收敛到「视觉外缘」不越出绘图区的值（只缩不放）。
+///
+/// 视觉外缘不止环体：刻度线伸出环外 `SPLIT_LINE_GAP + SPLIT_LINE_LENGTH`%（合计
+/// 11.5%），标签再外扩 `LABEL_GAP`%（2.5%），且标签墨迹沿径向再伸一截——顶部
+/// 标签向上（`baseline=Bottom`）、底部端点标签向下（`Top`）、左右标签向两侧
+/// （`align=Right/Left`）。`resolve_radius` 只按内接圆 clamp 环体，于是
+/// radius=75% 时顶部标签会探出绘图区上沿、侵入标题区与副标题相撞。
+///
+/// 按扫过范围内的四向极值计算可用半径：
+/// - 顶（min y）极值角 270°、底（max y）90°、左（min x）180°、右（max x）0°；
+/// - 极值角不在扫过范围内时，取起止点中更极的一端（如默认 270° 弧的底部极值
+///   落在 45°/135° 端点，因子 = sin45° ≈ 0.707）；
+/// - 各向再扣除标签墨迹（上下扣 `label_h`、左右扣 `label_w`）与安全边距。
+///
+/// 屏幕坐标系（y 向下）下角度 θ 的单位向量为 `(cos θ, sin θ)`：0°=右、90°=下、
+/// 180°=左、270°=上，角度增大为顺时针——与 api 层默认 `start=-225°/end=45°`
+/// 及 compat 层符号转换后的 ECharts 角度一致。
+fn clamp_radius_to_visual(
+    radius: f64,
+    center: Point,
+    bounds: Rect,
+    start_angle: f64,
+    total_sweep: f64,
+    tick_labels: &[String],
+    axis_label_size: f64,
+) -> f64 {
+    /// 与绘图区边缘（含上方标题区）的安全间距。
+    const VISUAL_PAD: f64 = 10.0;
+    /// 极端狭缝下的保底半径（避免退化成不可见的点）。
+    const MIN_RADIUS: f64 = 20.0;
+
+    // 扫过范围内 `f(θ)` 的最大值；`f` 在 `best` 处取 1（轴向极值）。
+    // 极值角被扫过 → 1.0；否则退化为起止点较大者。
+    let f_up = sweep_extreme(start_angle, total_sweep, 270_f64.to_radians(), |s| -s.sin());
+    let f_down = sweep_extreme(start_angle, total_sweep, 90_f64.to_radians(), |s| s.sin());
+    let f_left = sweep_extreme(start_angle, total_sweep, 180_f64.to_radians(), |s| -s.cos());
+    let f_right = sweep_extreme(start_angle, total_sweep, 0.0, |s| s.cos());
+
+    // 最长标签的墨迹盒（与绘制同口径：同字号、同字体族；align/baseline 不影响尺寸）
+    let probe = TextStyle::new(Color::rgb(84, 85, 90), axis_label_size, "sans-serif");
+    let (label_w, label_h) = tick_labels
+        .iter()
+        .map(|t| measure_text(&[RichSpan::new(t.clone(), probe.clone())], None).size)
+        .fold((0.0_f64, 0.0_f64), |(w, h), s| {
+            (w.max(s.width), h.max(s.height))
+        });
+
+    // 环外缘到标签锚点的距离 = radius × visual（刻度 + 标签间隙）
+    let visual = 1.0 + (spec::SPLIT_LINE_GAP + spec::SPLIT_LINE_LENGTH + spec::LABEL_GAP) / 100.0;
+    let candidates = [
+        (center.y - (bounds.y0 + VISUAL_PAD) - label_h) / (f_up * visual),
+        ((bounds.y1 - VISUAL_PAD) - center.y - label_h) / (f_down * visual),
+        (center.x - (bounds.x0 + VISUAL_PAD) - label_w) / (f_left * visual),
+        ((bounds.x1 - VISUAL_PAD) - center.x - label_w) / (f_right * visual),
+    ];
+    let max_r = candidates.into_iter().fold(f64::INFINITY, f64::min);
+    radius.min(max_r.max(MIN_RADIUS))
 }
 
 /// 生成 cap 盒中心精确落在 `target` 的单行文本。
@@ -385,4 +476,192 @@ fn add_arc(path: &mut BezPath, center: Point, radius: f64, start: f64, sweep: f6
         PathSeg::Quad(quad) => path.quad_to(quad.p1, quad.p2),
         PathSeg::Cubic(cubic) => path.curve_to(cubic.p1, cubic.p2, cubic.p3),
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{pipeline::types::ColorContext, theme::Theme};
+
+    /// 默认 270° 弧（屏幕坐标 135°→405°，即 api 默认 -225°/45°）。
+    fn default_arc() -> (f64, f64) {
+        ((-225_f64).to_radians(), 270_f64.to_radians())
+    }
+
+    fn tick_labels_0_100() -> Vec<String> {
+        (0..=10).map(|i| format!("{}", i * 10)).collect()
+    }
+
+    /// 默认角度的 gauge 夹具（屏幕坐标系 -225°/45°，与 api 层默认一致）。
+    fn gauge_series() -> GaugeSeries {
+        GaugeSeries {
+            name: "完成率".into(),
+            min: 0.0,
+            max: 100.0,
+            center: (50.0, 55.0),
+            radius: 225.0, // 绝对像素（api/compat 按画布 min/2 折算后的 75%）
+            start_angle: -225.0,
+            end_angle: 45.0,
+            split_number: 10,
+            value: 75.5,
+            color: Color::rgb(80, 112, 221),
+            axis_label_font_size: None,
+            title_font_size: None,
+            detail_font_size: None,
+        }
+    }
+
+    /// 回归：四向极值因子——默认弧扫过顶/左/右（1.0），不扫过底（90°），
+    /// 底部极值落在 45°/135° 端点，因子 = sin45° ≈ 0.707。
+    #[test]
+    fn sweep_extreme_factors_for_default_arc() {
+        let (start, sweep) = default_arc();
+        let half_sqrt2 = std::f64::consts::FRAC_1_SQRT_2;
+        assert_eq!(
+            sweep_extreme(start, sweep, 270_f64.to_radians(), |s| -s.sin()),
+            1.0
+        );
+        assert!(
+            (sweep_extreme(start, sweep, 90_f64.to_radians(), |s| s.sin()) - half_sqrt2).abs()
+                < 1e-12
+        );
+        assert_eq!(
+            sweep_extreme(start, sweep, 180_f64.to_radians(), |s| -s.cos()),
+            1.0
+        );
+        assert_eq!(sweep_extreme(start, sweep, 0.0, |s| s.cos()), 1.0);
+    }
+
+    /// 回归：半径按视觉外缘收敛——顶部标签墨迹不得探出绘图区上沿。
+    ///
+    /// 历史 bug：`resolve_radius` 只按内接圆 clamp 环体，而刻度/标签在环外
+    /// 再伸 14%，radius=75% 时顶部标签侵入标题区、与副标题相撞。
+    /// 放得下时保持原值（只缩不放）。
+    #[test]
+    fn clamp_radius_to_visual_keeps_labels_inside_bounds() {
+        // 800×600 画布的默认 gauge 布局：绘图区 (120,67)-(680,520)、
+        // 中心 (420, 316.15)（center 50%/55%）。
+        let bounds = Rect::new(120.0, 67.0, 680.0, 520.0);
+        let center = Point::new(420.0, 316.15);
+        let (start, sweep) = default_arc();
+        let labels = tick_labels_0_100();
+
+        let r = clamp_radius_to_visual(225.0, center, bounds, start, sweep, &labels, 12.0);
+        assert!(r < 225.0, "顶部受限时半径应收缩，got {r}");
+
+        let visual =
+            1.0 + (spec::SPLIT_LINE_GAP + spec::SPLIT_LINE_LENGTH + spec::LABEL_GAP) / 100.0;
+        let probe = TextStyle::new(Color::rgb(84, 85, 90), 12.0, "sans-serif");
+        let label_h = measure_text(&[RichSpan::new("100", probe)], None)
+            .size
+            .height;
+        let ink_top = center.y - r * visual - label_h;
+        assert!(
+            ink_top >= bounds.y0 + 10.0 - 1e-6,
+            "顶部标签墨迹顶 {ink_top} 应距绘图区上沿 ≥10px"
+        );
+
+        let small = clamp_radius_to_visual(100.0, center, bounds, start, sweep, &labels, 12.0);
+        assert_eq!(small, 100.0, "放得下时半径不应被动");
+    }
+
+    /// 回归：gauge 全部文本（刻度标签 + 中心标题/数值）的墨迹盒不越出绘图区。
+    ///
+    /// 同时守住两个历史问题：
+    /// 1. 角度镜像——compat 曾把 ECharts 数学坐标系角度（225°/-45°）直接透传
+    ///    给屏幕坐标系的 `GaugeConfig`，JSON 版仪表盘垂直镜像、起点标签落到
+    ///    左上，墨迹探出绘图区上沿；
+    /// 2. 半径未按视觉外缘收敛——顶部标签侵入标题区与副标题相撞。
+    #[test]
+    fn gauge_text_ink_stays_within_bounds() {
+        let colors = ColorContext::default();
+        let ctx = RenderContext {
+            colors: &colors,
+            theme: &Theme::echarts(),
+            bounds: Rect::new(120.0, 67.0, 680.0, 520.0),
+        };
+        let elements = GaugeBuilder::build(&gauge_series(), &ctx).unwrap();
+
+        let mut checked = 0usize;
+        for node in &elements {
+            let Some(Element::Text {
+                spans,
+                position,
+                style,
+                ..
+            }) = node.element()
+            else {
+                continue;
+            };
+            let text = &spans[0].text;
+            let size = measure_text(&[RichSpan::new(text.clone(), style.clone())], None).size;
+            // 锚点语义：align/baseline 决定墨迹相对 position 的伸出方向
+            let (ix0, ix1) = match style.align {
+                TextAlign::Left => (position.x, position.x + size.width),
+                TextAlign::Right => (position.x - size.width, position.x),
+                _ => (position.x - size.width / 2.0, position.x + size.width / 2.0),
+            };
+            let (iy0, iy1) = match style.baseline {
+                TextBaseline::Top => (position.y, position.y + size.height),
+                TextBaseline::Bottom => (position.y - size.height, position.y),
+                _ => (
+                    position.y - size.height / 2.0,
+                    position.y + size.height / 2.0,
+                ),
+            };
+            let eps = 1e-6;
+            assert!(
+                ix0 >= ctx.bounds.x0 - eps && ix1 <= ctx.bounds.x1 + eps,
+                "文本 {text:?} 墨迹 x [{ix0}, {ix1}] 越出绘图区 x [{}, {}]",
+                ctx.bounds.x0,
+                ctx.bounds.x1
+            );
+            assert!(
+                iy0 >= ctx.bounds.y0 - eps && iy1 <= ctx.bounds.y1 + eps,
+                "文本 {text:?} 墨迹 y [{iy0}, {iy1}] 越出绘图区 y [{}, {}]",
+                ctx.bounds.y0,
+                ctx.bounds.y1
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 13,
+            "应检查 11 个刻度标签 + 中心标题/数值，got {checked}"
+        );
+    }
+
+    /// 回归：起点标签（"0"）必须在中心**下方**（屏幕坐标 y 向下，默认弧
+    /// 自左下 225° 起）。角度被镜像（数学坐标系直传）时它会落到左上。
+    #[test]
+    fn gauge_start_label_sits_below_center() {
+        let colors = ColorContext::default();
+        let ctx = RenderContext {
+            colors: &colors,
+            theme: &Theme::echarts(),
+            bounds: Rect::new(120.0, 67.0, 680.0, 520.0),
+        };
+        let elements = GaugeBuilder::build(&gauge_series(), &ctx).unwrap();
+        let series = gauge_series();
+        let center = Point::new(
+            ctx.bounds.x0 + ctx.bounds.width() * series.center.0 / 100.0,
+            ctx.bounds.y0 + ctx.bounds.height() * series.center.1 / 100.0,
+        );
+
+        let start_label = elements
+            .iter()
+            .filter_map(|n| match n.element() {
+                Some(Element::Text {
+                    spans, position, ..
+                }) if spans[0].text == "0" => Some(*position),
+                _ => None,
+            })
+            .next()
+            .expect("应渲染出起点刻度标签 \"0\"");
+        assert!(
+            start_label.y > center.y,
+            "起点标签应在中心下方（y {} > {}），角度被镜像时会落到上方",
+            start_label.y,
+            center.y
+        );
+    }
 }

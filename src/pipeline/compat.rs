@@ -1049,8 +1049,14 @@ pub fn chart_option_to_chart_spec(option: &ChartOption, width: u32, height: u32)
                         max: gs.max.unwrap_or(100.0),
                         center: (center_x, center_y),
                         radius,
-                        start_angle: gs.start_angle.unwrap_or(225.0),
-                        end_angle: gs.end_angle.unwrap_or(-45.0),
+                        // ECharts 角度为**数学坐标系**（y 向上、逆时针为正：
+                        // 225° = 左下、-45° = 右下，弧线自左下顺时针掠过顶部）；
+                        // `GaugeConfig` 用**屏幕坐标系**（y 向下、顺时针为正，
+                        // 与 api 层默认 start=-225°/end=45° 一致）。两者相差一个
+                        // 符号，直接透传会让 JSON 版仪表盘相对 API 版**垂直镜像**
+                        // （起点落到左上而非左下，弧线方向亦反）。
+                        start_angle: -gs.start_angle.unwrap_or(225.0),
+                        end_angle: -gs.end_angle.unwrap_or(-45.0),
                         split_number: gs.split_number.unwrap_or(10),
                         // Q2：`axisLabel` / `title` / `detail` 的显式字号
                         // （此前解析后从未被读取，渲染层硬编码 12/16/30）
