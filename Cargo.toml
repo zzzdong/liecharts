@@ -12,13 +12,13 @@ repository = "https://github.com/zzzdong/liecharts"
 license = "Apache-2.0"
 keywords = ["chart", "plot", "visualization", "svg", "png"]
 categories = ["graphics", "visualization"]
-exclude = ["site/", "examples/", "svg_output/", ".github/", "*.png", "*.svg"]
+exclude = ["site/", "examples/", "svg_output/", "png_output/", ".github/", "*.png", "*.svg"]
 
 [dependencies]
 anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-lievisual = "0.3"
+lievisual = "0.3.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

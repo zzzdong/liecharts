@@ -584,9 +584,9 @@ dependencies = [
 
 [[package]]
 name = "lievisual"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d68cc8bc38f26a0caf9edd9c1d7be80750de9d4739f3023fd6abbcfdfe21ee7d"
+checksum = "c667a8155828311cdca83dd083cb7949935c450efc2217aade3fc1fe23ee4536"
 dependencies = [
  "i_overlay",
  "kurbo",
